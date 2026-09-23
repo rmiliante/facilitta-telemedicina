@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getDoctorSession } from "@/lib/auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import LogoutButton from "@/components/LogoutButton";
+import DoctorShell from "@/components/DoctorShell";
 
 const STATUS_LABELS: Record<string, string> = {
   agendado: "Agendado",
@@ -59,27 +59,17 @@ export default async function DoctorAgendaPage() {
   const past = appointments.filter((a) => new Date(a.scheduled_at) < startOfToday);
 
   return (
-    <div className="min-h-screen bg-brand-bg">
-      <div className="flex items-center justify-between border-b border-brand-navy bg-brand-navy px-4 py-3 sm:px-6">
-        <div>
-          <h1 className="text-sm font-semibold text-white">Minha agenda</h1>
-          <p className="text-xs text-white/60">{session.name}</p>
-        </div>
-        <LogoutButton />
-      </div>
-
-      <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
-        <AgendaSection title="Hoje" appointments={today} emptyText="Nenhuma consulta hoje." />
-        <AgendaSection
-          title="Próximas"
-          appointments={upcoming}
-          emptyText="Nenhuma consulta futura agendada."
-        />
-        {past.length > 0 && (
-          <AgendaSection title="Anteriores" appointments={past} emptyText="" collapsedByDefault />
-        )}
-      </div>
-    </div>
+    <DoctorShell doctorName={session.name}>
+      <AgendaSection title="Hoje" appointments={today} emptyText="Nenhuma consulta hoje." />
+      <AgendaSection
+        title="Próximas"
+        appointments={upcoming}
+        emptyText="Nenhuma consulta futura agendada."
+      />
+      {past.length > 0 && (
+        <AgendaSection title="Anteriores" appointments={past} emptyText="" collapsedByDefault />
+      )}
+    </DoctorShell>
   );
 }
 
