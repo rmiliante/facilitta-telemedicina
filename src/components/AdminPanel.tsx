@@ -101,6 +101,10 @@ function SpecialtiesTab() {
   const [name, setName] = useState("");
   const [quota, setQuota] = useState("50");
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editQuota, setEditQuota] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/admin/specialties");
@@ -131,6 +135,32 @@ function SpecialtiesTab() {
       await load();
     } finally {
       setSaving(false);
+    }
+  }
+
+  function startEdit(s: Specialty) {
+    setEditingId(s.id);
+    setEditName(s.name);
+    setEditQuota(String(s.monthly_quota));
+  }
+
+  async function saveEdit(id: string) {
+    setEditSaving(true);
+    try {
+      const res = await fetch(`/api/admin/specialties/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editName, monthlyQuota: Number(editQuota) || 1 }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error);
+        return;
+      }
+      setEditingId(null);
+      await load();
+    } finally {
+      setEditSaving(false);
     }
   }
 
@@ -166,15 +196,62 @@ function SpecialtiesTab() {
       </form>
 
       <ul className="space-y-2">
-        {specialties.map((s) => (
-          <li
-            key={s.id}
-            className="flex items-center justify-between rounded-md border border-zinc-200 bg-white px-4 py-2.5 text-sm"
-          >
-            <span className="font-medium text-zinc-800">{s.name}</span>
-            <span className="text-xs text-zinc-500">{s.monthly_quota} consultas/mês</span>
-          </li>
-        ))}
+        {specialties.map((s) =>
+          editingId === s.id ? (
+            <li
+              key={s.id}
+              className="flex flex-wrap items-end gap-3 rounded-md border border-brand-teal-dark bg-white px-4 py-3 text-sm"
+            >
+              <label className="text-xs">
+                <span className="mb-1 block font-medium text-zinc-600">Nome</span>
+                <input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                />
+              </label>
+              <label className="text-xs">
+                <span className="mb-1 block font-medium text-zinc-600">Cota mensal</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={editQuota}
+                  onChange={(e) => setEditQuota(e.target.value)}
+                  className="w-28 rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                />
+              </label>
+              <button
+                onClick={() => saveEdit(s.id)}
+                disabled={editSaving}
+                className="rounded-md bg-brand-navy px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+              >
+                Salvar
+              </button>
+              <button
+                onClick={() => setEditingId(null)}
+                className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50"
+              >
+                Cancelar
+              </button>
+            </li>
+          ) : (
+            <li
+              key={s.id}
+              className="flex items-center justify-between rounded-md border border-zinc-200 bg-white px-4 py-2.5 text-sm"
+            >
+              <div>
+                <span className="font-medium text-zinc-800">{s.name}</span>
+                <span className="ml-2 text-xs text-zinc-500">{s.monthly_quota} consultas/mês</span>
+              </div>
+              <button
+                onClick={() => startEdit(s)}
+                className="rounded-md border border-zinc-300 px-2.5 py-1 text-[10px] font-medium text-zinc-600 hover:bg-zinc-50"
+              >
+                Editar
+              </button>
+            </li>
+          )
+        )}
         {specialties.length === 0 && (
           <p className="text-xs text-zinc-400">Nenhuma especialidade cadastrada.</p>
         )}
@@ -191,6 +268,9 @@ function DoctorsTab() {
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
   const [form, setForm] = useState({ name: "", email: "", password: "", specialtyId: "" });
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", email: "", specialtyId: "", password: "" });
+  const [editSaving, setEditSaving] = useState(false);
 
   const load = useCallback(async () => {
     const [dRes, sRes] = await Promise.all([
@@ -234,6 +314,37 @@ function DoctorsTab() {
       body: JSON.stringify({ active: !doctor.active }),
     });
     await load();
+  }
+
+  function startEdit(d: Doctor) {
+    setEditingId(d.id);
+    setEditForm({ name: d.name, email: d.email, specialtyId: d.specialty_id ?? "", password: "" });
+  }
+
+  async function saveEdit(id: string) {
+    setEditSaving(true);
+    try {
+      const body: Record<string, unknown> = {
+        name: editForm.name,
+        email: editForm.email,
+        specialtyId: editForm.specialtyId,
+      };
+      if (editForm.password) body.password = editForm.password;
+      const res = await fetch(`/api/admin/doctors/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error);
+        return;
+      }
+      setEditingId(null);
+      await load();
+    } finally {
+      setEditSaving(false);
+    }
   }
 
   return (
@@ -296,27 +407,101 @@ function DoctorsTab() {
       </form>
 
       <ul className="space-y-2">
-        {doctors.map((d) => (
-          <li
-            key={d.id}
-            className="flex items-center justify-between rounded-md border border-zinc-200 bg-white px-4 py-2.5 text-sm"
-          >
-            <div>
-              <p className="font-medium text-zinc-800">{d.name}</p>
-              <p className="text-xs text-zinc-500">
-                {d.email} {d.specialties?.name ? `· ${d.specialties.name}` : ""}
-              </p>
-            </div>
-            <button
-              onClick={() => toggleActive(d)}
-              className={`rounded-full px-2.5 py-1 text-[10px] font-medium ${
-                d.active ? "bg-brand-teal/15 text-brand-teal-dark" : "bg-zinc-100 text-zinc-500"
-              }`}
+        {doctors.map((d) =>
+          editingId === d.id ? (
+            <li
+              key={d.id}
+              className="grid gap-3 rounded-md border border-brand-teal-dark bg-white p-4 text-sm sm:grid-cols-2"
             >
-              {d.active ? "Ativo" : "Inativo"}
-            </button>
-          </li>
-        ))}
+              <label className="text-xs">
+                <span className="mb-1 block font-medium text-zinc-600">Nome</span>
+                <input
+                  value={editForm.name}
+                  onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                  className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                />
+              </label>
+              <label className="text-xs">
+                <span className="mb-1 block font-medium text-zinc-600">E-mail (login)</span>
+                <input
+                  type="email"
+                  value={editForm.email}
+                  onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+                  className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                />
+              </label>
+              <label className="text-xs">
+                <span className="mb-1 block font-medium text-zinc-600">Especialidade</span>
+                <select
+                  value={editForm.specialtyId}
+                  onChange={(e) => setEditForm((f) => ({ ...f, specialtyId: e.target.value }))}
+                  className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                >
+                  <option value="">—</option>
+                  {specialties.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-xs">
+                <span className="mb-1 block font-medium text-zinc-600">Nova senha (opcional)</span>
+                <input
+                  type="text"
+                  minLength={6}
+                  value={editForm.password}
+                  onChange={(e) => setEditForm((f) => ({ ...f, password: e.target.value }))}
+                  className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                  placeholder="deixe em branco pra manter"
+                />
+              </label>
+              <div className="flex gap-2 sm:col-span-2">
+                <button
+                  onClick={() => saveEdit(d.id)}
+                  disabled={editSaving}
+                  className="rounded-md bg-brand-navy px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                >
+                  Salvar
+                </button>
+                <button
+                  onClick={() => setEditingId(null)}
+                  className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </li>
+          ) : (
+            <li
+              key={d.id}
+              className="flex items-center justify-between rounded-md border border-zinc-200 bg-white px-4 py-2.5 text-sm"
+            >
+              <div>
+                <p className="font-medium text-zinc-800">{d.name}</p>
+                <p className="text-xs text-zinc-500">
+                  {d.email} {d.specialties?.name ? `· ${d.specialties.name}` : ""}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  onClick={() => startEdit(d)}
+                  className="rounded-md border border-zinc-300 px-2.5 py-1 text-[10px] font-medium text-zinc-600 hover:bg-zinc-50"
+                >
+                  Editar
+                </button>
+                <button
+                  onClick={() => toggleActive(d)}
+                  className={`rounded-full px-2.5 py-1 text-[10px] font-medium ${
+                    d.active ? "bg-brand-teal/15 text-brand-teal-dark" : "bg-zinc-100 text-zinc-500"
+                  }`}
+                >
+                  {d.active ? "Ativo" : "Inativo"}
+                </button>
+              </div>
+            </li>
+          )
+        )}
         {doctors.length === 0 && (
           <p className="text-xs text-zinc-400">Nenhum médico cadastrado.</p>
         )}
@@ -341,6 +526,16 @@ function PatientsTab() {
     state: "",
   });
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({
+    fullName: "",
+    cpf: "",
+    phone: "",
+    email: "",
+    city: "",
+    state: "",
+  });
+  const [editSaving, setEditSaving] = useState(false);
 
   const load = useCallback(async (q?: string) => {
     const res = await fetch(`/api/admin/patients${q ? `?q=${encodeURIComponent(q)}` : ""}`);
@@ -370,6 +565,38 @@ function PatientsTab() {
       await load(search);
     } finally {
       setSaving(false);
+    }
+  }
+
+  function startEdit(p: Patient) {
+    setEditingId(p.id);
+    setEditForm({
+      fullName: p.full_name,
+      cpf: p.cpf ?? "",
+      phone: p.phone ?? "",
+      email: p.email ?? "",
+      city: p.city ?? "",
+      state: p.state ?? "",
+    });
+  }
+
+  async function saveEdit(id: string) {
+    setEditSaving(true);
+    try {
+      const res = await fetch(`/api/admin/patients/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editForm),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error);
+        return;
+      }
+      setEditingId(null);
+      await load(search);
+    } finally {
+      setEditSaving(false);
     }
   }
 
@@ -459,16 +686,100 @@ function PatientsTab() {
       </div>
 
       <ul className="space-y-2">
-        {patients.map((p) => (
-          <li key={p.id} className="rounded-md border border-zinc-200 bg-white px-4 py-2.5 text-sm">
-            <p className="font-medium text-zinc-800">{p.full_name}</p>
-            <p className="text-xs text-zinc-500">
-              {p.cpf ? `CPF ${p.cpf} · ` : ""}
-              {p.phone ?? p.email ?? ""}
-              {p.city ? ` · ${p.city}${p.state ? `/${p.state}` : ""}` : ""}
-            </p>
-          </li>
-        ))}
+        {patients.map((p) =>
+          editingId === p.id ? (
+            <li
+              key={p.id}
+              className="grid gap-3 rounded-md border border-brand-teal-dark bg-white p-4 text-sm sm:grid-cols-2"
+            >
+              <label className="text-xs sm:col-span-2">
+                <span className="mb-1 block font-medium text-zinc-600">Nome completo</span>
+                <input
+                  value={editForm.fullName}
+                  onChange={(e) => setEditForm((f) => ({ ...f, fullName: e.target.value }))}
+                  className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                />
+              </label>
+              <label className="text-xs">
+                <span className="mb-1 block font-medium text-zinc-600">CPF</span>
+                <input
+                  value={editForm.cpf}
+                  onChange={(e) => setEditForm((f) => ({ ...f, cpf: e.target.value }))}
+                  className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                />
+              </label>
+              <label className="text-xs">
+                <span className="mb-1 block font-medium text-zinc-600">Telefone</span>
+                <input
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+                  className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                />
+              </label>
+              <label className="text-xs">
+                <span className="mb-1 block font-medium text-zinc-600">E-mail</span>
+                <input
+                  type="email"
+                  value={editForm.email}
+                  onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+                  className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                />
+              </label>
+              <label className="text-xs">
+                <span className="mb-1 block font-medium text-zinc-600">Cidade</span>
+                <input
+                  value={editForm.city}
+                  onChange={(e) => setEditForm((f) => ({ ...f, city: e.target.value }))}
+                  className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                />
+              </label>
+              <label className="text-xs">
+                <span className="mb-1 block font-medium text-zinc-600">UF</span>
+                <input
+                  maxLength={2}
+                  value={editForm.state}
+                  onChange={(e) => setEditForm((f) => ({ ...f, state: e.target.value.toUpperCase() }))}
+                  className="w-24 rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                />
+              </label>
+              <div className="flex gap-2 sm:col-span-2">
+                <button
+                  onClick={() => saveEdit(p.id)}
+                  disabled={editSaving}
+                  className="rounded-md bg-brand-navy px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                >
+                  Salvar
+                </button>
+                <button
+                  onClick={() => setEditingId(null)}
+                  className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </li>
+          ) : (
+            <li
+              key={p.id}
+              className="flex items-center justify-between gap-2 rounded-md border border-zinc-200 bg-white px-4 py-2.5 text-sm"
+            >
+              <div className="min-w-0">
+                <p className="font-medium text-zinc-800">{p.full_name}</p>
+                <p className="text-xs text-zinc-500">
+                  {p.cpf ? `CPF ${p.cpf} · ` : ""}
+                  {p.phone ?? p.email ?? ""}
+                  {p.city ? ` · ${p.city}${p.state ? `/${p.state}` : ""}` : ""}
+                </p>
+              </div>
+              <button
+                onClick={() => startEdit(p)}
+                className="shrink-0 rounded-md border border-zinc-300 px-2.5 py-1 text-[10px] font-medium text-zinc-600 hover:bg-zinc-50"
+              >
+                Editar
+              </button>
+            </li>
+          )
+        )}
         {patients.length === 0 && (
           <p className="text-xs text-zinc-400">Nenhum paciente encontrado.</p>
         )}
@@ -488,6 +799,9 @@ function AgendaTab() {
   const [form, setForm] = useState({ patientId: "", doctorId: "", specialtyId: "", scheduledAt: "" });
   const [saving, setSaving] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ doctorId: "", scheduledAt: "" });
+  const [editSaving, setEditSaving] = useState(false);
 
   const load = useCallback(async () => {
     const [aRes, pRes, dRes, sRes] = await Promise.all([
@@ -536,6 +850,37 @@ function AgendaTab() {
       body: JSON.stringify({ status: "cancelado" }),
     });
     await load();
+  }
+
+  function toLocalInputValue(iso: string) {
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  function startEdit(a: Appointment) {
+    setEditingId(a.id);
+    setEditForm({ doctorId: a.doctors?.id ?? "", scheduledAt: toLocalInputValue(a.scheduled_at) });
+  }
+
+  async function saveEdit(id: string) {
+    setEditSaving(true);
+    try {
+      const res = await fetch(`/api/admin/appointments/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ doctorId: editForm.doctorId, scheduledAt: editForm.scheduledAt }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error);
+        return;
+      }
+      setEditingId(null);
+      await load();
+    } finally {
+      setEditSaving(false);
+    }
   }
 
   function copyLink(appointment: Appointment) {
@@ -621,45 +966,102 @@ function AgendaTab() {
       </form>
 
       <ul className="space-y-2">
-        {appointments.map((a) => (
-          <li
-            key={a.id}
-            className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-zinc-200 bg-white px-4 py-2.5 text-sm"
-          >
-            <div className="min-w-0">
-              <p className="font-medium text-zinc-800">{a.patients?.full_name}</p>
-              <p className="text-xs text-zinc-500">
-                {new Date(a.scheduled_at).toLocaleString("pt-BR", {
-                  day: "2-digit",
-                  month: "2-digit",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-                {a.specialties?.name ? ` · ${a.specialties.name}` : ""}
-                {a.doctors?.name ? ` · ${a.doctors.name}` : " · sem médico definido"}
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-600">
-                {STATUS_LABELS[a.status] ?? a.status}
-              </span>
-              <button
-                onClick={() => copyLink(a)}
-                className="rounded-md border border-zinc-300 px-2 py-1 text-[10px] font-medium text-zinc-600 hover:bg-zinc-50"
-              >
-                {copiedId === a.id ? "Copiado!" : "Copiar link do paciente"}
-              </button>
-              {a.status !== "cancelado" && a.status !== "concluido" && (
+        {appointments.map((a) =>
+          editingId === a.id ? (
+            <li
+              key={a.id}
+              className="grid gap-3 rounded-md border border-brand-teal-dark bg-white p-4 text-sm sm:grid-cols-2"
+            >
+              <label className="text-xs">
+                <span className="mb-1 block font-medium text-zinc-600">Médico</span>
+                <select
+                  value={editForm.doctorId}
+                  onChange={(e) => setEditForm((f) => ({ ...f, doctorId: e.target.value }))}
+                  className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                >
+                  <option value="">A definir</option>
+                  {doctors
+                    .filter((d) => !a.specialties?.id || d.specialty_id === a.specialties.id)
+                    .map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label className="text-xs">
+                <span className="mb-1 block font-medium text-zinc-600">Data e hora</span>
+                <input
+                  type="datetime-local"
+                  value={editForm.scheduledAt}
+                  onChange={(e) => setEditForm((f) => ({ ...f, scheduledAt: e.target.value }))}
+                  className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                />
+              </label>
+              <div className="flex gap-2 sm:col-span-2">
                 <button
-                  onClick={() => handleCancel(a.id)}
-                  className="rounded-md border border-red-200 px-2 py-1 text-[10px] font-medium text-red-600 hover:bg-red-50"
+                  onClick={() => saveEdit(a.id)}
+                  disabled={editSaving}
+                  className="rounded-md bg-brand-navy px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                >
+                  Salvar
+                </button>
+                <button
+                  onClick={() => setEditingId(null)}
+                  className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50"
                 >
                   Cancelar
                 </button>
-              )}
-            </div>
-          </li>
-        ))}
+              </div>
+            </li>
+          ) : (
+            <li
+              key={a.id}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-zinc-200 bg-white px-4 py-2.5 text-sm"
+            >
+              <div className="min-w-0">
+                <p className="font-medium text-zinc-800">{a.patients?.full_name}</p>
+                <p className="text-xs text-zinc-500">
+                  {new Date(a.scheduled_at).toLocaleString("pt-BR", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                  {a.specialties?.name ? ` · ${a.specialties.name}` : ""}
+                  {a.doctors?.name ? ` · ${a.doctors.name}` : " · sem médico definido"}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-600">
+                  {STATUS_LABELS[a.status] ?? a.status}
+                </span>
+                <button
+                  onClick={() => copyLink(a)}
+                  className="rounded-md border border-zinc-300 px-2 py-1 text-[10px] font-medium text-zinc-600 hover:bg-zinc-50"
+                >
+                  {copiedId === a.id ? "Copiado!" : "Copiar link do paciente"}
+                </button>
+                {a.status !== "cancelado" && a.status !== "concluido" && (
+                  <>
+                    <button
+                      onClick={() => startEdit(a)}
+                      className="rounded-md border border-zinc-300 px-2 py-1 text-[10px] font-medium text-zinc-600 hover:bg-zinc-50"
+                    >
+                      Editar
+                    </button>
+                    <button
+                      onClick={() => handleCancel(a.id)}
+                      className="rounded-md border border-red-200 px-2 py-1 text-[10px] font-medium text-red-600 hover:bg-red-50"
+                    >
+                      Cancelar
+                    </button>
+                  </>
+                )}
+              </div>
+            </li>
+          )
+        )}
         {appointments.length === 0 && (
           <p className="text-xs text-zinc-400">Nenhuma consulta agendada.</p>
         )}

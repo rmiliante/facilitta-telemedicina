@@ -16,6 +16,8 @@ export async function PATCH(
     update.password_hash = await bcrypt.hash(body.password, 10);
   }
   if (typeof body.specialtyId === "string") update.specialty_id = body.specialtyId || null;
+  if (typeof body.name === "string" && body.name.trim()) update.name = body.name.trim();
+  if (typeof body.email === "string" && body.email.trim()) update.email = body.email.trim();
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: "Nada para atualizar" }, { status: 400 });
