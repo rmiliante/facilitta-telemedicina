@@ -144,6 +144,17 @@ function SpecialtiesTab() {
     setEditQuota(String(s.monthly_quota));
   }
 
+  async function handleDelete(s: Specialty) {
+    if (!confirm(`Excluir a especialidade "${s.name}"? Essa ação não pode ser desfeita.`)) return;
+    const res = await fetch(`/api/admin/specialties/${s.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const err = await res.json();
+      alert(err.error);
+      return;
+    }
+    await load();
+  }
+
   async function saveEdit(id: string) {
     setEditSaving(true);
     try {
@@ -243,12 +254,20 @@ function SpecialtiesTab() {
                 <span className="font-medium text-zinc-800">{s.name}</span>
                 <span className="ml-2 text-xs text-zinc-500">{s.monthly_quota} consultas/mês</span>
               </div>
-              <button
-                onClick={() => startEdit(s)}
-                className="rounded-md border border-zinc-300 px-2.5 py-1 text-[10px] font-medium text-zinc-600 hover:bg-zinc-50"
-              >
-                Editar
-              </button>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  onClick={() => startEdit(s)}
+                  className="rounded-md border border-zinc-300 px-2.5 py-1 text-[10px] font-medium text-zinc-600 hover:bg-zinc-50"
+                >
+                  Editar
+                </button>
+                <button
+                  onClick={() => handleDelete(s)}
+                  className="rounded-md border border-red-200 px-2.5 py-1 text-[10px] font-medium text-red-600 hover:bg-red-50"
+                >
+                  Excluir
+                </button>
+              </div>
             </li>
           )
         )}
@@ -319,6 +338,17 @@ function DoctorsTab() {
   function startEdit(d: Doctor) {
     setEditingId(d.id);
     setEditForm({ name: d.name, email: d.email, specialtyId: d.specialty_id ?? "", password: "" });
+  }
+
+  async function handleDelete(d: Doctor) {
+    if (!confirm(`Excluir o médico "${d.name}"? Essa ação não pode ser desfeita.`)) return;
+    const res = await fetch(`/api/admin/doctors/${d.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const err = await res.json();
+      alert(err.error);
+      return;
+    }
+    await load();
   }
 
   async function saveEdit(id: string) {
@@ -491,6 +521,12 @@ function DoctorsTab() {
                   Editar
                 </button>
                 <button
+                  onClick={() => handleDelete(d)}
+                  className="rounded-md border border-red-200 px-2.5 py-1 text-[10px] font-medium text-red-600 hover:bg-red-50"
+                >
+                  Excluir
+                </button>
+                <button
                   onClick={() => toggleActive(d)}
                   className={`rounded-full px-2.5 py-1 text-[10px] font-medium ${
                     d.active ? "bg-brand-teal/15 text-brand-teal-dark" : "bg-zinc-100 text-zinc-500"
@@ -578,6 +614,22 @@ function PatientsTab() {
       city: p.city ?? "",
       state: p.state ?? "",
     });
+  }
+
+  async function handleDelete(p: Patient) {
+    if (
+      !confirm(
+        `Excluir o paciente "${p.full_name}"? Isso também apaga todo o histórico de consultas dele. Essa ação não pode ser desfeita.`
+      )
+    )
+      return;
+    const res = await fetch(`/api/admin/patients/${p.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const err = await res.json();
+      alert(err.error);
+      return;
+    }
+    await load(search);
   }
 
   async function saveEdit(id: string) {
@@ -771,12 +823,20 @@ function PatientsTab() {
                   {p.city ? ` · ${p.city}${p.state ? `/${p.state}` : ""}` : ""}
                 </p>
               </div>
-              <button
-                onClick={() => startEdit(p)}
-                className="shrink-0 rounded-md border border-zinc-300 px-2.5 py-1 text-[10px] font-medium text-zinc-600 hover:bg-zinc-50"
-              >
-                Editar
-              </button>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  onClick={() => startEdit(p)}
+                  className="rounded-md border border-zinc-300 px-2.5 py-1 text-[10px] font-medium text-zinc-600 hover:bg-zinc-50"
+                >
+                  Editar
+                </button>
+                <button
+                  onClick={() => handleDelete(p)}
+                  className="rounded-md border border-red-200 px-2.5 py-1 text-[10px] font-medium text-red-600 hover:bg-red-50"
+                >
+                  Excluir
+                </button>
+              </div>
             </li>
           )
         )}
@@ -849,6 +909,17 @@ function AgendaTab() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "cancelado" }),
     });
+    await load();
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm("Excluir essa consulta do histórico? Essa ação não pode ser desfeita.")) return;
+    const res = await fetch(`/api/admin/appointments/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const err = await res.json();
+      alert(err.error);
+      return;
+    }
     await load();
   }
 
@@ -1058,6 +1129,12 @@ function AgendaTab() {
                     </button>
                   </>
                 )}
+                <button
+                  onClick={() => handleDelete(a.id)}
+                  className="rounded-md border border-red-200 px-2 py-1 text-[10px] font-medium text-red-600 hover:bg-red-50"
+                >
+                  Excluir
+                </button>
               </div>
             </li>
           )

@@ -31,3 +31,21 @@ export async function PATCH(
   }
   return NextResponse.json({ ok: true });
 }
+
+/** DELETE /api/admin/doctors/:id */
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("doctors").delete().eq("id", id);
+
+  if (error) {
+    return NextResponse.json(
+      { error: "Não foi possível excluir: esse médico já tem consultas vinculadas. Desative-o em vez de excluir." },
+      { status: 400 }
+    );
+  }
+  return NextResponse.json({ ok: true });
+}
