@@ -47,47 +47,168 @@ const STATUS_LABELS: Record<string, string> = {
   faltou: "Faltou",
 };
 
+// ------------------------------------------------------------
+// Ícones (mesmo estilo simples em SVG do painel de WhatsApp,
+// sem depender de biblioteca externa)
+// ------------------------------------------------------------
+function IconMenu() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
+      <path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconCalendar() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+      <rect x="3.5" y="5" width="17" height="15" rx="2" />
+      <path d="M3.5 9.5h17M8 3v3.5M16 3v3.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconUsers() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+      <circle cx="9" cy="8" r="3" />
+      <path d="M2.5 19c.5-3 3-5 6.5-5s6 2 6.5 5" strokeLinecap="round" />
+      <circle cx="17" cy="8.5" r="2.3" />
+      <path d="M15.5 14.2c2.6.4 4.3 2 4.7 4.3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconStethoscope() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+      <path d="M6 4v6a4 4 0 0 0 8 0V4" strokeLinecap="round" />
+      <path d="M10 14v2a5 5 0 0 0 10 0v-1.5" strokeLinecap="round" />
+      <circle cx="20" cy="13" r="1.6" />
+      <path d="M6 4H4.5M14 4h1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconTag() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+      <path d="M11.5 3.5H5a1.5 1.5 0 0 0-1.5 1.5v6.5c0 .4.16.78.44 1.06l8 8a1.5 1.5 0 0 0 2.12 0l6.5-6.5a1.5 1.5 0 0 0 0-2.12l-8-8a1.5 1.5 0 0 0-1.06-.44Z" strokeLinejoin="round" />
+      <circle cx="8" cy="8" r="1.2" />
+    </svg>
+  );
+}
+
+const NAV_ITEMS: { key: Tab; label: string; icon: React.ReactNode }[] = [
+  { key: "agenda", label: "Agenda", icon: <IconCalendar /> },
+  { key: "pacientes", label: "Pacientes", icon: <IconUsers /> },
+  { key: "medicos", label: "Médicos", icon: <IconStethoscope /> },
+  { key: "especialidades", label: "Especialidades", icon: <IconTag /> },
+];
+
+function AdminSidebar({
+  tab,
+  onSelect,
+  open,
+  onClose,
+}: {
+  tab: Tab;
+  onSelect: (t: Tab) => void;
+  open: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <nav
+      className={`fixed inset-y-0 left-0 z-40 flex h-full w-64 shrink-0 -translate-x-full flex-col border-r border-zinc-200 bg-white transition-transform duration-200 md:static md:z-auto md:w-56 md:translate-x-0 ${
+        open ? "translate-x-0" : ""
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2 border-b border-zinc-100 px-4 py-4">
+        <div className="flex items-center gap-2">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/icon-facilitta.png" alt="Facilitta Saúde" className="h-7 w-7 rounded-md" />
+          <span className="text-sm font-semibold leading-none text-brand-navy">
+            facilitta<span className="text-brand-teal-dark"> saúde</span>
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Fechar menu"
+          className="rounded-md p-1 text-zinc-400 hover:bg-zinc-100 md:hidden"
+        >
+          ✕
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-2 py-4">
+        <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+          Administração
+        </p>
+        <ul className="space-y-0.5">
+          {NAV_ITEMS.map((item) => (
+            <li key={item.key}>
+              <button
+                type="button"
+                onClick={() => {
+                  onSelect(item.key);
+                  onClose();
+                }}
+                className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-medium transition-colors ${
+                  tab === item.key
+                    ? "bg-brand-teal/15 text-brand-teal-dark"
+                    : "text-zinc-600 hover:bg-zinc-50"
+                }`}
+              >
+                {item.icon}
+                {item.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </nav>
+  );
+}
+
 export default function AdminPanel() {
   const [tab, setTab] = useState<Tab>("agenda");
+  const [navOpen, setNavOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-brand-bg">
-      <div className="border-b border-brand-navy bg-brand-navy px-4 py-3 sm:px-6">
-        <h1 className="text-sm font-semibold text-white">
-          Administração — Facilitta Telemedicina
-        </h1>
-      </div>
+    <div className="flex h-screen w-full overflow-hidden bg-brand-bg">
+      <AdminSidebar tab={tab} onSelect={setTab} open={navOpen} onClose={() => setNavOpen(false)} />
 
-      <div className="border-b border-zinc-200 bg-white px-4 sm:px-6">
-        <div className="flex gap-1 overflow-x-auto py-2">
-          {(
-            [
-              ["agenda", "Agenda"],
-              ["pacientes", "Pacientes"],
-              ["medicos", "Médicos"],
-              ["especialidades", "Especialidades"],
-            ] as [Tab, string][]
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              onClick={() => setTab(key)}
-              className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-medium ${
-                tab === key
-                  ? "bg-brand-teal/15 text-brand-teal-dark"
-                  : "text-zinc-500 hover:bg-zinc-50"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+      {navOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/40 md:hidden"
+          onClick={() => setNavOpen(false)}
+        />
+      )}
+
+      <div className="flex h-full flex-1 flex-col overflow-hidden">
+        <div className="flex shrink-0 items-center gap-3 border-b border-brand-navy bg-brand-navy px-4 py-3 sm:px-6">
+          <button
+            type="button"
+            onClick={() => setNavOpen(true)}
+            aria-label="Abrir menu"
+            className="rounded-md p-1 text-white hover:bg-white/10 md:hidden"
+          >
+            <IconMenu />
+          </button>
+          <h1 className="text-sm font-semibold text-white">
+            Administração — Facilitta Telemedicina
+          </h1>
         </div>
-      </div>
 
-      <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
-        {tab === "especialidades" && <SpecialtiesTab />}
-        {tab === "medicos" && <DoctorsTab />}
-        {tab === "pacientes" && <PatientsTab />}
-        {tab === "agenda" && <AgendaTab />}
+        <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+          <div className="mx-auto max-w-4xl">
+            {tab === "especialidades" && <SpecialtiesTab />}
+            {tab === "medicos" && <DoctorsTab />}
+            {tab === "pacientes" && <PatientsTab />}
+            {tab === "agenda" && <AgendaTab />}
+          </div>
+        </div>
       </div>
     </div>
   );
