@@ -25,15 +25,22 @@
   --font-mono: ui-monospace, SFMono-Regular, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* O painel é desenhado só pra tema claro (cartões brancos, textos escuros).
+   Fixamos color-scheme e não seguimos o modo escuro do sistema, senão o
+   navegador clareia a cor de textos/campos e eles ficam ilegíveis sobre
+   o fundo branco. */
+:root {
+  color-scheme: light;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+input,
+select,
+textarea {
+  color: #171717;
 }
