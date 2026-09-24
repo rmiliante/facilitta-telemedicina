@@ -452,54 +452,6 @@ export default function ConsultationClient({
                   }
                 />
                 <InfoRow label="Observações da equipe" value={patient?.notes} />
-                <div className="text-xs">
-                  <span className="mb-1 block font-medium text-zinc-500">
-                    Exames / documentos do paciente
-                  </span>
-                  {patientDocuments.length === 0 ? (
-                    <p className="mb-2 text-zinc-400">Nenhum anexado ainda.</p>
-                  ) : (
-                    <ul className="mb-2 space-y-1">
-                      {patientDocuments.map((f) => (
-                        <li key={f.path} className="flex items-center justify-between gap-2">
-                          {f.url ? (
-                            <a
-                              href={f.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="truncate text-brand-teal-dark underline"
-                            >
-                              📎 {f.name}
-                            </a>
-                          ) : (
-                            <span className="truncate text-zinc-400">📎 {f.name} (link indisponível)</span>
-                          )}
-                          <button
-                            onClick={() => handleRemovePatientDocument(f.path)}
-                            className="shrink-0 text-[10px] font-medium text-red-600 hover:underline"
-                          >
-                            Remover
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <label className="inline-block cursor-pointer">
-                    <span className="rounded-md bg-brand-teal/15 px-2.5 py-1 text-[11px] font-medium text-brand-teal-dark hover:bg-brand-teal/25">
-                      {uploadingDoc ? "Enviando..." : "+ Anexar pedido de exame"}
-                    </span>
-                    <input
-                      type="file"
-                      multiple
-                      onChange={handleUploadPatientDocument}
-                      disabled={uploadingDoc}
-                      className="hidden"
-                    />
-                  </label>
-                  <p className="mt-1 text-[11px] text-zinc-400">
-                    Fica vinculado ao paciente — a atendente consegue abrir e imprimir daqui a pouco.
-                  </p>
-                </div>
               </div>
             ) : (
               <ul className="space-y-2">
@@ -538,6 +490,55 @@ export default function ConsultationClient({
                 ))}
               </ul>
             )}
+          </div>
+
+          <div className="border-t border-zinc-200 p-4">
+            <span className="mb-1 block text-xs font-medium text-zinc-600">
+              Exames / documentos do paciente
+            </span>
+            {patientDocuments.length === 0 ? (
+              <p className="mb-2 text-xs text-zinc-400">Nenhum anexado ainda.</p>
+            ) : (
+              <ul className="mb-2 space-y-1">
+                {patientDocuments.map((f) => (
+                  <li key={f.path} className="flex items-center justify-between gap-2 text-xs">
+                    {f.url ? (
+                      <a
+                        href={f.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="truncate text-brand-teal-dark underline"
+                      >
+                        📎 {f.name}
+                      </a>
+                    ) : (
+                      <span className="truncate text-zinc-400">📎 {f.name} (link indisponível)</span>
+                    )}
+                    <button
+                      onClick={() => handleRemovePatientDocument(f.path)}
+                      className="shrink-0 text-[10px] font-medium text-red-600 hover:underline"
+                    >
+                      Remover
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <label className="inline-block cursor-pointer">
+              <span className="rounded-md bg-brand-teal/15 px-2.5 py-1 text-[11px] font-medium text-brand-teal-dark hover:bg-brand-teal/25">
+                {uploadingDoc ? "Enviando..." : "+ Anexar pedido de exame"}
+              </span>
+              <input
+                type="file"
+                multiple
+                onChange={handleUploadPatientDocument}
+                disabled={uploadingDoc}
+                className="hidden"
+              />
+            </label>
+            <p className="mt-1 text-[11px] text-zinc-400">
+              Fica vinculado ao paciente — a atendente consegue abrir e imprimir daqui a pouco.
+            </p>
           </div>
 
           <div className="border-t border-zinc-200 p-4">
