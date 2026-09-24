@@ -28,6 +28,7 @@ export default function BoothPage() {
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
   const [room, setRoom] = useState<{ roomUrl: string; token: string } | null>(null);
+  const [rejecting, setRejecting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -78,6 +79,20 @@ export default function BoothPage() {
     setJoinError(null);
   }
 
+  async function handleReject() {
+    if (!pending) return;
+    if (!confirm(`Confirma que "${pending.patients?.full_name}" NÃO é você? Isso avisa a atendente.`)) {
+      return;
+    }
+    setRejecting(true);
+    try {
+      await fetch(`/api/appointments/${pending.access_token}/reject`, { method: "POST" });
+      setPending(null);
+    } finally {
+      setRejecting(false);
+    }
+  }
+
   if (room) {
     return (
       <div className="h-screen w-screen bg-zinc-900">
@@ -122,10 +137,17 @@ export default function BoothPage() {
 
             <button
               onClick={handleConfirm}
-              disabled={joining}
+              disabled={joining || rejecting}
               className="mt-6 w-full rounded-md bg-brand-navy px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
             >
               {joining ? "Entrando..." : "Iniciar consulta"}
+            </button>
+            <button
+              onClick={handleReject}
+              disabled={joining || rejecting}
+              className="mt-2 w-full rounded-md border border-zinc-300 px-4 py-2 text-xs font-medium text-zinc-500 hover:bg-zinc-50 disabled:opacity-50"
+            >
+              {rejecting ? "Avisando..." : "Não sou eu"}
             </button>
             {joinError && <p className="mt-3 text-sm text-red-600">{joinError}</p>}
           </div>

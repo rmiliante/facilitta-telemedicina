@@ -94,6 +94,7 @@ create table if not exists appointments (
   called_at timestamptz,
   finished_at timestamptz,
   patient_joined_at timestamptz,
+  booth_rejected_at timestamptz,
   daily_room_name text,
   doctor_notes text,
   created_at timestamptz not null default now()

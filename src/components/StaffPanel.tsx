@@ -83,9 +83,47 @@ function todayIso() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+interface BoothAlert {
+  id: string;
+  patients: { full_name: string } | null;
+  doctors: { name: string } | null;
+}
+
+const ALERT_POLL_INTERVAL_MS = 5000;
+
 export default function StaffPanel({ staffName }: { staffName: string }) {
   const [tab, setTab] = useState<Tab>("fila");
   const [navOpen, setNavOpen] = useState(false);
+  const [alerts, setAlerts] = useState<BoothAlert[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function poll() {
+      try {
+        const res = await fetch("/api/admin/appointments/booth-alerts");
+        if (res.ok && !cancelled) {
+          const data = await res.json();
+          if (data.alerts?.length > 0) {
+            setAlerts((prev) => [...data.alerts, ...prev].slice(0, 10));
+          }
+        }
+      } catch {
+        // silencioso — só tenta de novo no próximo ciclo
+      }
+    }
+
+    poll();
+    const interval = setInterval(poll, ALERT_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  function dismissAlert(id: string) {
+    setAlerts((prev) => prev.filter((a) => a.id !== id));
+  }
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-brand-bg">
@@ -164,6 +202,29 @@ export default function StaffPanel({ staffName }: { staffName: string }) {
 
         <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
           <div className="mx-auto max-w-3xl">
+            {alerts.length > 0 && (
+              <div className="mb-4 space-y-2">
+                {alerts.map((a) => (
+                  <div
+                    key={a.id}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm"
+                  >
+                    <p className="text-amber-800">
+                      <strong>{a.patients?.full_name ?? "Paciente"}</strong> disse &quot;Não sou
+                      eu&quot; na cabine
+                      {a.doctors?.name ? ` (fila de ${a.doctors.name})` : ""}. Confira quem chegou e
+                      envie o paciente certo.
+                    </p>
+                    <button
+                      onClick={() => dismissAlert(a.id)}
+                      className="shrink-0 rounded-md border border-amber-300 px-2.5 py-1 text-xs font-medium text-amber-700 hover:bg-amber-100"
+                    >
+                      OK
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             {tab === "fila" && <FilaTab />}
             {tab === "pacientes" && <PacientesTab />}
           </div>
