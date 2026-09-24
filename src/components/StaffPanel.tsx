@@ -17,6 +17,12 @@ interface Specialty {
   monthly_quota: number;
 }
 
+interface DocFile {
+  path: string;
+  name: string;
+  uploaded_at: string;
+}
+
 interface Patient {
   id: string;
   full_name: string;
@@ -25,6 +31,7 @@ interface Patient {
   email: string | null;
   city: string | null;
   state: string | null;
+  documents: DocFile[];
 }
 
 interface QueueItem {
@@ -35,7 +42,7 @@ interface QueueItem {
   queue_position: number | null;
   called_at: string | null;
   booth_rejected_at: string | null;
-  patients: { id: string; full_name: string } | null;
+  patients: { id: string; full_name: string; documents: DocFile[] } | null;
   doctors: { id: string; name: string } | null;
   specialties: { id: string; name: string } | null;
 }
@@ -262,6 +269,8 @@ function FilaTab() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [addForm, setAddForm] = useState({ patientId: "", specialtyId: "" });
   const [adding, setAdding] = useState(false);
+  const [examFilesToUpload, setExamFilesToUpload] = useState<File[]>([]);
+  const [expandedDocsPatientId, setExpandedDocsPatientId] = useState<string | null>(null);
   const [patientQuery, setPatientQuery] = useState("");
   const [patientDropdownOpen, setPatientDropdownOpen] = useState(false);
   const [boothCopied, setBoothCopied] = useState(false);
@@ -455,8 +464,12 @@ function FilaTab() {
         alert(err.error);
         return;
       }
+      if (examFilesToUpload.length > 0) {
+        await uploadPatientDocuments(addForm.patientId, examFilesToUpload);
+      }
       setAddForm({ patientId: "", specialtyId: "" });
       setPatientQuery("");
+      setExamFilesToUpload([]);
       setShowAddForm(false);
       await loadQueue(doctorId, date);
     } finally {
@@ -528,6 +541,7 @@ function FilaTab() {
             setAddForm({ patientId: "", specialtyId: doc?.specialty_id ?? "" });
             setPatientQuery("");
             setPatientDropdownOpen(false);
+            setExamFilesToUpload([]);
           }}
           className="ml-auto rounded-md bg-brand-navy px-4 py-1.5 text-sm font-medium text-white"
         >
@@ -608,6 +622,25 @@ function FilaTab() {
                 </option>
               ))}
             </select>
+          </label>
+          <label className="text-xs sm:col-span-2">
+            <span className="mb-1 block font-medium text-zinc-600">
+              Exames (opcional)
+            </span>
+            <input
+              type="file"
+              multiple
+              onChange={(e) => setExamFilesToUpload(Array.from(e.target.files ?? []))}
+              className="block w-full text-xs text-zinc-600 file:mr-3 file:rounded-md file:border-0 file:bg-brand-teal/15 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-brand-teal-dark hover:file:bg-brand-teal/25"
+            />
+            {examFilesToUpload.length > 0 && (
+              <span className="mt-1 block text-[11px] text-brand-teal-dark">
+                {examFilesToUpload.length} arquivo(s) selecionado(s) — {examFilesToUpload.map((f) => f.name).join(", ")}
+              </span>
+            )}
+            <span className="mt-1 block text-[11px] text-zinc-400">
+              Aceita fotos ou PDFs dos exames do paciente. Também dá pra anexar depois, direto na fila.
+            </span>
           </label>
           <div className="sm:col-span-2">
             <button
@@ -710,6 +743,21 @@ function FilaTab() {
                   >
                     {copiedId === item.id ? "Copiado!" : "Copiar link"}
                   </button>
+                  {item.patients?.id && (
+                    <button
+                      onClick={() =>
+                        setExpandedDocsPatientId((cur) => (cur === item.patients!.id ? null : item.patients!.id))
+                      }
+                      className={`rounded-md border px-2 py-1 text-[10px] font-medium hover:bg-zinc-50 ${
+                        item.patients?.documents?.length > 0
+                          ? "border-brand-teal-dark text-brand-teal-dark"
+                          : "border-zinc-300 text-zinc-600"
+                      }`}
+                    >
+                      📎 Exames/documentos
+                      {item.patients?.documents?.length > 0 ? ` (${item.patients.documents.length})` : ""}
+                    </button>
+                  )}
                   {item.status === "agendado" && (
                     <button
                       onClick={() => markCalled(item)}
@@ -732,11 +780,167 @@ function FilaTab() {
                     Cancelar
                   </button>
                 </div>
+                {item.patients?.id && expandedDocsPatientId === item.patients.id && (
+                  <DocumentsPanel
+                    patientId={item.patients.id}
+                    onChange={(files) =>
+                      setQueue((prev) =>
+                        prev.map((q) =>
+                          q.patients?.id === item.patients!.id
+                            ? { ...q, patients: { ...q.patients!, documents: files } }
+                            : q
+                        )
+                      )
+                    }
+                  />
+                )}
               </li>
             ))}
           </ul>
         )}
       </div>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------
+// Exames/documentos do paciente (upload, listagem e remoção) —
+// ficam ligados ao paciente, então aparecem tanto no cadastro dele
+// quanto em qualquer consulta já colocada na fila, e o médico vê
+// tudo que existir do paciente, não só o que entrou junto de um
+// agendamento específico.
+// ------------------------------------------------------------
+interface DocFileWithUrl extends DocFile {
+  url: string | null;
+}
+
+/** Envia arquivos direto pro cadastro do paciente (usado no formulário de agendamento). */
+async function uploadPatientDocuments(patientId: string, files: File[]) {
+  const formData = new FormData();
+  files.forEach((f) => formData.append("files", f));
+  const res = await fetch(`/api/admin/patients/${patientId}/documents`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    alert(
+      `Consulta agendada, mas houve um problema ao anexar os documentos: ${err.error ?? "erro desconhecido"}. Tente anexar de novo pelo cadastro do paciente ou pela fila.`
+    );
+  }
+}
+
+function DocumentsPanel({
+  patientId,
+  onChange,
+}: {
+  patientId: string;
+  onChange: (files: DocFile[]) => void;
+}) {
+  const [files, setFiles] = useState<DocFileWithUrl[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/patients/${patientId}/documents`);
+      if (res.ok) {
+        const data = await res.json();
+        setFiles(data.files);
+        onChange(data.files);
+      }
+    } finally {
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patientId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const selected = Array.from(e.target.files ?? []);
+    if (selected.length === 0) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      selected.forEach((f) => formData.append("files", f));
+      const res = await fetch(`/api/admin/patients/${patientId}/documents`, {
+        method: "POST",
+        body: formData,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setFiles(data.files);
+        onChange(data.files);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error ?? "Falha ao anexar documento");
+      }
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  }
+
+  async function handleRemove(path: string) {
+    if (!confirm("Remover esse documento anexado?")) return;
+    const res = await fetch(`/api/admin/patients/${patientId}/documents`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setFiles(data.files);
+      onChange(data.files);
+    }
+  }
+
+  return (
+    <div className="mt-2 rounded-md border border-zinc-200 bg-zinc-50 p-3">
+      {loading ? (
+        <p className="text-[11px] text-zinc-400">Carregando documentos...</p>
+      ) : (
+        <>
+          {files.length === 0 ? (
+            <p className="mb-2 text-[11px] text-zinc-400">Nenhum exame/documento anexado ainda.</p>
+          ) : (
+            <ul className="mb-2 space-y-1">
+              {files.map((f) => (
+                <li key={f.path} className="flex items-center justify-between gap-2 text-xs">
+                  {f.url ? (
+                    <a
+                      href={f.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="truncate text-brand-teal-dark underline"
+                    >
+                      {f.name}
+                    </a>
+                  ) : (
+                    <span className="truncate text-zinc-500">{f.name}</span>
+                  )}
+                  <button
+                    onClick={() => handleRemove(f.path)}
+                    className="shrink-0 text-[10px] font-medium text-red-600 hover:underline"
+                  >
+                    Remover
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <label className="inline-block cursor-pointer text-xs">
+            <span className="rounded-md bg-brand-teal/15 px-2.5 py-1 text-[11px] font-medium text-brand-teal-dark hover:bg-brand-teal/25">
+              {uploading ? "Enviando..." : "+ Anexar exame/documento"}
+            </span>
+            <input type="file" multiple onChange={handleUpload} disabled={uploading} className="hidden" />
+          </label>
+        </>
+      )}
     </div>
   );
 }
@@ -757,6 +961,8 @@ function PacientesTab() {
     state: "",
   });
   const [saving, setSaving] = useState(false);
+  const [newPatientDocs, setNewPatientDocs] = useState<File[]>([]);
+  const [expandedDocsPatientId, setExpandedDocsPatientId] = useState<string | null>(null);
 
   const load = useCallback(async (q?: string) => {
     const res = await fetch(`/api/admin/patients${q ? `?q=${encodeURIComponent(q)}` : ""}`);
@@ -782,7 +988,12 @@ function PacientesTab() {
         alert(err.error);
         return;
       }
+      const { patient } = await res.json();
+      if (newPatientDocs.length > 0 && patient?.id) {
+        await uploadPatientDocuments(patient.id, newPatientDocs);
+      }
       setForm({ fullName: "", cpf: "", birthDate: "", phone: "", email: "", city: "", state: "" });
+      setNewPatientDocs([]);
       await load(search);
     } finally {
       setSaving(false);
@@ -852,6 +1063,20 @@ function PacientesTab() {
             className="w-24 rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
           />
         </label>
+        <label className="text-xs sm:col-span-2">
+          <span className="mb-1 block font-medium text-zinc-600">Exames/documentos (opcional)</span>
+          <input
+            type="file"
+            multiple
+            onChange={(e) => setNewPatientDocs(Array.from(e.target.files ?? []))}
+            className="block w-full text-xs text-zinc-600 file:mr-3 file:rounded-md file:border-0 file:bg-brand-teal/15 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-brand-teal-dark hover:file:bg-brand-teal/25"
+          />
+          {newPatientDocs.length > 0 && (
+            <span className="mt-1 block text-[11px] text-brand-teal-dark">
+              {newPatientDocs.length} arquivo(s) selecionado(s) — {newPatientDocs.map((f) => f.name).join(", ")}
+            </span>
+          )}
+        </label>
         <div className="sm:col-span-2">
           <button
             disabled={saving}
@@ -876,18 +1101,35 @@ function PacientesTab() {
 
       <ul className="space-y-2">
         {patients.map((p) => (
-          <li
-            key={p.id}
-            className="flex items-center justify-between gap-2 rounded-md border border-zinc-200 bg-white px-4 py-2.5 text-sm"
-          >
-            <div className="min-w-0">
-              <p className="font-medium text-zinc-800">{p.full_name}</p>
-              <p className="text-xs text-zinc-500">
-                {p.cpf ? `CPF ${p.cpf} · ` : ""}
-                {p.phone ?? p.email ?? ""}
-                {p.city ? ` · ${p.city}${p.state ? `/${p.state}` : ""}` : ""}
-              </p>
+          <li key={p.id} className="rounded-md border border-zinc-200 bg-white px-4 py-2.5 text-sm">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-medium text-zinc-800">{p.full_name}</p>
+                <p className="text-xs text-zinc-500">
+                  {p.cpf ? `CPF ${p.cpf} · ` : ""}
+                  {p.phone ?? p.email ?? ""}
+                  {p.city ? ` · ${p.city}${p.state ? `/${p.state}` : ""}` : ""}
+                </p>
+              </div>
+              <button
+                onClick={() => setExpandedDocsPatientId((cur) => (cur === p.id ? null : p.id))}
+                className={`shrink-0 rounded-md border px-2 py-1 text-[10px] font-medium hover:bg-zinc-50 ${
+                  p.documents?.length > 0
+                    ? "border-brand-teal-dark text-brand-teal-dark"
+                    : "border-zinc-300 text-zinc-600"
+                }`}
+              >
+                📎 Exames/documentos{p.documents?.length > 0 ? ` (${p.documents.length})` : ""}
+              </button>
             </div>
+            {expandedDocsPatientId === p.id && (
+              <DocumentsPanel
+                patientId={p.id}
+                onChange={(files) =>
+                  setPatients((prev) => prev.map((q) => (q.id === p.id ? { ...q, documents: files } : q)))
+                }
+              />
+            )}
           </li>
         ))}
         {patients.length === 0 && <p className="text-xs text-zinc-400">Nenhum paciente encontrado.</p>}

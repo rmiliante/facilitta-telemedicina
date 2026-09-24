@@ -94,10 +94,71 @@ export default function ConsultationClient({
   const [memedError, setMemedError] = useState<string | null>(null);
   const [memedHomologacao, setMemedHomologacao] = useState(false);
 
+  const [patientDocuments, setPatientDocuments] = useState(appointment.patients?.documents ?? []);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+
+  async function handleUploadPatientDocument(e: React.ChangeEvent<HTMLInputElement>) {
+    const selected = Array.from(e.target.files ?? []);
+    if (selected.length === 0 || !appointment.patient_id) return;
+    setUploadingDoc(true);
+    try {
+      const formData = new FormData();
+      selected.forEach((f) => formData.append("files", f));
+      const res = await fetch(`/api/doctor/patients/${appointment.patient_id}/documents`, {
+        method: "POST",
+        body: formData,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPatientDocuments(data.files);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error ?? "Falha ao anexar pedido de exame");
+      }
+    } finally {
+      setUploadingDoc(false);
+      e.target.value = "";
+    }
+  }
+
+  async function handleRemovePatientDocument(path: string) {
+    if (!confirm("Remover esse documento anexado?")) return;
+    const res = await fetch(`/api/doctor/patients/${appointment.patient_id}/documents`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setPatientDocuments(data.files);
+    }
+  }
+
   const [videoStarted, setVideoStarted] = useState(false);
   const [room, setRoom] = useState<{ roomUrl: string; token: string } | null>(null);
   const [loadingRoom, setLoadingRoom] = useState(false);
   const [roomError, setRoomError] = useState<string | null>(null);
+
+  const [copied, setCopied] = useState(false);
+
+  /** Monta um texto com os dados do paciente pra colar na prescrição. */
+  function handleCopyPatientData() {
+    const patient = appointment.patients;
+    const lines = [
+      `Nome: ${patient?.full_name || "—"}`,
+      `CPF: ${patient?.cpf || "—"}`,
+      `Nascimento: ${formatDate(patient?.birth_date ?? null)}`,
+      `Telefone: ${patient?.phone || "—"}`,
+      `E-mail: ${patient?.email || "—"}`,
+      `Cidade/UF: ${
+        patient?.city ? `${patient.city}${patient.state ? `/${patient.state}` : ""}` : "—"
+      }`,
+    ];
+    navigator.clipboard.writeText(lines.join("\n")).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
 
   async function handleStartVideo() {
     setLoadingRoom(true);
@@ -370,6 +431,15 @@ export default function ConsultationClient({
           <div className="flex-1 overflow-y-auto p-4">
             {tab === "dados" ? (
               <div className="space-y-3">
+                <div className="flex justify-end">
+                  <button
+                    onClick={handleCopyPatientData}
+                    className="rounded-md border border-brand-teal-dark px-2.5 py-1 text-[11px] font-medium text-brand-teal-dark hover:bg-brand-teal/10"
+                    title="Copiar dados do paciente para colar na prescrição"
+                  >
+                    {copied ? "Copiado!" : "Copiar dados"}
+                  </button>
+                </div>
                 <InfoRow label="Nome completo" value={patient?.full_name} />
                 <InfoRow label="CPF" value={patient?.cpf} />
                 <InfoRow label="Nascimento" value={formatDate(patient?.birth_date ?? null)} />
@@ -382,6 +452,54 @@ export default function ConsultationClient({
                   }
                 />
                 <InfoRow label="Observações da equipe" value={patient?.notes} />
+                <div className="text-xs">
+                  <span className="mb-1 block font-medium text-zinc-500">
+                    Exames / documentos do paciente
+                  </span>
+                  {patientDocuments.length === 0 ? (
+                    <p className="mb-2 text-zinc-400">Nenhum anexado ainda.</p>
+                  ) : (
+                    <ul className="mb-2 space-y-1">
+                      {patientDocuments.map((f) => (
+                        <li key={f.path} className="flex items-center justify-between gap-2">
+                          {f.url ? (
+                            <a
+                              href={f.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="truncate text-brand-teal-dark underline"
+                            >
+                              📎 {f.name}
+                            </a>
+                          ) : (
+                            <span className="truncate text-zinc-400">📎 {f.name} (link indisponível)</span>
+                          )}
+                          <button
+                            onClick={() => handleRemovePatientDocument(f.path)}
+                            className="shrink-0 text-[10px] font-medium text-red-600 hover:underline"
+                          >
+                            Remover
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <label className="inline-block cursor-pointer">
+                    <span className="rounded-md bg-brand-teal/15 px-2.5 py-1 text-[11px] font-medium text-brand-teal-dark hover:bg-brand-teal/25">
+                      {uploadingDoc ? "Enviando..." : "+ Anexar pedido de exame"}
+                    </span>
+                    <input
+                      type="file"
+                      multiple
+                      onChange={handleUploadPatientDocument}
+                      disabled={uploadingDoc}
+                      className="hidden"
+                    />
+                  </label>
+                  <p className="mt-1 text-[11px] text-zinc-400">
+                    Fica vinculado ao paciente — a atendente consegue abrir e imprimir daqui a pouco.
+                  </p>
+                </div>
               </div>
             ) : (
               <ul className="space-y-2">

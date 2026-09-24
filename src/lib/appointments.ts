@@ -1,4 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabase";
+import type { PatientDocument, PatientDocumentWithUrl } from "@/lib/patientDocuments";
+import { signPatientDocuments } from "@/lib/patientDocuments";
 
 export interface PatientRecord {
   id: string;
@@ -10,6 +12,7 @@ export interface PatientRecord {
   city: string | null;
   state: string | null;
   notes: string | null;
+  documents: PatientDocumentWithUrl[];
 }
 
 export interface AppointmentDetail {
@@ -57,7 +60,12 @@ export async function getOwnedAppointment(
     .maybeSingle();
 
   if (error || !data || data.doctor_id !== doctorId) return null;
-  return data as unknown as AppointmentDetail;
+
+  const rawPatient = data.patients as unknown as (PatientRecord & { documents: PatientDocument[] }) | null;
+  const signedDocuments = await signPatientDocuments(rawPatient?.documents ?? []);
+  const patients = rawPatient ? { ...rawPatient, documents: signedDocuments } : null;
+
+  return { ...data, patients } as unknown as AppointmentDetail;
 }
 
 /** Histórico de outras consultas do mesmo paciente (mais recentes primeiro). */
