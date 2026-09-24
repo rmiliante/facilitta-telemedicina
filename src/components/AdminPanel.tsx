@@ -436,7 +436,7 @@ function DoctorsTab() {
 
   function copyBoothLink(d: Doctor) {
     if (!d.booth_token) return;
-    const url = `${window.location.origin}/cabine/${d.booth_token}`;
+    const url = `${window.location.origin}/atendimento/${d.booth_token}`;
     navigator.clipboard.writeText(url).then(() => {
       setCopiedBoothId(d.id);
       setTimeout(() => setCopiedBoothId(null), 2000);
