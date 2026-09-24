@@ -1127,9 +1127,22 @@ interface PatientHistoryItem {
   prescription_url: string | null;
   memed_prescription_at: string | null;
   memed_prescription_summary: string | null;
+  vital_spo2: string | null;
+  vital_bpm: string | null;
+  vital_pa: string | null;
+  vital_peso: string | null;
+  vital_hgt: string | null;
   doctors: { name: string } | null;
   specialties: { name: string } | null;
 }
+
+const VITAL_HISTORY_LABELS: [key: "vital_spo2" | "vital_bpm" | "vital_pa" | "vital_peso" | "vital_hgt", label: string][] = [
+  ["vital_spo2", "SpO2"],
+  ["vital_bpm", "BPM"],
+  ["vital_pa", "PA"],
+  ["vital_peso", "Peso"],
+  ["vital_hgt", "HGT"],
+];
 
 function formatHistoryDateTime(iso: string) {
   return new Date(iso).toLocaleString("pt-BR", {
@@ -1215,6 +1228,15 @@ function PatientHistoryPanel({ patientId }: { patientId: string }) {
               ? ` · Duração ${formatHistoryDuration(h.called_at, h.finished_at)}`
               : ""}
           </p>
+          {VITAL_HISTORY_LABELS.some(([key]) => h[key]) && (
+            <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-zinc-600">
+              {VITAL_HISTORY_LABELS.filter(([key]) => h[key]).map(([key, label]) => (
+                <span key={key}>
+                  <span className="font-medium text-zinc-500">{label}:</span> {h[key]}
+                </span>
+              ))}
+            </div>
+          )}
           {h.doctor_notes && (
             <p className="mt-1.5 whitespace-pre-wrap text-zinc-700">{h.doctor_notes}</p>
           )}
@@ -1234,7 +1256,10 @@ function PatientHistoryPanel({ patientId }: { patientId: string }) {
               {h.memed_prescription_at ? ` · ${formatHistoryTime(h.memed_prescription_at)}` : ""}
             </p>
           )}
-          {!h.doctor_notes && !h.prescription_url && !h.memed_prescription_summary && (
+          {!h.doctor_notes &&
+            !h.prescription_url &&
+            !h.memed_prescription_summary &&
+            !VITAL_HISTORY_LABELS.some(([key]) => h[key]) && (
             <p className="mt-1.5 text-zinc-400">Sem anotações registradas nesse atendimento.</p>
           )}
         </li>
