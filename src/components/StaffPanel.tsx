@@ -616,11 +616,23 @@ function FilaTab() {
                 }`}
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <span className="shrink-0 rounded-full bg-brand-navy px-2.5 py-1 text-xs font-semibold text-white">
+                  <span
+                    className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold text-white ${
+                      item.booth_rejected_at
+                        ? "bg-amber-500 ring-4 ring-amber-300"
+                        : "bg-brand-navy"
+                    }`}
+                  >
                     {index + 1}º
                   </span>
                   <div className="min-w-0">
-                    <p className="truncate font-medium text-zinc-800">{item.patients?.full_name}</p>
+                    <p
+                      className={`truncate font-medium ${
+                        item.booth_rejected_at ? "text-amber-800" : "text-zinc-800"
+                      }`}
+                    >
+                      {item.patients?.full_name}
+                    </p>
                     <p className="text-xs text-zinc-500">
                       {item.specialties?.name ?? ""}
                       {index === 0 && item.status === "agendado" ? " · próximo da fila" : ""}
