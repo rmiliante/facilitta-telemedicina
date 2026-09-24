@@ -1117,6 +1117,132 @@ function DoctorsTab() {
 // ------------------------------------------------------------
 // Pacientes
 // ------------------------------------------------------------
+interface PatientHistoryItem {
+  id: string;
+  scheduled_at: string;
+  status: string;
+  called_at: string | null;
+  finished_at: string | null;
+  doctor_notes: string | null;
+  prescription_url: string | null;
+  memed_prescription_at: string | null;
+  memed_prescription_summary: string | null;
+  doctors: { name: string } | null;
+  specialties: { name: string } | null;
+}
+
+function formatHistoryDateTime(iso: string) {
+  return new Date(iso).toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatHistoryTime(iso: string) {
+  return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
+/** Duração entre início e fim do atendimento, em minutos (ou h/min). */
+function formatHistoryDuration(startIso: string, endIso: string) {
+  const minutes = Math.max(0, Math.round((new Date(endIso).getTime() - new Date(startIso).getTime()) / 60000));
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return `${hours}h${rest > 0 ? ` ${rest}min` : ""}`;
+}
+
+/**
+ * Histórico médico completo do paciente — toda consulta já feita, com
+ * data, horário de início/fim, duração e tudo que a médica registrou
+ * (anotações, receita), independente de qual médico atendeu. Carrega
+ * sob demanda quando o admin abre o histórico daquele paciente.
+ */
+function PatientHistoryPanel({ patientId }: { patientId: string }) {
+  const [history, setHistory] = useState<PatientHistoryItem[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(false);
+    try {
+      const res = await fetch(`/api/admin/patients/${patientId}/history`);
+      if (!res.ok) {
+        setError(true);
+        return;
+      }
+      const data = await res.json();
+      setHistory(data.history ?? []);
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [patientId]);
+
+  useEffect(() => {
+    const timeout = setTimeout(load, 0);
+    return () => clearTimeout(timeout);
+  }, [load]);
+
+  if (loading) return <p className="text-xs text-zinc-400">Carregando histórico...</p>;
+  if (error) return <p className="text-xs text-red-600">Falha ao carregar o histórico médico.</p>;
+  if (!history || history.length === 0) {
+    return <p className="text-xs text-zinc-400">Nenhum atendimento registrado ainda.</p>;
+  }
+
+  return (
+    <ul className="space-y-2">
+      {history.map((h) => (
+        <li key={h.id} className="rounded-md border border-zinc-200 bg-brand-bg/40 p-3 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="font-medium text-zinc-700">
+              {formatHistoryDateTime(h.scheduled_at)}
+              {h.specialties?.name ? ` · ${h.specialties.name}` : ""}
+              {h.doctors?.name ? ` · Dr(a). ${h.doctors.name}` : ""}
+            </p>
+            <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-600">
+              {STATUS_LABELS[h.status] ?? h.status}
+            </span>
+          </div>
+          <p className="mt-1 text-zinc-500">
+            {h.called_at ? `Início ${formatHistoryTime(h.called_at)}` : "Início não registrado"}
+            {h.finished_at ? ` · Fim ${formatHistoryTime(h.finished_at)}` : ""}
+            {h.called_at && h.finished_at
+              ? ` · Duração ${formatHistoryDuration(h.called_at, h.finished_at)}`
+              : ""}
+          </p>
+          {h.doctor_notes && (
+            <p className="mt-1.5 whitespace-pre-wrap text-zinc-700">{h.doctor_notes}</p>
+          )}
+          {h.prescription_url && (
+            <a
+              href={h.prescription_url}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-1.5 inline-block text-brand-teal-dark underline"
+            >
+              Ver receita
+            </a>
+          )}
+          {h.memed_prescription_summary && (
+            <p className="mt-1.5 text-brand-teal-dark">
+              {h.memed_prescription_summary}
+              {h.memed_prescription_at ? ` · ${formatHistoryTime(h.memed_prescription_at)}` : ""}
+            </p>
+          )}
+          {!h.doctor_notes && !h.prescription_url && !h.memed_prescription_summary && (
+            <p className="mt-1.5 text-zinc-400">Sem anotações registradas nesse atendimento.</p>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function PatientsTab() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [search, setSearch] = useState("");
@@ -1140,11 +1266,16 @@ function PatientsTab() {
     state: "",
   });
   const [editSaving, setEditSaving] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const load = useCallback(async (q?: string) => {
     const res = await fetch(`/api/admin/patients${q ? `?q=${encodeURIComponent(q)}` : ""}`);
     if (res.ok) setPatients((await res.json()).patients);
   }, []);
+
+  function toggleHistory(id: string) {
+    setExpandedId((cur) => (cur === id ? null : id));
+  }
 
   useEffect(() => {
     const timeout = setTimeout(load, 0);
@@ -1381,30 +1512,47 @@ function PatientsTab() {
           ) : (
             <li
               key={p.id}
-              className="flex items-center justify-between gap-2 rounded-md border border-zinc-200 bg-white px-4 py-2.5 text-sm"
+              className="rounded-md border border-zinc-200 bg-white text-sm"
             >
-              <div className="min-w-0">
-                <p className="font-medium text-zinc-800">{p.full_name}</p>
-                <p className="text-xs text-zinc-500">
-                  {p.cpf ? `CPF ${p.cpf} · ` : ""}
-                  {p.phone ?? p.email ?? ""}
-                  {p.city ? ` · ${p.city}${p.state ? `/${p.state}` : ""}` : ""}
-                </p>
+              <div className="flex items-center justify-between gap-2 px-4 py-2.5">
+                <div className="min-w-0">
+                  <p className="font-medium text-zinc-800">{p.full_name}</p>
+                  <p className="text-xs text-zinc-500">
+                    {p.cpf ? `CPF ${p.cpf} · ` : ""}
+                    {p.phone ?? p.email ?? ""}
+                    {p.city ? ` · ${p.city}${p.state ? `/${p.state}` : ""}` : ""}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    onClick={() => toggleHistory(p.id)}
+                    className={`rounded-md border px-2.5 py-1 text-[10px] font-medium ${
+                      expandedId === p.id
+                        ? "border-brand-teal-dark bg-brand-teal/10 text-brand-teal-dark"
+                        : "border-zinc-300 text-zinc-600 hover:bg-zinc-50"
+                    }`}
+                  >
+                    {expandedId === p.id ? "Ocultar histórico" : "Histórico médico"}
+                  </button>
+                  <button
+                    onClick={() => startEdit(p)}
+                    className="rounded-md border border-zinc-300 px-2.5 py-1 text-[10px] font-medium text-zinc-600 hover:bg-zinc-50"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    onClick={() => handleDelete(p)}
+                    className="rounded-md border border-red-200 px-2.5 py-1 text-[10px] font-medium text-red-600 hover:bg-red-50"
+                  >
+                    Excluir
+                  </button>
+                </div>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <button
-                  onClick={() => startEdit(p)}
-                  className="rounded-md border border-zinc-300 px-2.5 py-1 text-[10px] font-medium text-zinc-600 hover:bg-zinc-50"
-                >
-                  Editar
-                </button>
-                <button
-                  onClick={() => handleDelete(p)}
-                  className="rounded-md border border-red-200 px-2.5 py-1 text-[10px] font-medium text-red-600 hover:bg-red-50"
-                >
-                  Excluir
-                </button>
-              </div>
+              {expandedId === p.id && (
+                <div className="border-t border-zinc-100 px-4 pb-3 pt-2">
+                  <PatientHistoryPanel patientId={p.id} />
+                </div>
+              )}
             </li>
           )
         )}
