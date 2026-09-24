@@ -28,6 +28,19 @@ function formatDate(iso: string | null) {
   return new Date(`${iso}T00:00:00`).toLocaleDateString("pt-BR");
 }
 
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
+/** Duração entre início e fim do atendimento, formatada em minutos (ou h/min). */
+function formatDuration(startIso: string, endIso: string) {
+  const minutes = Math.max(0, Math.round((new Date(endIso).getTime() - new Date(startIso).getTime()) / 60000));
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return `${hours}h${rest > 0 ? ` ${rest}min` : ""}`;
+}
+
 export default function ConsultationClient({
   appointmentId,
   initialAppointment,
@@ -64,7 +77,11 @@ export default function ConsultationClient({
       const data = await res.json();
       setRoom(data);
       setVideoStarted(true);
-      setAppointment((a) => ({ ...a, status: "em_andamento" }));
+      setAppointment((a) => ({
+        ...a,
+        status: "em_andamento",
+        called_at: a.called_at ?? new Date().toISOString(),
+      }));
     } finally {
       setLoadingRoom(false);
     }
@@ -85,12 +102,16 @@ export default function ConsultationClient({
   }
 
   async function handleFinish() {
+    if (!confirm("Finalizar essa consulta? Isso encerra o atendimento e registra o horário de término.")) {
+      return;
+    }
+    const finishedAt = new Date().toISOString();
     await fetch(`/api/doctor/appointments/${appointmentId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "concluido", doctorNotes: notes }),
     });
-    setAppointment((a) => ({ ...a, status: "concluido" }));
+    setAppointment((a) => ({ ...a, status: "concluido", finished_at: a.finished_at ?? finishedAt }));
   }
 
   // Salva as anotações automaticamente a cada alguns segundos se mudou algo.
@@ -121,6 +142,17 @@ export default function ConsultationClient({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {appointment.status === "concluido" && appointment.called_at && appointment.finished_at && (
+            <span className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-medium text-white/70">
+              {formatTime(appointment.called_at)}–{formatTime(appointment.finished_at)} ·{" "}
+              {formatDuration(appointment.called_at, appointment.finished_at)}
+            </span>
+          )}
+          {appointment.status === "em_andamento" && appointment.called_at && (
+            <span className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-medium text-white/70">
+              Iniciado às {formatTime(appointment.called_at)}
+            </span>
+          )}
           <span className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-medium text-white/80">
             {STATUS_LABELS[appointment.status] ?? appointment.status}
           </span>
@@ -208,6 +240,9 @@ export default function ConsultationClient({
                     </p>
                     <p className="mt-0.5 text-zinc-500">
                       {STATUS_LABELS[h.status] ?? h.status}
+                      {h.called_at && h.finished_at
+                        ? ` · ${formatDuration(h.called_at, h.finished_at)} de atendimento`
+                        : ""}
                     </p>
                     {h.doctor_notes && (
                       <p className="mt-1 whitespace-pre-wrap text-zinc-600">{h.doctor_notes}</p>

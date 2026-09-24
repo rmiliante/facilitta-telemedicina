@@ -32,6 +32,9 @@ export async function PATCH(
     ["agendado", "em_andamento", "concluido", "cancelado", "faltou"].includes(body.status)
   ) {
     update.status = body.status;
+    if (body.status === "concluido") {
+      update.finished_at = new Date().toISOString();
+    }
   }
   if (typeof body.queuePosition === "number" || body.queuePosition === null) {
     update.queue_position = body.queuePosition;

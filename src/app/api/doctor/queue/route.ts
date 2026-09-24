@@ -21,7 +21,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from("appointments")
     .select(
-      "id, scheduled_at, status, queue_position, called_at, patient_joined_at, patients(id, full_name), specialties(name)"
+      "id, scheduled_at, status, queue_position, called_at, finished_at, patient_joined_at, patients(id, full_name), specialties(name)"
     )
     .eq("doctor_id", session.doctorId)
     .gte("scheduled_at", dayStart)

@@ -8,9 +8,14 @@ interface QueueItem {
   scheduled_at: string;
   status: string;
   queue_position: number | null;
+  called_at: string | null;
   patient_joined_at: string | null;
   patients: { id: string; full_name: string } | null;
   specialties: { name: string } | null;
+}
+
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -58,7 +63,12 @@ export default function DoctorQueueClient() {
 
   const pending = queue.filter((q) => q.status === "agendado" || q.status === "em_andamento");
   const finished = queue.filter((q) => q.status === "concluido" || q.status === "faltou");
-  const next = pending[0];
+  const waiting = pending.filter((q) => q.status === "agendado");
+  // Quem já foi chamado (em_andamento) tem prioridade no card em
+  // destaque, mesmo que não fosse o próximo da fila por posição —
+  // é quem a atendente decidiu iniciar o atendimento agora.
+  const current = pending.find((q) => q.status === "em_andamento");
+  const next = current ?? waiting[0];
 
   if (loading) {
     return <p className="text-xs text-zinc-400">Carregando fila...</p>;
@@ -85,7 +95,12 @@ export default function DoctorQueueClient() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-lg font-semibold text-zinc-800">{next.patients?.full_name}</p>
-              <p className="text-xs text-zinc-500">{next.specialties?.name ?? ""}</p>
+              <p className="text-xs text-zinc-500">
+                {next.specialties?.name ?? ""}
+                {next.status === "em_andamento" && next.called_at
+                  ? ` · iniciado às ${formatTime(next.called_at)}`
+                  : ""}
+              </p>
               {next.patient_joined_at && next.status === "agendado" && (
                 <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-emerald-600">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />

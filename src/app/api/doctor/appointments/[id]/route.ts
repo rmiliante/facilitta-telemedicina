@@ -48,6 +48,17 @@ export async function PATCH(
     ["agendado", "em_andamento", "concluido", "cancelado", "faltou"].includes(body.status)
   ) {
     update.status = body.status;
+
+    // Garante que fica registrado quando o atendimento começou, mesmo
+    // se o médico iniciar a videochamada direto (sem a atendente ter
+    // clicado em "Iniciar atendimento" antes).
+    if (body.status === "em_andamento" && !appointment.called_at) {
+      update.called_at = new Date().toISOString();
+    }
+    // Registra o fim, pra calcular o tempo total de atendimento.
+    if (body.status === "concluido" && !appointment.finished_at) {
+      update.finished_at = new Date().toISOString();
+    }
   }
 
   if (Object.keys(update).length === 0) {

@@ -92,6 +92,7 @@ create table if not exists appointments (
   access_token text not null unique default translate(encode(gen_random_bytes(18), 'base64'), '+/=', '-_'),
   queue_position integer,
   called_at timestamptz,
+  finished_at timestamptz,
   patient_joined_at timestamptz,
   daily_room_name text,
   doctor_notes text,

@@ -555,9 +555,10 @@ function FilaTab() {
                   {item.status === "agendado" && (
                     <button
                       onClick={() => markCalled(item)}
+                      title="Marca esse paciente como o atendimento atual, mesmo que não seja o primeiro da fila"
                       className="rounded-md bg-brand-teal-dark px-2.5 py-1 text-[10px] font-medium text-white hover:opacity-90"
                     >
-                      Chamar
+                      Iniciar atendimento
                     </button>
                   )}
                   <button
