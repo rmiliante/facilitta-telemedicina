@@ -34,6 +34,7 @@ interface QueueItem {
   access_token: string;
   queue_position: number | null;
   called_at: string | null;
+  booth_rejected_at: string | null;
   patients: { id: string; full_name: string } | null;
   doctors: { id: string; name: string } | null;
   specialties: { id: string; name: string } | null;
@@ -104,9 +105,7 @@ export default function StaffPanel({ staffName }: { staffName: string }) {
         const res = await fetch("/api/admin/appointments/booth-alerts");
         if (res.ok && !cancelled) {
           const data = await res.json();
-          if (data.alerts?.length > 0) {
-            setAlerts((prev) => [...data.alerts, ...prev].slice(0, 10));
-          }
+          setAlerts(data.alerts ?? []);
         }
       } catch {
         // silencioso — só tenta de novo no próximo ciclo
@@ -121,8 +120,13 @@ export default function StaffPanel({ staffName }: { staffName: string }) {
     };
   }, []);
 
-  function dismissAlert(id: string) {
+  async function dismissAlert(id: string) {
     setAlerts((prev) => prev.filter((a) => a.id !== id));
+    await fetch(`/api/admin/appointments/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clearBoothRejected: true }),
+    });
   }
 
   return (
@@ -340,6 +344,15 @@ function FilaTab() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ markCalled: true, status: "em_andamento" }),
+    });
+    await loadQueue(doctorId, date);
+  }
+
+  async function dismissBoothRejected(item: QueueItem) {
+    await fetch(`/api/admin/appointments/${item.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clearBoothRejected: true }),
     });
     await loadQueue(doctorId, date);
   }
@@ -595,9 +608,11 @@ function FilaTab() {
               <li
                 key={item.id}
                 className={`flex flex-wrap items-center justify-between gap-2 rounded-md border bg-white px-4 py-3 text-sm ${
-                  index === 0 && item.status === "agendado"
-                    ? "border-brand-teal-dark ring-1 ring-brand-teal/40"
-                    : "border-zinc-200"
+                  item.booth_rejected_at
+                    ? "border-amber-400 ring-2 ring-amber-300"
+                    : index === 0 && item.status === "agendado"
+                      ? "border-brand-teal-dark ring-1 ring-brand-teal/40"
+                      : "border-zinc-200"
                 }`}
               >
                 <div className="flex items-center gap-3 min-w-0">
@@ -610,9 +625,23 @@ function FilaTab() {
                       {item.specialties?.name ?? ""}
                       {index === 0 && item.status === "agendado" ? " · próximo da fila" : ""}
                     </p>
+                    {item.booth_rejected_at && (
+                      <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-amber-700">
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                        Disse &quot;não sou eu&quot; na cabine — confira antes de reenviar
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                  {item.booth_rejected_at && (
+                    <button
+                      onClick={() => dismissBoothRejected(item)}
+                      className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700 hover:bg-amber-100"
+                    >
+                      OK, entendi
+                    </button>
+                  )}
                   <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-600">
                     {STATUS_LABELS[item.status] ?? item.status}
                   </span>

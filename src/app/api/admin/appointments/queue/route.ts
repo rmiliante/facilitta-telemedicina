@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
   const { data, error } = await supabase
     .from("appointments")
     .select(
-      "id, scheduled_at, status, access_token, queue_position, called_at, patients(id, full_name), doctors(id, name), specialties(id, name)"
+      "id, scheduled_at, status, access_token, queue_position, called_at, booth_rejected_at, patients(id, full_name), doctors(id, name), specialties(id, name)"
     )
     .eq("doctor_id", doctorId)
     .gte("scheduled_at", start)

@@ -4,8 +4,9 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 /**
  * GET /api/admin/appointments/booth-alerts
  * Avisos de "não sou eu" clicados na cabine, pra atendente ver que
- * chamou a pessoa errada. Cada aviso é consumido (limpo) assim que
- * lido, pra não repetir a mesma notificação em toda atualização.
+ * chamou a pessoa errada. Fica valendo até a atendente resolver
+ * (reenviar esse paciente pro atendimento ou dispensar o aviso), o
+ * mesmo sinal que aparece com o círculo amarelo na fila.
  */
 export async function GET() {
   const supabase = getSupabaseAdmin();
@@ -21,17 +22,5 @@ export async function GET() {
     return NextResponse.json({ error: "Falha ao buscar avisos" }, { status: 500 });
   }
 
-  const alerts = data ?? [];
-
-  if (alerts.length > 0) {
-    await supabase
-      .from("appointments")
-      .update({ booth_rejected_at: null })
-      .in(
-        "id",
-        alerts.map((a) => a.id)
-      );
-  }
-
-  return NextResponse.json({ alerts });
+  return NextResponse.json({ alerts: data ?? [] });
 }

@@ -41,6 +41,11 @@ export async function PATCH(
   }
   if (body.markCalled === true) {
     update.called_at = new Date().toISOString();
+    // Reenviar pro atendimento resolve o aviso de "não sou eu" anterior.
+    update.booth_rejected_at = null;
+  }
+  if (body.clearBoothRejected === true) {
+    update.booth_rejected_at = null;
   }
 
   const supabase = getSupabaseAdmin();
