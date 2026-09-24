@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 import LogoutButton from "./LogoutButton";
 
@@ -20,6 +22,20 @@ function IconCalendar() {
   );
 }
 
+function IconList() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+      <path d="M4 6h11M4 12h11M4 18h7" strokeLinecap="round" />
+      <circle cx="19" cy="12" r="2.2" />
+    </svg>
+  );
+}
+
+const NAV_ITEMS = [
+  { href: "/medico", label: "Fila de hoje", icon: <IconCalendar /> },
+  { href: "/medico/atendimentos", label: "Atendimentos", icon: <IconList /> },
+];
+
 /**
  * Envolve a área do médico com o mesmo padrão visual do CRM de WhatsApp:
  * sidebar fixa com logo e navegação, que vira menu off-canvas no celular.
@@ -34,6 +50,8 @@ export default function DoctorShell({
   children: React.ReactNode;
 }) {
   const [navOpen, setNavOpen] = useState(false);
+  const pathname = usePathname();
+  const activeLabel = NAV_ITEMS.find((item) => item.href === pathname)?.label ?? "Área do médico";
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-brand-bg">
@@ -65,12 +83,22 @@ export default function DoctorShell({
             Área do médico
           </p>
           <ul className="space-y-0.5">
-            <li>
-              <span className="flex items-center gap-2.5 rounded-md bg-brand-teal/15 px-2.5 py-2 text-sm font-medium text-brand-teal-dark">
-                <IconCalendar />
-                Fila de hoje
-              </span>
-            </li>
+            {NAV_ITEMS.map((item) => (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  onClick={() => setNavOpen(false)}
+                  className={`flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors ${
+                    pathname === item.href
+                      ? "bg-brand-teal/15 text-brand-teal-dark"
+                      : "text-zinc-600 hover:bg-zinc-50"
+                  }`}
+                >
+                  {item.icon}
+                  {item.label}
+                </Link>
+              </li>
+            ))}
           </ul>
         </div>
 
@@ -97,7 +125,7 @@ export default function DoctorShell({
           >
             <IconMenu />
           </button>
-          <h1 className="text-sm font-semibold text-white">Fila de hoje</h1>
+          <h1 className="text-sm font-semibold text-white">{activeLabel}</h1>
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
