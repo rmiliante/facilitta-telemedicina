@@ -15,6 +15,7 @@ interface Doctor {
   specialty_id: string | null;
   active: boolean;
   memed_email: string | null;
+  memed_linked_at: string | null;
   specialties: { name: string } | null;
 }
 
@@ -432,6 +433,9 @@ function DoctorsTab() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", email: "", specialtyId: "", password: "", memedEmail: "" });
   const [editSaving, setEditSaving] = useState(false);
+  const [memedLinkId, setMemedLinkId] = useState<string | null>(null);
+  const [memedLinkForm, setMemedLinkForm] = useState({ cpf: "", crm: "", uf: "", birthDate: "" });
+  const [memedLinking, setMemedLinking] = useState(false);
 
   const load = useCallback(async () => {
     const [dRes, sRes] = await Promise.all([
@@ -441,6 +445,31 @@ function DoctorsTab() {
     if (dRes.ok) setDoctors((await dRes.json()).doctors);
     if (sRes.ok) setSpecialties((await sRes.json()).specialties);
   }, []);
+
+  function startMemedLink(doctorId: string) {
+    setMemedLinkId(doctorId);
+    setMemedLinkForm({ cpf: "", crm: "", uf: "", birthDate: "" });
+  }
+
+  async function submitMemedLink(doctorId: string) {
+    setMemedLinking(true);
+    try {
+      const res = await fetch(`/api/admin/doctors/${doctorId}/memed-link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(memedLinkForm),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error ?? "Falha ao vincular na Memed");
+        return;
+      }
+      setMemedLinkId(null);
+      await load();
+    } finally {
+      setMemedLinking(false);
+    }
+  }
 
   useEffect(() => {
     const timeout = setTimeout(load, 0);
@@ -684,8 +713,68 @@ function DoctorsTab() {
                 {d.memed_email && (
                   <p className="text-[11px] text-zinc-400">Memed: {d.memed_email}</p>
                 )}
+                {memedLinkId === d.id && (
+                  <div className="mt-2 grid gap-2 rounded-md border border-brand-teal-dark bg-brand-teal/5 p-3 sm:grid-cols-4">
+                    <p className="text-[11px] text-zinc-500 sm:col-span-4">
+                      Dados exigidos pela Memed pra cadastrar o médico como prescritor (usados só pra
+                      isso — ambiente de homologação/teste por enquanto).
+                    </p>
+                    <input
+                      value={memedLinkForm.cpf}
+                      onChange={(e) => setMemedLinkForm((f) => ({ ...f, cpf: e.target.value }))}
+                      placeholder="CPF (só números)"
+                      className="rounded-md border border-zinc-300 px-2 py-1 text-xs outline-none focus:border-brand-teal-dark"
+                    />
+                    <input
+                      value={memedLinkForm.crm}
+                      onChange={(e) => setMemedLinkForm((f) => ({ ...f, crm: e.target.value }))}
+                      placeholder="CRM"
+                      className="rounded-md border border-zinc-300 px-2 py-1 text-xs outline-none focus:border-brand-teal-dark"
+                    />
+                    <input
+                      value={memedLinkForm.uf}
+                      onChange={(e) => setMemedLinkForm((f) => ({ ...f, uf: e.target.value.toUpperCase() }))}
+                      placeholder="UF"
+                      maxLength={2}
+                      className="rounded-md border border-zinc-300 px-2 py-1 text-xs outline-none focus:border-brand-teal-dark"
+                    />
+                    <input
+                      type="date"
+                      value={memedLinkForm.birthDate}
+                      onChange={(e) => setMemedLinkForm((f) => ({ ...f, birthDate: e.target.value }))}
+                      className="rounded-md border border-zinc-300 px-2 py-1 text-xs outline-none focus:border-brand-teal-dark"
+                    />
+                    <div className="flex gap-2 sm:col-span-4">
+                      <button
+                        onClick={() => submitMemedLink(d.id)}
+                        disabled={memedLinking}
+                        className="rounded-md bg-brand-navy px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                      >
+                        {memedLinking ? "Vinculando..." : "Confirmar vínculo"}
+                      </button>
+                      <button
+                        onClick={() => setMemedLinkId(null)}
+                        className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                {d.memed_linked_at ? (
+                  <span className="rounded-full bg-brand-teal/15 px-2.5 py-1 text-[10px] font-medium text-brand-teal-dark">
+                    Memed vinculado
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => startMemedLink(d.id)}
+                    className="rounded-md border border-brand-teal-dark px-2.5 py-1 text-[10px] font-medium text-brand-teal-dark hover:bg-brand-teal/10"
+                  >
+                    Vincular Memed
+                  </button>
+                )}
                 <button
                   onClick={() => startEdit(d)}
                   className="rounded-md border border-zinc-300 px-2.5 py-1 text-[10px] font-medium text-zinc-600 hover:bg-zinc-50"

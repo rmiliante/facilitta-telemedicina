@@ -44,6 +44,10 @@ export async function PATCH(
 
   if (typeof body.doctorNotes === "string") update.doctor_notes = body.doctorNotes;
   if (typeof body.prescriptionUrl === "string") update.prescription_url = body.prescriptionUrl.trim() || null;
+  if (typeof body.memedPrescriptionSummary === "string" && body.memedPrescriptionSummary.trim()) {
+    update.memed_prescription_summary = body.memedPrescriptionSummary.trim();
+    update.memed_prescription_at = new Date().toISOString();
+  }
   if (
     typeof body.status === "string" &&
     ["agendado", "em_andamento", "concluido", "cancelado", "faltou"].includes(body.status)

@@ -21,10 +21,12 @@ export interface AppointmentDetail {
   called_at: string | null;
   finished_at: string | null;
   prescription_url: string | null;
+  memed_prescription_at: string | null;
+  memed_prescription_summary: string | null;
   patient_id: string;
   patients: PatientRecord | null;
   specialties: { name: string } | null;
-  doctors: { memed_email: string | null } | null;
+  doctors: { memed_email: string | null; memed_linked_at: string | null } | null;
 }
 
 export interface HistoryItem {
@@ -35,6 +37,8 @@ export interface HistoryItem {
   called_at: string | null;
   finished_at: string | null;
   prescription_url: string | null;
+  memed_prescription_at: string | null;
+  memed_prescription_summary: string | null;
   specialties: { name: string } | null;
 }
 
@@ -47,7 +51,7 @@ export async function getOwnedAppointment(
   const { data, error } = await supabase
     .from("appointments")
     .select(
-      "id, doctor_id, status, scheduled_at, doctor_notes, called_at, finished_at, prescription_url, patient_id, patients(*), specialties(name), doctors(memed_email)"
+      "id, doctor_id, status, scheduled_at, doctor_notes, called_at, finished_at, prescription_url, memed_prescription_at, memed_prescription_summary, patient_id, patients(*), specialties(name), doctors(memed_email, memed_linked_at)"
     )
     .eq("id", id)
     .maybeSingle();
@@ -64,7 +68,9 @@ export async function getPatientHistory(
   const supabase = getSupabaseAdmin();
   const { data } = await supabase
     .from("appointments")
-    .select("id, scheduled_at, status, doctor_notes, called_at, finished_at, prescription_url, specialties(name)")
+    .select(
+      "id, scheduled_at, status, doctor_notes, called_at, finished_at, prescription_url, memed_prescription_at, memed_prescription_summary, specialties(name)"
+    )
     .eq("patient_id", patientId)
     .neq("id", excludeAppointmentId)
     .order("scheduled_at", { ascending: false })

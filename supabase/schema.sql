@@ -35,6 +35,11 @@ create table if not exists doctors (
   active boolean not null default true,
   booth_token text not null unique default translate(encode(gen_random_bytes(18), 'base64'), '+/=', '-_'),
   memed_email text, -- e-mail de login pessoal do médico na Memed (referência, não autenticação)
+  memed_cpf text,
+  memed_crm text,
+  memed_uf text,
+  memed_birth_date date,
+  memed_linked_at timestamptz, -- quando foi vinculado como prescritor na Memed (módulo embutido)
   created_at timestamptz not null default now()
 );
 
@@ -98,7 +103,9 @@ create table if not exists appointments (
   booth_rejected_at timestamptz,
   daily_room_name text,
   doctor_notes text,
-  prescription_url text, -- link da receita gerada e assinada na Memed (login pessoal do médico lá)
+  prescription_url text, -- link colado manualmente pelo médico (fallback quando não vinculado à Memed)
+  memed_prescription_at timestamptz, -- quando uma receita foi emitida pelo módulo Memed embutido
+  memed_prescription_summary text, -- resumo da receita emitida pelo módulo (itens, data)
   created_at timestamptz not null default now()
 );
 

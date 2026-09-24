@@ -6,7 +6,9 @@ export async function GET() {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("doctors")
-    .select("id, name, email, specialty_id, active, memed_email, created_at, specialties(name)")
+    .select(
+      "id, name, email, specialty_id, active, memed_email, memed_linked_at, created_at, specialties(name)"
+    )
     .order("name", { ascending: true });
 
   if (error) {
