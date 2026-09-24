@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
   let query = supabase
     .from("appointments")
     .select(
-      "id, scheduled_at, status, access_token, patients(id, full_name), doctors(id, name), specialties(id, name)"
+      "id, scheduled_at, status, access_token, queue_position, patients(id, full_name), doctors(id, name), specialties(id, name)"
     )
     .order("scheduled_at", { ascending: true });
 
@@ -26,26 +26,38 @@ export async function GET(req: NextRequest) {
 
 /**
  * POST /api/admin/appointments
- * Agenda uma nova consulta, checando antes se a especialidade ainda
- * tem vaga dentro da cota mensal contratada (ex: 50/mês).
+ * Agenda uma nova consulta por ordem de chegada: marca-se a DATA, não
+ * um horário. Checa antes se a especialidade ainda tem vaga dentro da
+ * cota mensal contratada (ex: 50/mês), e se um médico for informado,
+ * entra automaticamente no final da fila dele para aquele dia.
+ *
+ * Aceita `scheduledDate` (YYYY-MM-DD, formato novo) ou, por
+ * compatibilidade, `scheduledAt` (datetime completo, formato antigo).
  */
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
-  const { patientId, doctorId, specialtyId, scheduledAt } = body ?? {};
+  const { patientId, doctorId, specialtyId, scheduledDate, scheduledAt } = body ?? {};
+
+  const dateOnly = typeof scheduledDate === "string" && scheduledDate ? scheduledDate : null;
+  const legacyDateTime = typeof scheduledAt === "string" && scheduledAt ? scheduledAt : null;
 
   if (
     typeof patientId !== "string" ||
     !patientId ||
     typeof specialtyId !== "string" ||
     !specialtyId ||
-    typeof scheduledAt !== "string" ||
-    !scheduledAt
+    (!dateOnly && !legacyDateTime)
   ) {
     return NextResponse.json(
-      { error: "patientId, specialtyId e scheduledAt são obrigatórios" },
+      { error: "patientId, specialtyId e scheduledDate são obrigatórios" },
       { status: 400 }
     );
   }
+
+  // Sempre grava ao meio-dia UTC daquele dia, pra evitar que o fuso
+  // horário faça a data "andar" um dia pra frente ou pra trás.
+  const scheduledAtIso = dateOnly ? `${dateOnly}T12:00:00.000Z` : new Date(legacyDateTime!).toISOString();
+  const dayKey = scheduledAtIso.slice(0, 10);
 
   const supabase = getSupabaseAdmin();
 
@@ -61,9 +73,13 @@ export async function POST(req: NextRequest) {
 
   // Conta quantas consultas dessa especialidade já existem no mesmo
   // mês/ano da data marcada (contando só as que não foram canceladas).
-  const scheduledDate = new Date(scheduledAt);
-  const monthStart = new Date(scheduledDate.getFullYear(), scheduledDate.getMonth(), 1);
-  const monthEnd = new Date(scheduledDate.getFullYear(), scheduledDate.getMonth() + 1, 1);
+  const scheduledDateObj = new Date(scheduledAtIso);
+  const monthStart = new Date(
+    Date.UTC(scheduledDateObj.getUTCFullYear(), scheduledDateObj.getUTCMonth(), 1)
+  );
+  const monthEnd = new Date(
+    Date.UTC(scheduledDateObj.getUTCFullYear(), scheduledDateObj.getUTCMonth() + 1, 1)
+  );
 
   const { count, error: countErr } = await supabase
     .from("appointments")
@@ -87,13 +103,35 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const finalDoctorId = typeof doctorId === "string" && doctorId ? doctorId : null;
+  let queuePosition: number | null = null;
+
+  if (finalDoctorId) {
+    const dayStart = new Date(`${dayKey}T00:00:00.000Z`).toISOString();
+    const dayEnd = new Date(new Date(`${dayKey}T00:00:00.000Z`).getTime() + 24 * 60 * 60 * 1000).toISOString();
+
+    const { data: lastInQueue } = await supabase
+      .from("appointments")
+      .select("queue_position")
+      .eq("doctor_id", finalDoctorId)
+      .gte("scheduled_at", dayStart)
+      .lt("scheduled_at", dayEnd)
+      .neq("status", "cancelado")
+      .order("queue_position", { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle();
+
+    queuePosition = (lastInQueue?.queue_position ?? 0) + 1;
+  }
+
   const { data: appointment, error } = await supabase
     .from("appointments")
     .insert({
       patient_id: patientId,
-      doctor_id: typeof doctorId === "string" && doctorId ? doctorId : null,
+      doctor_id: finalDoctorId,
       specialty_id: specialtyId,
-      scheduled_at: scheduledAt,
+      scheduled_at: scheduledAtIso,
+      queue_position: queuePosition,
     })
     .select("*, patients(full_name), doctors(name), specialties(name)")
     .single();

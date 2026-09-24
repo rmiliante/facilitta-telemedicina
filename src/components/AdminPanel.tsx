@@ -32,12 +32,21 @@ interface Appointment {
   scheduled_at: string;
   status: string;
   access_token: string;
+  queue_position?: number | null;
   patients: { id: string; full_name: string } | null;
   doctors: { id: string; name: string } | null;
   specialties: { id: string; name: string } | null;
 }
 
-type Tab = "agenda" | "pacientes" | "medicos" | "especialidades";
+interface StaffMember {
+  id: string;
+  name: string;
+  email: string;
+  role: "admin" | "atendente";
+  active: boolean;
+}
+
+type Tab = "agenda" | "pacientes" | "medicos" | "especialidades" | "equipe";
 
 const STATUS_LABELS: Record<string, string> = {
   agendado: "Agendado",
@@ -99,11 +108,21 @@ function IconTag() {
   );
 }
 
+function IconTeam() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+      <circle cx="12" cy="7.5" r="3.2" />
+      <path d="M4.5 20c.7-4 3.5-6.5 7.5-6.5s6.8 2.5 7.5 6.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 const NAV_ITEMS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: "agenda", label: "Agenda", icon: <IconCalendar /> },
   { key: "pacientes", label: "Pacientes", icon: <IconUsers /> },
   { key: "medicos", label: "Médicos", icon: <IconStethoscope /> },
   { key: "especialidades", label: "Especialidades", icon: <IconTag /> },
+  { key: "equipe", label: "Equipe", icon: <IconTeam /> },
 ];
 
 function AdminSidebar({
@@ -207,6 +226,7 @@ export default function AdminPanel() {
             {tab === "medicos" && <DoctorsTab />}
             {tab === "pacientes" && <PatientsTab />}
             {tab === "agenda" && <AgendaTab />}
+            {tab === "equipe" && <StaffTab />}
           </div>
         </div>
       </div>
@@ -977,11 +997,11 @@ function AgendaTab() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
-  const [form, setForm] = useState({ patientId: "", doctorId: "", specialtyId: "", scheduledAt: "" });
+  const [form, setForm] = useState({ patientId: "", doctorId: "", specialtyId: "", scheduledDate: "" });
   const [saving, setSaving] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ doctorId: "", scheduledAt: "" });
+  const [editForm, setEditForm] = useState({ doctorId: "", scheduledDate: "" });
   const [editSaving, setEditSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -1016,7 +1036,7 @@ function AgendaTab() {
         alert(err.error);
         return;
       }
-      setForm({ patientId: "", doctorId: "", specialtyId: "", scheduledAt: "" });
+      setForm({ patientId: "", doctorId: "", specialtyId: "", scheduledDate: "" });
       await load();
     } finally {
       setSaving(false);
@@ -1044,15 +1064,15 @@ function AgendaTab() {
     await load();
   }
 
-  function toLocalInputValue(iso: string) {
-    const d = new Date(iso);
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  function toDateInputValue(iso: string) {
+    // scheduled_at é gravado ao meio-dia UTC daquele dia, então basta
+    // olhar a data em UTC (evita o fuso local "empurrar" pro dia anterior).
+    return iso.slice(0, 10);
   }
 
   function startEdit(a: Appointment) {
     setEditingId(a.id);
-    setEditForm({ doctorId: a.doctors?.id ?? "", scheduledAt: toLocalInputValue(a.scheduled_at) });
+    setEditForm({ doctorId: a.doctors?.id ?? "", scheduledDate: toDateInputValue(a.scheduled_at) });
   }
 
   async function saveEdit(id: string) {
@@ -1061,7 +1081,7 @@ function AgendaTab() {
       const res = await fetch(`/api/admin/appointments/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ doctorId: editForm.doctorId, scheduledAt: editForm.scheduledAt }),
+        body: JSON.stringify({ doctorId: editForm.doctorId, scheduledDate: editForm.scheduledDate }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -1138,14 +1158,17 @@ function AgendaTab() {
           </select>
         </label>
         <label className="text-xs sm:col-span-2">
-          <span className="mb-1 block font-medium text-zinc-600">Data e hora</span>
+          <span className="mb-1 block font-medium text-zinc-600">Data</span>
           <input
             required
-            type="datetime-local"
-            value={form.scheduledAt}
-            onChange={(e) => setForm((f) => ({ ...f, scheduledAt: e.target.value }))}
+            type="date"
+            value={form.scheduledDate}
+            onChange={(e) => setForm((f) => ({ ...f, scheduledDate: e.target.value }))}
             className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
           />
+          <span className="mt-1 block text-[11px] text-zinc-400">
+            O atendimento é por ordem de chegada — não é preciso marcar horário.
+          </span>
         </label>
         <div className="sm:col-span-2">
           <button
@@ -1182,11 +1205,11 @@ function AgendaTab() {
                 </select>
               </label>
               <label className="text-xs">
-                <span className="mb-1 block font-medium text-zinc-600">Data e hora</span>
+                <span className="mb-1 block font-medium text-zinc-600">Data</span>
                 <input
-                  type="datetime-local"
-                  value={editForm.scheduledAt}
-                  onChange={(e) => setEditForm((f) => ({ ...f, scheduledAt: e.target.value }))}
+                  type="date"
+                  value={editForm.scheduledDate}
+                  onChange={(e) => setEditForm((f) => ({ ...f, scheduledDate: e.target.value }))}
                   className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
                 />
               </label>
@@ -1214,14 +1237,15 @@ function AgendaTab() {
               <div className="min-w-0">
                 <p className="font-medium text-zinc-800">{a.patients?.full_name}</p>
                 <p className="text-xs text-zinc-500">
-                  {new Date(a.scheduled_at).toLocaleString("pt-BR", {
+                  {new Date(a.scheduled_at).toLocaleDateString("pt-BR", {
+                    timeZone: "UTC",
                     day: "2-digit",
                     month: "2-digit",
-                    hour: "2-digit",
-                    minute: "2-digit",
+                    year: "numeric",
                   })}
                   {a.specialties?.name ? ` · ${a.specialties.name}` : ""}
                   {a.doctors?.name ? ` · ${a.doctors.name}` : " · sem médico definido"}
+                  {a.queue_position != null ? ` · fila: #${a.queue_position}` : ""}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
@@ -1262,6 +1286,265 @@ function AgendaTab() {
         )}
         {appointments.length === 0 && (
           <p className="text-xs text-zinc-400">Nenhuma consulta agendada.</p>
+        )}
+      </ul>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------
+// Equipe (admin / atendente)
+// ------------------------------------------------------------
+const ROLE_LABELS: Record<string, string> = {
+  admin: "Administrador",
+  atendente: "Atendente",
+};
+
+function StaffTab() {
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [form, setForm] = useState({ name: "", email: "", password: "", role: "atendente" });
+  const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", email: "", role: "atendente", password: "" });
+  const [editSaving, setEditSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    const res = await fetch("/api/admin/staff");
+    if (res.ok) setStaff((await res.json()).staff);
+  }, []);
+
+  useEffect(() => {
+    const timeout = setTimeout(load, 0);
+    return () => clearTimeout(timeout);
+  }, [load]);
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/staff", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error);
+        return;
+      }
+      setForm({ name: "", email: "", password: "", role: "atendente" });
+      await load();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function toggleActive(member: StaffMember) {
+    await fetch(`/api/admin/staff/${member.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active: !member.active }),
+    });
+    await load();
+  }
+
+  function startEdit(m: StaffMember) {
+    setEditingId(m.id);
+    setEditForm({ name: m.name, email: m.email, role: m.role, password: "" });
+  }
+
+  async function handleDelete(m: StaffMember) {
+    if (!confirm(`Excluir "${m.name}" da equipe? Essa ação não pode ser desfeita.`)) return;
+    const res = await fetch(`/api/admin/staff/${m.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const err = await res.json();
+      alert(err.error);
+      return;
+    }
+    await load();
+  }
+
+  async function saveEdit(id: string) {
+    setEditSaving(true);
+    try {
+      const body: Record<string, unknown> = {
+        name: editForm.name,
+        email: editForm.email,
+        role: editForm.role,
+      };
+      if (editForm.password) body.password = editForm.password;
+      const res = await fetch(`/api/admin/staff/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error);
+        return;
+      }
+      setEditingId(null);
+      await load();
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <form onSubmit={handleCreate} className="grid gap-3 rounded-lg border border-zinc-200 bg-white p-4 sm:grid-cols-2">
+        <label className="text-xs">
+          <span className="mb-1 block font-medium text-zinc-600">Nome</span>
+          <input
+            required
+            value={form.name}
+            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+          />
+        </label>
+        <label className="text-xs">
+          <span className="mb-1 block font-medium text-zinc-600">E-mail (login)</span>
+          <input
+            required
+            type="email"
+            value={form.email}
+            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+            className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+          />
+        </label>
+        <label className="text-xs">
+          <span className="mb-1 block font-medium text-zinc-600">Senha provisória</span>
+          <input
+            required
+            type="text"
+            minLength={6}
+            value={form.password}
+            onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+            className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+            placeholder="mín. 6 caracteres"
+          />
+        </label>
+        <label className="text-xs">
+          <span className="mb-1 block font-medium text-zinc-600">Papel</span>
+          <select
+            value={form.role}
+            onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
+            className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+          >
+            <option value="atendente">Atendente</option>
+            <option value="admin">Administrador</option>
+          </select>
+        </label>
+        <div className="sm:col-span-2">
+          <button
+            disabled={saving}
+            className="rounded-md bg-brand-navy px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+          >
+            Cadastrar
+          </button>
+        </div>
+      </form>
+
+      <ul className="space-y-2">
+        {staff.map((m) =>
+          editingId === m.id ? (
+            <li
+              key={m.id}
+              className="grid gap-3 rounded-md border border-brand-teal-dark bg-white p-4 text-sm sm:grid-cols-2"
+            >
+              <label className="text-xs">
+                <span className="mb-1 block font-medium text-zinc-600">Nome</span>
+                <input
+                  value={editForm.name}
+                  onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                  className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                />
+              </label>
+              <label className="text-xs">
+                <span className="mb-1 block font-medium text-zinc-600">E-mail (login)</span>
+                <input
+                  type="email"
+                  value={editForm.email}
+                  onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+                  className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                />
+              </label>
+              <label className="text-xs">
+                <span className="mb-1 block font-medium text-zinc-600">Papel</span>
+                <select
+                  value={editForm.role}
+                  onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value }))}
+                  className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                >
+                  <option value="atendente">Atendente</option>
+                  <option value="admin">Administrador</option>
+                </select>
+              </label>
+              <label className="text-xs">
+                <span className="mb-1 block font-medium text-zinc-600">Nova senha (opcional)</span>
+                <input
+                  type="text"
+                  minLength={6}
+                  value={editForm.password}
+                  onChange={(e) => setEditForm((f) => ({ ...f, password: e.target.value }))}
+                  className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                  placeholder="deixe em branco pra manter"
+                />
+              </label>
+              <div className="flex gap-2 sm:col-span-2">
+                <button
+                  onClick={() => saveEdit(m.id)}
+                  disabled={editSaving}
+                  className="rounded-md bg-brand-navy px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                >
+                  Salvar
+                </button>
+                <button
+                  onClick={() => setEditingId(null)}
+                  className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </li>
+          ) : (
+            <li
+              key={m.id}
+              className="flex items-center justify-between rounded-md border border-zinc-200 bg-white px-4 py-2.5 text-sm"
+            >
+              <div>
+                <p className="font-medium text-zinc-800">{m.name}</p>
+                <p className="text-xs text-zinc-500">
+                  {m.email} · {ROLE_LABELS[m.role] ?? m.role}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  onClick={() => startEdit(m)}
+                  className="rounded-md border border-zinc-300 px-2.5 py-1 text-[10px] font-medium text-zinc-600 hover:bg-zinc-50"
+                >
+                  Editar
+                </button>
+                <button
+                  onClick={() => handleDelete(m)}
+                  className="rounded-md border border-red-200 px-2.5 py-1 text-[10px] font-medium text-red-600 hover:bg-red-50"
+                >
+                  Excluir
+                </button>
+                <button
+                  onClick={() => toggleActive(m)}
+                  className={`rounded-full px-2.5 py-1 text-[10px] font-medium ${
+                    m.active ? "bg-brand-teal/15 text-brand-teal-dark" : "bg-zinc-100 text-zinc-500"
+                  }`}
+                >
+                  {m.active ? "Ativo" : "Inativo"}
+                </button>
+              </div>
+            </li>
+          )
+        )}
+        {staff.length === 0 && (
+          <p className="text-xs text-zinc-400">Nenhum membro da equipe cadastrado ainda.</p>
         )}
       </ul>
     </div>

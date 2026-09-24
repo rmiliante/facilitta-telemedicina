@@ -68,7 +68,7 @@ export default function DoctorShell({
             <li>
               <span className="flex items-center gap-2.5 rounded-md bg-brand-teal/15 px-2.5 py-2 text-sm font-medium text-brand-teal-dark">
                 <IconCalendar />
-                Minha agenda
+                Fila de hoje
               </span>
             </li>
           </ul>
@@ -97,7 +97,7 @@ export default function DoctorShell({
           >
             <IconMenu />
           </button>
-          <h1 className="text-sm font-semibold text-white">Minha agenda</h1>
+          <h1 className="text-sm font-semibold text-white">Fila de hoje</h1>
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
