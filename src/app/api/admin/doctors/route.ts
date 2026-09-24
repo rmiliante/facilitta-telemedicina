@@ -12,7 +12,10 @@ export async function GET() {
     .order("name", { ascending: true });
 
   if (error) {
-    return NextResponse.json({ error: "Falha ao buscar médicos" }, { status: 500 });
+    console.error("Erro ao buscar médicos:", error);
+    // DEBUG TEMPORÁRIO: expõe o erro real do Supabase pra diagnosticar
+    // o 500 que só acontece em produção. Reverter depois de resolvido.
+    return NextResponse.json({ error: "Falha ao buscar médicos", debug: error }, { status: 500 });
   }
   return NextResponse.json({ doctors: data });
 }
