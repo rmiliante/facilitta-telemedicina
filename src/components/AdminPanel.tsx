@@ -14,6 +14,7 @@ interface Doctor {
   email: string;
   specialty_id: string | null;
   active: boolean;
+  booth_token?: string;
   specialties: { name: string } | null;
 }
 
@@ -431,6 +432,16 @@ function DoctorsTab() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", email: "", specialtyId: "", password: "" });
   const [editSaving, setEditSaving] = useState(false);
+  const [copiedBoothId, setCopiedBoothId] = useState<string | null>(null);
+
+  function copyBoothLink(d: Doctor) {
+    if (!d.booth_token) return;
+    const url = `${window.location.origin}/cabine/${d.booth_token}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopiedBoothId(d.id);
+      setTimeout(() => setCopiedBoothId(null), 2000);
+    });
+  }
 
   const load = useCallback(async () => {
     const [dRes, sRes] = await Promise.all([
@@ -655,6 +666,13 @@ function DoctorsTab() {
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                <button
+                  onClick={() => copyBoothLink(d)}
+                  className="rounded-md border border-zinc-300 px-2.5 py-1 text-[10px] font-medium text-zinc-600 hover:bg-zinc-50"
+                  title="Link da cabine de atendimento presencial desse médico"
+                >
+                  {copiedBoothId === d.id ? "Copiado!" : "Copiar link da cabine"}
+                </button>
                 <button
                   onClick={() => startEdit(d)}
                   className="rounded-md border border-zinc-300 px-2.5 py-1 text-[10px] font-medium text-zinc-600 hover:bg-zinc-50"

@@ -8,6 +8,7 @@ interface QueueItem {
   scheduled_at: string;
   status: string;
   queue_position: number | null;
+  patient_joined_at: string | null;
   patients: { id: string; full_name: string } | null;
   specialties: { name: string } | null;
 }
@@ -85,6 +86,12 @@ export default function DoctorQueueClient() {
             <div>
               <p className="text-lg font-semibold text-zinc-800">{next.patients?.full_name}</p>
               <p className="text-xs text-zinc-500">{next.specialties?.name ?? ""}</p>
+              {next.patient_joined_at && next.status === "agendado" && (
+                <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-emerald-600">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  Paciente já está na sala aguardando
+                </p>
+              )}
             </div>
             <Link
               href={`/medico/consulta/${next.id}`}
@@ -123,13 +130,21 @@ export default function DoctorQueueClient() {
                       <p className="text-xs text-zinc-500">{item.specialties?.name ?? ""}</p>
                     </div>
                   </div>
-                  <span
-                    className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                      STATUS_STYLES[item.status] ?? STATUS_STYLES.agendado
-                    }`}
-                  >
-                    {STATUS_LABELS[item.status] ?? item.status}
-                  </span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {item.patient_joined_at && item.status === "agendado" && (
+                      <span
+                        className="h-2 w-2 rounded-full bg-emerald-500"
+                        title="Paciente já está na sala"
+                      />
+                    )}
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                        STATUS_STYLES[item.status] ?? STATUS_STYLES.agendado
+                      }`}
+                    >
+                      {STATUS_LABELS[item.status] ?? item.status}
+                    </span>
+                  </div>
                 </Link>
               </li>
             ))}

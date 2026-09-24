@@ -23,6 +23,9 @@ create table if not exists specialties (
 -- Tabela: doctors
 -- Login e senha (hash bcrypt) fornecidos pela Facilitta.
 -- ------------------------------------------------------------
+-- booth_token é o link fixo e não divulgado da "cabine de atendimento"
+-- (o computador físico usado pelos pacientes presenciais): mostra a
+-- fila desse médico e deixa entrar na sala sem login.
 create table if not exists doctors (
   id uuid primary key default gen_random_uuid(),
   name text not null,
@@ -30,6 +33,7 @@ create table if not exists doctors (
   password_hash text not null,
   specialty_id uuid references specialties(id),
   active boolean not null default true,
+  booth_token text not null unique default translate(encode(gen_random_bytes(18), 'base64'), '+/=', '-_'),
   created_at timestamptz not null default now()
 );
 
@@ -88,6 +92,7 @@ create table if not exists appointments (
   access_token text not null unique default translate(encode(gen_random_bytes(18), 'base64'), '+/=', '-_'),
   queue_position integer,
   called_at timestamptz,
+  patient_joined_at timestamptz,
   daily_room_name text,
   doctor_notes text,
   created_at timestamptz not null default now()

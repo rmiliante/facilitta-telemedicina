@@ -20,7 +20,9 @@ export async function GET() {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("appointments")
-    .select("id, scheduled_at, status, queue_position, called_at, patients(id, full_name), specialties(name)")
+    .select(
+      "id, scheduled_at, status, queue_position, called_at, patient_joined_at, patients(id, full_name), specialties(name)"
+    )
     .eq("doctor_id", session.doctorId)
     .gte("scheduled_at", dayStart)
     .lt("scheduled_at", dayEnd)
