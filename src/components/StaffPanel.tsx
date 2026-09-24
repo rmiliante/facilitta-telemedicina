@@ -265,6 +265,7 @@ function FilaTab() {
   const [patientQuery, setPatientQuery] = useState("");
   const [patientDropdownOpen, setPatientDropdownOpen] = useState(false);
   const [boothCopied, setBoothCopied] = useState(false);
+  const [scheduledPatientIds, setScheduledPatientIds] = useState<Set<string>>(new Set());
 
   function copyBoothLink() {
     const url = `${window.location.origin}/atendimento`;
@@ -315,6 +316,27 @@ function FilaTab() {
     const timeout = setTimeout(() => loadQueue(doctorId, date), 0);
     return () => clearTimeout(timeout);
   }, [doctorId, date, loadQueue]);
+
+  // Quem já está agendado nessa especialidade/data não deve aparecer na
+  // busca de "adicionar à fila" (evita duplicar o mesmo paciente).
+  useEffect(() => {
+    if (!addForm.specialtyId || !date) {
+      const timeout = setTimeout(() => setScheduledPatientIds(new Set()), 0);
+      return () => clearTimeout(timeout);
+    }
+    let cancelled = false;
+    fetch(`/api/admin/appointments/scheduled-patients?date=${date}&specialtyId=${addForm.specialtyId}`)
+      .then((res) => (res.ok ? res.json() : { patientIds: [] }))
+      .then((data) => {
+        if (!cancelled) setScheduledPatientIds(new Set(data.patientIds ?? []));
+      })
+      .catch(() => {
+        if (!cancelled) setScheduledPatientIds(new Set());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [addForm.specialtyId, date]);
 
   async function saveOrder(newQueue: QueueItem[]) {
     setQueue(newQueue);
@@ -391,10 +413,13 @@ function FilaTab() {
   const onlyDigits = (s: string) => s.replace(/\D/g, "");
   const normalizedQuery = patientQuery.trim().toLowerCase();
   const queryDigits = onlyDigits(patientQuery);
+  const selectablePatients = patients.filter(
+    (p) => p.id === addForm.patientId || !scheduledPatientIds.has(p.id)
+  );
   const filteredPatients =
     normalizedQuery.length === 0
-      ? patients
-      : patients.filter((p) => {
+      ? selectablePatients
+      : selectablePatients.filter((p) => {
           const nameMatch = p.full_name.toLowerCase().includes(normalizedQuery);
           const cpfMatch = queryDigits.length > 0 && (p.cpf ?? "").replace(/\D/g, "").includes(queryDigits);
           return nameMatch || cpfMatch;
@@ -534,6 +559,11 @@ function FilaTab() {
             {selectedPatient && !patientDropdownOpen && (
               <span className="mt-1 block text-[11px] text-brand-teal-dark">
                 Selecionado: {selectedPatient.full_name}
+              </span>
+            )}
+            {!selectedPatient && addForm.specialtyId && selectablePatients.length < patients.length && (
+              <span className="mt-1 block text-[11px] text-zinc-400">
+                Pacientes já agendados nessa especialidade/data não aparecem na busca.
               </span>
             )}
             {patientDropdownOpen && (

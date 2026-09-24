@@ -1004,6 +1004,31 @@ function AgendaTab() {
   const [editForm, setEditForm] = useState({ doctorId: "", scheduledDate: "" });
   const [editSaving, setEditSaving] = useState(false);
   const [boothCopied, setBoothCopied] = useState(false);
+  const [scheduledPatientIds, setScheduledPatientIds] = useState<Set<string>>(new Set());
+
+  // Busca quem já está agendado nessa data pra essa especialidade, pra
+  // tirar da lista de seleção (evita marcar o mesmo paciente duas vezes
+  // na mesma especialidade no mesmo dia).
+  useEffect(() => {
+    if (!form.specialtyId || !form.scheduledDate) {
+      const timeout = setTimeout(() => setScheduledPatientIds(new Set()), 0);
+      return () => clearTimeout(timeout);
+    }
+    let cancelled = false;
+    fetch(
+      `/api/admin/appointments/scheduled-patients?date=${form.scheduledDate}&specialtyId=${form.specialtyId}`
+    )
+      .then((res) => (res.ok ? res.json() : { patientIds: [] }))
+      .then((data) => {
+        if (!cancelled) setScheduledPatientIds(new Set(data.patientIds ?? []));
+      })
+      .catch(() => {
+        if (!cancelled) setScheduledPatientIds(new Set());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [form.specialtyId, form.scheduledDate]);
 
   function copyBoothLink() {
     const url = `${window.location.origin}/atendimento`;
@@ -1116,6 +1141,12 @@ function AgendaTab() {
     (d) => !form.specialtyId || d.specialty_id === form.specialtyId
   );
 
+  // Some quem já tem consulta marcada nessa especialidade/data da lista
+  // (a menos que já esteja selecionado, pra não sumir o valor escolhido).
+  const patientsForSelection = patients.filter(
+    (p) => p.id === form.patientId || !scheduledPatientIds.has(p.id)
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-brand-teal-dark bg-brand-teal/10 px-4 py-3">
@@ -1144,12 +1175,17 @@ function AgendaTab() {
             className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
           >
             <option value="">Selecione...</option>
-            {patients.map((p) => (
+            {patientsForSelection.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.full_name}
               </option>
             ))}
           </select>
+          {form.specialtyId && form.scheduledDate && patientsForSelection.length < patients.length && (
+            <span className="mt-1 block text-[11px] text-zinc-400">
+              Pacientes já agendados nessa especialidade/data não aparecem na lista.
+            </span>
+          )}
         </label>
         <label className="text-xs">
           <span className="mb-1 block font-medium text-zinc-600">Especialidade</span>
