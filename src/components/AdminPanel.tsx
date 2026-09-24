@@ -1177,6 +1177,7 @@ function PatientHistoryPanel({ patientId }: { patientId: string }) {
   const [history, setHistory] = useState<PatientHistoryItem[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1209,61 +1210,75 @@ function PatientHistoryPanel({ patientId }: { patientId: string }) {
 
   return (
     <ul className="space-y-2">
-      {history.map((h) => (
-        <li key={h.id} className="rounded-md border border-zinc-200 bg-brand-bg/40 p-3 text-xs">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="font-medium text-zinc-700">
-              {formatHistoryDateTime(h.scheduled_at)}
-              {h.specialties?.name ? ` · ${h.specialties.name}` : ""}
-              {h.doctors?.name ? ` · Dr(a). ${h.doctors.name}` : ""}
-            </p>
-            <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-600">
-              {STATUS_LABELS[h.status] ?? h.status}
-            </span>
-          </div>
-          <p className="mt-1 text-zinc-500">
-            {h.called_at ? `Início ${formatHistoryTime(h.called_at)}` : "Início não registrado"}
-            {h.finished_at ? ` · Fim ${formatHistoryTime(h.finished_at)}` : ""}
-            {h.called_at && h.finished_at
-              ? ` · Duração ${formatHistoryDuration(h.called_at, h.finished_at)}`
-              : ""}
-          </p>
-          {VITAL_HISTORY_LABELS.some(([key]) => h[key]) && (
-            <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-zinc-600">
-              {VITAL_HISTORY_LABELS.filter(([key]) => h[key]).map(([key, label]) => (
-                <span key={key}>
-                  <span className="font-medium text-zinc-500">{label}:</span> {h[key]}
-                </span>
-              ))}
-            </div>
-          )}
-          {h.doctor_notes && (
-            <p className="mt-1.5 whitespace-pre-wrap text-zinc-700">{h.doctor_notes}</p>
-          )}
-          {h.prescription_url && (
-            <a
-              href={h.prescription_url}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-1.5 inline-block text-brand-teal-dark underline"
+      {history.map((h) => {
+        const isOpen = expandedItemId === h.id;
+        return (
+          <li key={h.id} className="rounded-md border border-zinc-200 bg-brand-bg/40 text-xs">
+            <button
+              type="button"
+              onClick={() => setExpandedItemId((cur) => (cur === h.id ? null : h.id))}
+              className="flex w-full flex-wrap items-center justify-between gap-2 p-3 text-left"
             >
-              Ver receita
-            </a>
-          )}
-          {h.memed_prescription_summary && (
-            <p className="mt-1.5 text-brand-teal-dark">
-              {h.memed_prescription_summary}
-              {h.memed_prescription_at ? ` · ${formatHistoryTime(h.memed_prescription_at)}` : ""}
-            </p>
-          )}
-          {!h.doctor_notes &&
-            !h.prescription_url &&
-            !h.memed_prescription_summary &&
-            !VITAL_HISTORY_LABELS.some(([key]) => h[key]) && (
-            <p className="mt-1.5 text-zinc-400">Sem anotações registradas nesse atendimento.</p>
-          )}
-        </li>
-      ))}
+              <span className="flex items-center gap-1.5 font-medium text-zinc-700">
+                <span className={`text-zinc-400 transition-transform ${isOpen ? "rotate-90" : ""}`}>
+                  ▶
+                </span>
+                {formatHistoryDateTime(h.scheduled_at)}
+                {h.specialties?.name ? ` · ${h.specialties.name}` : ""}
+                {h.doctors?.name ? ` · Dr(a). ${h.doctors.name}` : ""}
+              </span>
+              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-600">
+                {STATUS_LABELS[h.status] ?? h.status}
+              </span>
+            </button>
+            {isOpen && (
+              <div className="border-t border-zinc-200 px-3 pb-3 pt-2">
+                <p className="text-zinc-500">
+                  {h.called_at ? `Início ${formatHistoryTime(h.called_at)}` : "Início não registrado"}
+                  {h.finished_at ? ` · Fim ${formatHistoryTime(h.finished_at)}` : ""}
+                  {h.called_at && h.finished_at
+                    ? ` · Duração ${formatHistoryDuration(h.called_at, h.finished_at)}`
+                    : ""}
+                </p>
+                {VITAL_HISTORY_LABELS.some(([key]) => h[key]) && (
+                  <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-zinc-600">
+                    {VITAL_HISTORY_LABELS.filter(([key]) => h[key]).map(([key, label]) => (
+                      <span key={key}>
+                        <span className="font-medium text-zinc-500">{label}:</span> {h[key]}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {h.doctor_notes && (
+                  <p className="mt-1.5 whitespace-pre-wrap text-zinc-700">{h.doctor_notes}</p>
+                )}
+                {h.prescription_url && (
+                  <a
+                    href={h.prescription_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1.5 inline-block text-brand-teal-dark underline"
+                  >
+                    Ver receita
+                  </a>
+                )}
+                {h.memed_prescription_summary && (
+                  <p className="mt-1.5 text-brand-teal-dark">
+                    {h.memed_prescription_summary}
+                    {h.memed_prescription_at ? ` · ${formatHistoryTime(h.memed_prescription_at)}` : ""}
+                  </p>
+                )}
+                {!h.doctor_notes &&
+                  !h.prescription_url &&
+                  !h.memed_prescription_summary &&
+                  !VITAL_HISTORY_LABELS.some(([key]) => h[key]) && (
+                    <p className="mt-1.5 text-zinc-400">Sem anotações registradas nesse atendimento.</p>
+                  )}
+              </div>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }

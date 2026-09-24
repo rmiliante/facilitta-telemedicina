@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import LogoutButton from "./LogoutButton";
+import { uploadPatientDocuments as uploadPatientDocumentsDirect } from "@/lib/uploadPatientDocument";
 
 interface Doctor {
   id: string;
@@ -814,18 +815,19 @@ interface DocFileWithUrl extends DocFile {
   url: string | null;
 }
 
-/** Envia arquivos direto pro cadastro do paciente (usado no formulário de agendamento). */
+/**
+ * Envia arquivos direto pro cadastro do paciente (usado no formulário
+ * de agendamento) — direto pro Storage, sem passar pelo nosso
+ * servidor, pra PDFs grandes não serem recusados.
+ */
 async function uploadPatientDocuments(patientId: string, files: File[]) {
-  const formData = new FormData();
-  files.forEach((f) => formData.append("files", f));
-  const res = await fetch(`/api/admin/patients/${patientId}/documents`, {
-    method: "POST",
-    body: formData,
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
+  try {
+    await uploadPatientDocumentsDirect(`/api/admin/patients/${patientId}/documents`, files);
+  } catch (err) {
     alert(
-      `Consulta agendada, mas houve um problema ao anexar os documentos: ${err.error ?? "erro desconhecido"}. Tente anexar de novo pelo cadastro do paciente ou pela fila.`
+      `Consulta agendada, mas houve um problema ao anexar os documentos: ${
+        err instanceof Error ? err.message : "erro desconhecido"
+      }. Tente anexar de novo pelo cadastro do paciente ou pela fila.`
     );
   }
 }
@@ -865,20 +867,16 @@ function DocumentsPanel({
     if (selected.length === 0) return;
     setUploading(true);
     try {
-      const formData = new FormData();
-      selected.forEach((f) => formData.append("files", f));
-      const res = await fetch(`/api/admin/patients/${patientId}/documents`, {
-        method: "POST",
-        body: formData,
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setFiles(data.files);
-        onChange(data.files);
-      } else {
-        const err = await res.json().catch(() => ({}));
-        alert(err.error ?? "Falha ao anexar documento");
-      }
+      // Envia direto pro Storage (sem passar pelo nosso servidor), pra
+      // PDFs grandes (ex: todos os exames juntos) não serem recusados.
+      const updated = await uploadPatientDocumentsDirect<DocFileWithUrl>(
+        `/api/admin/patients/${patientId}/documents`,
+        selected
+      );
+      setFiles(updated);
+      onChange(updated);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Falha ao anexar documento");
     } finally {
       setUploading(false);
       e.target.value = "";

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { uploadPatientDocuments } from "@/lib/uploadPatientDocument";
 
 export interface DocFile {
   path: string;
@@ -81,20 +82,16 @@ export function DocumentsPanel({
     if (selected.length === 0) return;
     setUploading(true);
     try {
-      const formData = new FormData();
-      selected.forEach((f) => formData.append("files", f));
-      const res = await fetch(`/api/doctor/patients/${patientId}/documents`, {
-        method: "POST",
-        body: formData,
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setFiles(data.files);
-        onChange(data.files);
-      } else {
-        const err = await res.json().catch(() => ({}));
-        alert(err.error ?? "Falha ao anexar pedido de exame");
-      }
+      // Envia direto pro Storage (sem passar pelo nosso servidor), pra
+      // PDFs grandes (ex: todos os exames juntos) não serem recusados.
+      const updated = await uploadPatientDocuments<DocFileWithUrl>(
+        `/api/doctor/patients/${patientId}/documents`,
+        selected
+      );
+      setFiles(updated);
+      onChange(updated);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Falha ao anexar pedido de exame");
     } finally {
       setUploading(false);
       e.target.value = "";
