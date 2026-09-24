@@ -524,7 +524,8 @@ function FilaTab() {
           type="button"
           onClick={() => {
             setShowAddForm((s) => !s);
-            setAddForm({ patientId: "", specialtyId: "" });
+            const doc = doctors.find((d) => d.id === doctorId);
+            setAddForm({ patientId: "", specialtyId: doc?.specialty_id ?? "" });
             setPatientQuery("");
             setPatientDropdownOpen(false);
           }}
