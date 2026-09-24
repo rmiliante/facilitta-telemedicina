@@ -382,10 +382,13 @@ export default function DoctorQueueClient() {
           </h2>
           <ul className="space-y-2">
             {finished.map((item) => (
-              <li key={item.id}>
+              <li
+                key={item.id}
+                className="rounded-lg border border-zinc-200 bg-white shadow-sm hover:border-brand-teal-dark"
+              >
                 <Link
                   href={`/medico/consulta/${item.id}`}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white px-4 py-3 text-sm shadow-sm hover:border-brand-teal-dark"
+                  className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
                 >
                   <div className="min-w-0">
                     <p className="truncate font-medium text-zinc-800">
@@ -393,14 +396,32 @@ export default function DoctorQueueClient() {
                     </p>
                     <p className="text-xs text-zinc-500">{item.specialties?.name ?? ""}</p>
                   </div>
-                  <span
-                    className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                      STATUS_STYLES[item.status] ?? STATUS_STYLES.agendado
-                    }`}
-                  >
-                    {STATUS_LABELS[item.status] ?? item.status}
-                  </span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                        STATUS_STYLES[item.status] ?? STATUS_STYLES.agendado
+                      }`}
+                    >
+                      {STATUS_LABELS[item.status] ?? item.status}
+                    </span>
+                    {item.patients?.id && (
+                      <AttachmentsButton
+                        patientId={item.patients.id}
+                        count={item.patients.documents?.length ?? 0}
+                        isOpen={expandedPatientId === item.patients.id}
+                        onToggle={toggleExpanded}
+                      />
+                    )}
+                  </div>
                 </Link>
+                {item.patients?.id && expandedPatientId === item.patients.id && (
+                  <div className="px-4 pb-3">
+                    <DocumentsPanel
+                      patientId={item.patients.id}
+                      onChange={(files) => updatePatientDocuments(item.patients!.id, files)}
+                    />
+                  </div>
+                )}
               </li>
             ))}
           </ul>
