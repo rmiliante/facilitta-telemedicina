@@ -57,6 +57,63 @@ export async function addPatientDocuments(patientId: string, files: File[]): Pro
   return nextDocuments;
 }
 
+/**
+ * Prepara um envio direto do navegador pro Storage (URL assinada de
+ * upload): o arquivo grande vai direto pro Supabase sem passar pelo
+ * nosso servidor, evitando o limite de tamanho de requisição da
+ * hospedagem (é o que fazia PDFs grandes com todos os exames juntos
+ * serem recusados). Depois do upload, chame finalizePatientDocument
+ * pra registrar o arquivo na ficha do paciente.
+ */
+export async function createPatientDocumentUploadTicket(
+  patientId: string,
+  fileName: string
+): Promise<{ path: string; token: string }> {
+  const supabase = getSupabaseAdmin();
+  const path = `pacientes/${patientId}/${Date.now()}-${crypto.randomUUID()}-${sanitizeFileName(fileName)}`;
+
+  const { data, error } = await supabase.storage.from(EXAM_FILES_BUCKET).createSignedUploadUrl(path);
+
+  if (error || !data) {
+    throw new Error("Falha ao preparar o envio do arquivo");
+  }
+
+  return { path, token: data.token };
+}
+
+/** Registra na ficha do paciente um arquivo que já foi enviado direto pro Storage (ver ticket acima). */
+export async function finalizePatientDocument(
+  patientId: string,
+  path: string,
+  name: string
+): Promise<PatientDocument[]> {
+  const supabase = getSupabaseAdmin();
+
+  const { data: current, error: fetchErr } = await supabase
+    .from("patients")
+    .select("documents")
+    .eq("id", patientId)
+    .maybeSingle();
+
+  if (fetchErr || !current) {
+    throw new Error("Paciente não encontrado");
+  }
+
+  const existing = (current.documents as PatientDocument[] | null) ?? [];
+  const nextDocuments = [...existing, { path, name, uploaded_at: new Date().toISOString() }];
+
+  const { error: updateErr } = await supabase
+    .from("patients")
+    .update({ documents: nextDocuments })
+    .eq("id", patientId);
+
+  if (updateErr) {
+    throw new Error("Arquivo enviado, mas falha ao salvar no cadastro do paciente");
+  }
+
+  return nextDocuments;
+}
+
 export async function removePatientDocument(patientId: string, path: string): Promise<PatientDocument[]> {
   const supabase = getSupabaseAdmin();
 
