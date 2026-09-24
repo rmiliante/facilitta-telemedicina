@@ -197,6 +197,8 @@ function FilaTab() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [addForm, setAddForm] = useState({ patientId: "", specialtyId: "" });
   const [adding, setAdding] = useState(false);
+  const [patientQuery, setPatientQuery] = useState("");
+  const [patientDropdownOpen, setPatientDropdownOpen] = useState(false);
 
   const loadBase = useCallback(async () => {
     const [dRes, sRes, pRes] = await Promise.all([
@@ -296,10 +298,33 @@ function FilaTab() {
   }
 
   const selectedDoctor = doctors.find((d) => d.id === doctorId);
+  const selectedPatient = patients.find((p) => p.id === addForm.patientId);
+
+  const onlyDigits = (s: string) => s.replace(/\D/g, "");
+  const normalizedQuery = patientQuery.trim().toLowerCase();
+  const queryDigits = onlyDigits(patientQuery);
+  const filteredPatients =
+    normalizedQuery.length === 0
+      ? patients
+      : patients.filter((p) => {
+          const nameMatch = p.full_name.toLowerCase().includes(normalizedQuery);
+          const cpfMatch = queryDigits.length > 0 && (p.cpf ?? "").replace(/\D/g, "").includes(queryDigits);
+          return nameMatch || cpfMatch;
+        });
+
+  function selectPatient(p: Patient) {
+    setAddForm((f) => ({ ...f, patientId: p.id }));
+    setPatientQuery(p.full_name);
+    setPatientDropdownOpen(false);
+  }
 
   async function handleAddToQueue(e: React.FormEvent) {
     e.preventDefault();
     if (!doctorId || !date) return;
+    if (!addForm.patientId) {
+      alert("Selecione um paciente na busca antes de confirmar.");
+      return;
+    }
     setAdding(true);
     try {
       const res = await fetch("/api/admin/appointments", {
@@ -318,6 +343,7 @@ function FilaTab() {
         return;
       }
       setAddForm({ patientId: "", specialtyId: "" });
+      setPatientQuery("");
       setShowAddForm(false);
       await loadQueue(doctorId, date);
     } finally {
@@ -360,7 +386,12 @@ function FilaTab() {
         </button>
         <button
           type="button"
-          onClick={() => setShowAddForm((s) => !s)}
+          onClick={() => {
+            setShowAddForm((s) => !s);
+            setAddForm({ patientId: "", specialtyId: "" });
+            setPatientQuery("");
+            setPatientDropdownOpen(false);
+          }}
           className="ml-auto rounded-md bg-brand-navy px-4 py-1.5 text-sm font-medium text-white"
         >
           {showAddForm ? "Cancelar" : "+ Adicionar à fila"}
@@ -372,21 +403,53 @@ function FilaTab() {
           onSubmit={handleAddToQueue}
           className="grid gap-3 rounded-lg border border-brand-teal-dark bg-white p-4 sm:grid-cols-2"
         >
-          <label className="text-xs">
-            <span className="mb-1 block font-medium text-zinc-600">Paciente</span>
-            <select
+          <label className="relative text-xs">
+            <span className="mb-1 block font-medium text-zinc-600">Paciente (nome ou CPF)</span>
+            <input
+              type="text"
               required
-              value={addForm.patientId}
-              onChange={(e) => setAddForm((f) => ({ ...f, patientId: e.target.value }))}
+              autoComplete="off"
+              value={patientQuery}
+              onChange={(e) => {
+                setPatientQuery(e.target.value);
+                setAddForm((f) => ({ ...f, patientId: "" }));
+                setPatientDropdownOpen(true);
+              }}
+              onFocus={() => setPatientDropdownOpen(true)}
+              onBlur={() => setTimeout(() => setPatientDropdownOpen(false), 150)}
+              placeholder="Digite pra buscar..."
               className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
-            >
-              <option value="">Selecione...</option>
-              {patients.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.full_name}
-                </option>
-              ))}
-            </select>
+            />
+            {selectedPatient && !patientDropdownOpen && (
+              <span className="mt-1 block text-[11px] text-brand-teal-dark">
+                Selecionado: {selectedPatient.full_name}
+              </span>
+            )}
+            {patientDropdownOpen && (
+              <ul className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-zinc-200 bg-white text-sm shadow-lg">
+                {filteredPatients.length === 0 ? (
+                  <li className="px-3 py-2 text-xs text-zinc-400">
+                    Nenhum paciente encontrado. Cadastre em &quot;Pacientes&quot; primeiro.
+                  </li>
+                ) : (
+                  filteredPatients.slice(0, 30).map((p) => (
+                    <li key={p.id}>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => selectPatient(p)}
+                        className="flex w-full flex-col items-start px-3 py-2 text-left hover:bg-zinc-50"
+                      >
+                        <span className="font-medium text-zinc-800">{p.full_name}</span>
+                        <span className="text-[11px] text-zinc-500">
+                          {p.cpf ? `CPF ${p.cpf}` : "sem CPF cadastrado"}
+                        </span>
+                      </button>
+                    </li>
+                  ))
+                )}
+              </ul>
+            )}
           </label>
           <label className="text-xs">
             <span className="mb-1 block font-medium text-zinc-600">Especialidade</span>
