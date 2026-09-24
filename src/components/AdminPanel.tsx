@@ -14,7 +14,6 @@ interface Doctor {
   email: string;
   specialty_id: string | null;
   active: boolean;
-  booth_token?: string;
   specialties: { name: string } | null;
 }
 
@@ -432,16 +431,6 @@ function DoctorsTab() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", email: "", specialtyId: "", password: "" });
   const [editSaving, setEditSaving] = useState(false);
-  const [copiedBoothId, setCopiedBoothId] = useState<string | null>(null);
-
-  function copyBoothLink(d: Doctor) {
-    if (!d.booth_token) return;
-    const url = `${window.location.origin}/atendimento/${d.booth_token}`;
-    navigator.clipboard.writeText(url).then(() => {
-      setCopiedBoothId(d.id);
-      setTimeout(() => setCopiedBoothId(null), 2000);
-    });
-  }
 
   const load = useCallback(async () => {
     const [dRes, sRes] = await Promise.all([
@@ -666,13 +655,6 @@ function DoctorsTab() {
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <button
-                  onClick={() => copyBoothLink(d)}
-                  className="rounded-md border border-zinc-300 px-2.5 py-1 text-[10px] font-medium text-zinc-600 hover:bg-zinc-50"
-                  title="Link da cabine de atendimento presencial desse médico"
-                >
-                  {copiedBoothId === d.id ? "Copiado!" : "Copiar link da cabine"}
-                </button>
                 <button
                   onClick={() => startEdit(d)}
                   className="rounded-md border border-zinc-300 px-2.5 py-1 text-[10px] font-medium text-zinc-600 hover:bg-zinc-50"
@@ -1021,6 +1003,15 @@ function AgendaTab() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ doctorId: "", scheduledDate: "" });
   const [editSaving, setEditSaving] = useState(false);
+  const [boothCopied, setBoothCopied] = useState(false);
+
+  function copyBoothLink() {
+    const url = `${window.location.origin}/atendimento`;
+    navigator.clipboard.writeText(url).then(() => {
+      setBoothCopied(true);
+      setTimeout(() => setBoothCopied(false), 2000);
+    });
+  }
 
   const load = useCallback(async () => {
     const [aRes, pRes, dRes, sRes] = await Promise.all([
@@ -1127,6 +1118,22 @@ function AgendaTab() {
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-brand-teal-dark bg-brand-teal/10 px-4 py-3">
+        <div>
+          <p className="text-xs font-semibold text-brand-navy">Link fixo da cabine de atendimento</p>
+          <p className="text-[11px] text-zinc-500">
+            Deixe aberto sempre no computador da cabine — é o mesmo link pra qualquer médico/paciente.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={copyBoothLink}
+          className="shrink-0 rounded-md border border-brand-teal-dark bg-white px-3 py-1.5 text-xs font-medium text-brand-teal-dark hover:bg-brand-teal/10"
+        >
+          {boothCopied ? "Copiado!" : "Copiar link /atendimento"}
+        </button>
+      </div>
+
       <form onSubmit={handleCreate} className="grid gap-3 rounded-lg border border-zinc-200 bg-white p-4 sm:grid-cols-2">
         <label className="text-xs sm:col-span-2">
           <span className="mb-1 block font-medium text-zinc-600">Paciente</span>

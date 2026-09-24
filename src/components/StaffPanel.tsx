@@ -199,6 +199,15 @@ function FilaTab() {
   const [adding, setAdding] = useState(false);
   const [patientQuery, setPatientQuery] = useState("");
   const [patientDropdownOpen, setPatientDropdownOpen] = useState(false);
+  const [boothCopied, setBoothCopied] = useState(false);
+
+  function copyBoothLink() {
+    const url = `${window.location.origin}/atendimento`;
+    navigator.clipboard.writeText(url).then(() => {
+      setBoothCopied(true);
+      setTimeout(() => setBoothCopied(false), 2000);
+    });
+  }
 
   const loadBase = useCallback(async () => {
     const [dRes, sRes, pRes] = await Promise.all([
@@ -358,6 +367,22 @@ function FilaTab() {
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-brand-teal-dark bg-brand-teal/10 px-4 py-3">
+        <div>
+          <p className="text-xs font-semibold text-brand-navy">Link fixo da cabine de atendimento</p>
+          <p className="text-[11px] text-zinc-500">
+            Mesmo link sempre — deixe aberto no computador da cabine.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={copyBoothLink}
+          className="shrink-0 rounded-md border border-brand-teal-dark bg-white px-3 py-1.5 text-xs font-medium text-brand-teal-dark hover:bg-brand-teal/10"
+        >
+          {boothCopied ? "Copiado!" : "Copiar link /atendimento"}
+        </button>
+      </div>
+
       <div className="flex flex-wrap items-end gap-3 rounded-lg border border-zinc-200 bg-white p-4">
         <label className="text-xs">
           <span className="mb-1 block font-medium text-zinc-600">Médico</span>
@@ -555,10 +580,10 @@ function FilaTab() {
                   {item.status === "agendado" && (
                     <button
                       onClick={() => markCalled(item)}
-                      title="Marca esse paciente como o atendimento atual, mesmo que não seja o primeiro da fila"
+                      title="Manda esse paciente pra tela da cabine de atendimento, mesmo que não seja o primeiro da fila"
                       className="rounded-md bg-brand-teal-dark px-2.5 py-1 text-[10px] font-medium text-white hover:opacity-90"
                     >
-                      Iniciar atendimento
+                      Enviar para atendimento
                     </button>
                   )}
                   <button

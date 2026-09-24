@@ -13,8 +13,9 @@ import {
 // Áreas com regras de acesso diferentes:
 //  - /paciente/**  e  /api/appointments/**  → público (o token da
 //    própria consulta é validado dentro da rota).
-//  - /atendimento/** e /api/booth/**        → público (link fixo e
-//    não divulgado da cabine de atendimento presencial, por médico).
+//  - /atendimento   e /api/booth/**         → público (link único,
+//    fixo e genérico da cabine de atendimento presencial — não
+//    depende de médico nem paciente específico).
 //  - /medico/**    e  /api/doctor/**        → exige sessão de médico
 //    (cookie JWT, criado no login).
 //  - /equipe/login                          → público (login da
