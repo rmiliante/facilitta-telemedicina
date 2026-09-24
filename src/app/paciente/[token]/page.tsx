@@ -7,6 +7,7 @@ interface AppointmentInfo {
   id: string;
   scheduled_at: string;
   status: string;
+  prescription_url: string | null;
   patients: { full_name: string } | null;
   specialties: { name: string } | null;
   doctors: { name: string } | null;
@@ -101,14 +102,27 @@ export default function PatientAppointmentPage({
               })}
             </p>
 
-            <button
-              onClick={handleJoin}
-              disabled={joining}
-              className="mt-6 w-full rounded-md bg-brand-navy px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
-            >
-              {joining ? "Entrando..." : "Entrar na consulta"}
-            </button>
+            {info.status !== "concluido" && (
+              <button
+                onClick={handleJoin}
+                disabled={joining}
+                className="mt-6 w-full rounded-md bg-brand-navy px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {joining ? "Entrando..." : "Entrar na consulta"}
+              </button>
+            )}
             {joinError && <p className="mt-3 text-sm text-red-600">{joinError}</p>}
+
+            {info.prescription_url && (
+              <a
+                href={info.prescription_url}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 block w-full rounded-md border border-brand-teal-dark px-4 py-2.5 text-sm font-medium text-brand-teal-dark hover:bg-brand-teal/10"
+              >
+                Ver receita
+              </a>
+            )}
 
             <p className="mt-4 text-[11px] text-zinc-400">
               Recomendamos entrar com alguns minutos de antecedência e testar

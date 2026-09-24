@@ -97,6 +97,7 @@ create table if not exists appointments (
   booth_rejected_at timestamptz,
   daily_room_name text,
   doctor_notes text,
+  prescription_url text, -- link da receita gerada e assinada na Memed (login pessoal do médico lá)
   created_at timestamptz not null default now()
 );
 

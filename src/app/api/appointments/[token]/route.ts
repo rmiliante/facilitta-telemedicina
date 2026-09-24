@@ -16,7 +16,7 @@ export async function GET(
   const { data, error } = await supabase
     .from("appointments")
     .select(
-      "id, scheduled_at, status, patients(full_name), specialties(name), doctors(name)"
+      "id, scheduled_at, status, prescription_url, patients(full_name), specialties(name), doctors(name)"
     )
     .eq("access_token", token)
     .maybeSingle();

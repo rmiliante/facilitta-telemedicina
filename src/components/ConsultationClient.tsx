@@ -57,6 +57,10 @@ export default function ConsultationClient({
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesSavedAt, setNotesSavedAt] = useState<Date | null>(null);
 
+  const [prescriptionUrl, setPrescriptionUrl] = useState(appointment.prescription_url ?? "");
+  const [savingPrescription, setSavingPrescription] = useState(false);
+  const [prescriptionSavedAt, setPrescriptionSavedAt] = useState<Date | null>(null);
+
   const [videoStarted, setVideoStarted] = useState(false);
   const [room, setRoom] = useState<{ roomUrl: string; token: string } | null>(null);
   const [loadingRoom, setLoadingRoom] = useState(false);
@@ -101,6 +105,23 @@ export default function ConsultationClient({
     }
   }
 
+  async function handleSavePrescription() {
+    setSavingPrescription(true);
+    try {
+      const res = await fetch(`/api/doctor/appointments/${appointmentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prescriptionUrl }),
+      });
+      if (res.ok) {
+        setPrescriptionSavedAt(new Date());
+        setAppointment((a) => ({ ...a, prescription_url: prescriptionUrl.trim() || null }));
+      }
+    } finally {
+      setSavingPrescription(false);
+    }
+  }
+
   async function handleFinish() {
     if (!confirm("Finalizar essa consulta? Isso encerra o atendimento e registra o horário de término.")) {
       return;
@@ -121,6 +142,14 @@ export default function ConsultationClient({
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notes]);
+
+  // Idem pro link da receita gerada na Memed.
+  useEffect(() => {
+    if (prescriptionUrl === (appointment.prescription_url ?? "")) return;
+    const t = setTimeout(handleSavePrescription, 1500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prescriptionUrl]);
 
   const patient = appointment.patients;
 
@@ -247,9 +276,64 @@ export default function ConsultationClient({
                     {h.doctor_notes && (
                       <p className="mt-1 whitespace-pre-wrap text-zinc-600">{h.doctor_notes}</p>
                     )}
+                    {h.prescription_url && (
+                      <a
+                        href={h.prescription_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-1 inline-block text-brand-teal-dark underline"
+                      >
+                        Ver receita
+                      </a>
+                    )}
                   </li>
                 ))}
               </ul>
+            )}
+          </div>
+
+          <div className="border-t border-zinc-200 p-4">
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-xs font-medium text-zinc-600">Receita (Memed)</span>
+              {savingPrescription ? (
+                <span className="text-[10px] text-zinc-400">Salvando...</span>
+              ) : (
+                prescriptionSavedAt && (
+                  <span className="text-[10px] text-zinc-400">
+                    Salvo às {prescriptionSavedAt.toLocaleTimeString("pt-BR")}
+                  </span>
+                )
+              )}
+            </div>
+            <p className="mb-2 text-[11px] text-zinc-400">
+              Gere e assine a receita com seu login pessoal na Memed, depois cole aqui o link
+              da receita pra ficar registrado nessa consulta e disponível pro paciente.
+            </p>
+            <a
+              href="https://memed.com.br/login"
+              target="_blank"
+              rel="noreferrer"
+              className="mb-2 inline-block rounded-md border border-brand-teal-dark px-3 py-1.5 text-xs font-medium text-brand-teal-dark hover:bg-brand-teal/10"
+            >
+              Abrir Memed ↗
+            </a>
+            <input
+              type="url"
+              value={prescriptionUrl}
+              onChange={(e) => setPrescriptionUrl(e.target.value)}
+              onBlur={handleSavePrescription}
+              placeholder="Cole aqui o link da receita gerada na Memed"
+              className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-xs outline-none focus:border-brand-teal-dark"
+            />
+            {appointment.prescription_url && (
+              <a
+                href={appointment.prescription_url}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-1 inline-block text-[11px] text-brand-teal-dark underline"
+              >
+                Abrir receita salva
+              </a>
             )}
           </div>
 
