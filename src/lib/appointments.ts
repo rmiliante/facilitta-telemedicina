@@ -26,6 +26,11 @@ export interface AppointmentDetail {
   prescription_url: string | null;
   memed_prescription_at: string | null;
   memed_prescription_summary: string | null;
+  vital_spo2: string | null;
+  vital_bpm: string | null;
+  vital_pa: string | null;
+  vital_peso: string | null;
+  vital_hgt: string | null;
   patient_id: string;
   patients: PatientRecord | null;
   specialties: { name: string } | null;
@@ -42,6 +47,11 @@ export interface HistoryItem {
   prescription_url: string | null;
   memed_prescription_at: string | null;
   memed_prescription_summary: string | null;
+  vital_spo2: string | null;
+  vital_bpm: string | null;
+  vital_pa: string | null;
+  vital_peso: string | null;
+  vital_hgt: string | null;
   specialties: { name: string } | null;
 }
 
@@ -54,7 +64,7 @@ export async function getOwnedAppointment(
   const { data, error } = await supabase
     .from("appointments")
     .select(
-      "id, doctor_id, status, scheduled_at, doctor_notes, called_at, finished_at, prescription_url, memed_prescription_at, memed_prescription_summary, patient_id, patients(*), specialties(name), doctors(memed_email, memed_linked_at)"
+      "id, doctor_id, status, scheduled_at, doctor_notes, called_at, finished_at, prescription_url, memed_prescription_at, memed_prescription_summary, vital_spo2, vital_bpm, vital_pa, vital_peso, vital_hgt, patient_id, patients(*), specialties(name), doctors(memed_email, memed_linked_at)"
     )
     .eq("id", id)
     .maybeSingle();
@@ -77,7 +87,7 @@ export async function getPatientHistory(
   const { data } = await supabase
     .from("appointments")
     .select(
-      "id, scheduled_at, status, doctor_notes, called_at, finished_at, prescription_url, memed_prescription_at, memed_prescription_summary, specialties(name)"
+      "id, scheduled_at, status, doctor_notes, called_at, finished_at, prescription_url, memed_prescription_at, memed_prescription_summary, vital_spo2, vital_bpm, vital_pa, vital_peso, vital_hgt, specialties(name)"
     )
     .eq("patient_id", patientId)
     .neq("id", excludeAppointmentId)
