@@ -209,7 +209,12 @@ function FilaTab() {
     if (dRes.ok) {
       const data = (await dRes.json()).doctors as Doctor[];
       setDoctors(data);
-      if (!doctorId && data.length > 0) setDoctorId(data[0].id);
+      if (!doctorId && data.length > 0) {
+        setDoctorId(data[0].id);
+        if (data[0].specialty_id) {
+          setAddForm((f) => ({ ...f, specialtyId: data[0].specialty_id as string }));
+        }
+      }
     }
     if (sRes.ok) setSpecialties((await sRes.json()).specialties);
     if (pRes.ok) setPatients((await pRes.json()).patients);
@@ -358,7 +363,14 @@ function FilaTab() {
           <span className="mb-1 block font-medium text-zinc-600">Médico</span>
           <select
             value={doctorId}
-            onChange={(e) => setDoctorId(e.target.value)}
+            onChange={(e) => {
+              const newDoctorId = e.target.value;
+              setDoctorId(newDoctorId);
+              const doc = doctors.find((d) => d.id === newDoctorId);
+              if (doc?.specialty_id) {
+                setAddForm((f) => ({ ...f, specialtyId: doc.specialty_id as string }));
+              }
+            }}
             className="w-full min-w-[12rem] rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
           >
             {doctors.map((d) => (
