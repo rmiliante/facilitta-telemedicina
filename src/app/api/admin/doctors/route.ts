@@ -6,7 +6,7 @@ export async function GET() {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("doctors")
-    .select("id, name, email, specialty_id, active, created_at, specialties(name)")
+    .select("id, name, email, specialty_id, active, memed_email, created_at, specialties(name)")
     .order("name", { ascending: true });
 
   if (error) {
@@ -16,7 +16,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const { name, email, password, specialtyId } = await req.json().catch(() => ({}));
+  const { name, email, password, specialtyId, memedEmail } = await req.json().catch(() => ({}));
 
   if (
     typeof name !== "string" ||
@@ -42,8 +42,9 @@ export async function POST(req: NextRequest) {
       email: email.trim().toLowerCase(),
       password_hash: passwordHash,
       specialty_id: typeof specialtyId === "string" && specialtyId ? specialtyId : null,
+      memed_email: typeof memedEmail === "string" && memedEmail.trim() ? memedEmail.trim().toLowerCase() : null,
     })
-    .select("id, name, email, specialty_id, active, created_at")
+    .select("id, name, email, specialty_id, active, memed_email, created_at")
     .single();
 
   if (error) {

@@ -24,6 +24,7 @@ export interface AppointmentDetail {
   patient_id: string;
   patients: PatientRecord | null;
   specialties: { name: string } | null;
+  doctors: { memed_email: string | null } | null;
 }
 
 export interface HistoryItem {
@@ -46,7 +47,7 @@ export async function getOwnedAppointment(
   const { data, error } = await supabase
     .from("appointments")
     .select(
-      "id, doctor_id, status, scheduled_at, doctor_notes, called_at, finished_at, prescription_url, patient_id, patients(*), specialties(name)"
+      "id, doctor_id, status, scheduled_at, doctor_notes, called_at, finished_at, prescription_url, patient_id, patients(*), specialties(name), doctors(memed_email)"
     )
     .eq("id", id)
     .maybeSingle();

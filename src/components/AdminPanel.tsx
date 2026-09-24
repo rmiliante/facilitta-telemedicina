@@ -14,6 +14,7 @@ interface Doctor {
   email: string;
   specialty_id: string | null;
   active: boolean;
+  memed_email: string | null;
   specialties: { name: string } | null;
 }
 
@@ -426,10 +427,10 @@ function SpecialtiesTab() {
 function DoctorsTab() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
-  const [form, setForm] = useState({ name: "", email: "", password: "", specialtyId: "" });
+  const [form, setForm] = useState({ name: "", email: "", password: "", specialtyId: "", memedEmail: "" });
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", email: "", specialtyId: "", password: "" });
+  const [editForm, setEditForm] = useState({ name: "", email: "", specialtyId: "", password: "", memedEmail: "" });
   const [editSaving, setEditSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -460,7 +461,7 @@ function DoctorsTab() {
         alert(err.error);
         return;
       }
-      setForm({ name: "", email: "", password: "", specialtyId: "" });
+      setForm({ name: "", email: "", password: "", specialtyId: "", memedEmail: "" });
       await load();
     } finally {
       setSaving(false);
@@ -478,7 +479,13 @@ function DoctorsTab() {
 
   function startEdit(d: Doctor) {
     setEditingId(d.id);
-    setEditForm({ name: d.name, email: d.email, specialtyId: d.specialty_id ?? "", password: "" });
+    setEditForm({
+      name: d.name,
+      email: d.email,
+      specialtyId: d.specialty_id ?? "",
+      password: "",
+      memedEmail: d.memed_email ?? "",
+    });
   }
 
   async function handleDelete(d: Doctor) {
@@ -499,6 +506,7 @@ function DoctorsTab() {
         name: editForm.name,
         email: editForm.email,
         specialtyId: editForm.specialtyId,
+        memedEmail: editForm.memedEmail,
       };
       if (editForm.password) body.password = editForm.password;
       const res = await fetch(`/api/admin/doctors/${id}`, {
@@ -567,6 +575,16 @@ function DoctorsTab() {
             ))}
           </select>
         </label>
+        <label className="text-xs sm:col-span-2">
+          <span className="mb-1 block font-medium text-zinc-600">E-mail de login na Memed (opcional)</span>
+          <input
+            type="email"
+            value={form.memedEmail}
+            onChange={(e) => setForm((f) => ({ ...f, memedEmail: e.target.value }))}
+            placeholder="conta pessoal do médico na Memed, só como referência"
+            className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+          />
+        </label>
         <div className="sm:col-span-2">
           <button
             disabled={saving}
@@ -627,6 +645,16 @@ function DoctorsTab() {
                   placeholder="deixe em branco pra manter"
                 />
               </label>
+              <label className="text-xs sm:col-span-2">
+                <span className="mb-1 block font-medium text-zinc-600">E-mail de login na Memed (opcional)</span>
+                <input
+                  type="email"
+                  value={editForm.memedEmail}
+                  onChange={(e) => setEditForm((f) => ({ ...f, memedEmail: e.target.value }))}
+                  placeholder="conta pessoal do médico na Memed, só como referência"
+                  className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                />
+              </label>
               <div className="flex gap-2 sm:col-span-2">
                 <button
                   onClick={() => saveEdit(d.id)}
@@ -653,6 +681,9 @@ function DoctorsTab() {
                 <p className="text-xs text-zinc-500">
                   {d.email} {d.specialties?.name ? `· ${d.specialties.name}` : ""}
                 </p>
+                {d.memed_email && (
+                  <p className="text-[11px] text-zinc-400">Memed: {d.memed_email}</p>
+                )}
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <button

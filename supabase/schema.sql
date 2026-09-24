@@ -34,6 +34,7 @@ create table if not exists doctors (
   specialty_id uuid references specialties(id),
   active boolean not null default true,
   booth_token text not null unique default translate(encode(gen_random_bytes(18), 'base64'), '+/=', '-_'),
+  memed_email text, -- e-mail de login pessoal do médico na Memed (referência, não autenticação)
   created_at timestamptz not null default now()
 );
 

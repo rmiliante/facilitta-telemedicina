@@ -18,6 +18,7 @@ export async function PATCH(
   if (typeof body.specialtyId === "string") update.specialty_id = body.specialtyId || null;
   if (typeof body.name === "string" && body.name.trim()) update.name = body.name.trim();
   if (typeof body.email === "string" && body.email.trim()) update.email = body.email.trim();
+  if (typeof body.memedEmail === "string") update.memed_email = body.memedEmail.trim().toLowerCase() || null;
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: "Nada para atualizar" }, { status: 400 });

@@ -313,10 +313,15 @@ export default function ConsultationClient({
               href="https://memed.com.br/login"
               target="_blank"
               rel="noreferrer"
-              className="mb-2 inline-block rounded-md border border-brand-teal-dark px-3 py-1.5 text-xs font-medium text-brand-teal-dark hover:bg-brand-teal/10"
+              className="mb-1 inline-block rounded-md border border-brand-teal-dark px-3 py-1.5 text-xs font-medium text-brand-teal-dark hover:bg-brand-teal/10"
             >
               Abrir Memed ↗
             </a>
+            {appointment.doctors?.memed_email && (
+              <p className="mb-2 text-[11px] text-zinc-400">
+                Login: {appointment.doctors.memed_email}
+              </p>
+            )}
             <input
               type="url"
               value={prescriptionUrl}
