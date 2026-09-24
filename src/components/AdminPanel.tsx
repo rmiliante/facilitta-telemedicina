@@ -48,7 +48,16 @@ interface StaffMember {
   active: boolean;
 }
 
-type Tab = "agenda" | "pacientes" | "medicos" | "especialidades" | "equipe";
+type Tab = "dashboard" | "agenda" | "pacientes" | "medicos" | "especialidades" | "equipe";
+
+interface DashboardData {
+  totals: Record<string, number>;
+  total: number;
+  byDay: { date: string; count: number }[];
+  bySpecialty: { name: string; count: number }[];
+  byDoctor: { name: string; count: number }[];
+  rangeDays: number;
+}
 
 const STATUS_LABELS: Record<string, string> = {
   agendado: "Agendado",
@@ -119,7 +128,17 @@ function IconTeam() {
   );
 }
 
+function IconChart() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+      <path d="M4 20V10M11 20V4M18 20v-7" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 20h18" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 const NAV_ITEMS: { key: Tab; label: string; icon: React.ReactNode }[] = [
+  { key: "dashboard", label: "Dashboard", icon: <IconChart /> },
   { key: "agenda", label: "Agenda", icon: <IconCalendar /> },
   { key: "pacientes", label: "Pacientes", icon: <IconUsers /> },
   { key: "medicos", label: "Médicos", icon: <IconStethoscope /> },
@@ -193,7 +212,7 @@ function AdminSidebar({
 }
 
 export default function AdminPanel() {
-  const [tab, setTab] = useState<Tab>("agenda");
+  const [tab, setTab] = useState<Tab>("dashboard");
   const [navOpen, setNavOpen] = useState(false);
 
   return (
@@ -223,13 +242,301 @@ export default function AdminPanel() {
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
-          <div className="mx-auto max-w-4xl">
+          <div className={tab === "dashboard" ? "mx-auto max-w-5xl" : "mx-auto max-w-4xl"}>
+            {tab === "dashboard" && <DashboardTab />}
             {tab === "especialidades" && <SpecialtiesTab />}
             {tab === "medicos" && <DoctorsTab />}
             {tab === "pacientes" && <PatientsTab />}
             {tab === "agenda" && <AgendaTab />}
             {tab === "equipe" && <StaffTab />}
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------
+// Dashboard
+// ------------------------------------------------------------
+const STATUS_CHART_LABELS: Record<string, string> = {
+  concluido: "Concluídos",
+  em_andamento: "Em andamento",
+  agendado: "Aguardando",
+  faltou: "Faltas",
+  cancelado: "Cancelados",
+};
+
+// Cores de status são reservadas (nunca reaproveitadas por outro
+// gráfico) e sempre vêm com o rótulo ao lado, nunca só a cor.
+const STATUS_CHART_COLORS: Record<string, string> = {
+  concluido: "#009594", // brand-teal-dark — bom
+  em_andamento: "#d97706", // amber-600 — em curso
+  agendado: "#a1a1aa", // zinc-400 — neutro/aguardando
+  faltou: "#ea580c", // orange-600 — atenção
+  cancelado: "#dc2626", // red-600 — crítico
+};
+
+const STATUS_CHART_ORDER = ["concluido", "em_andamento", "agendado", "faltou", "cancelado"] as const;
+
+function formatShortDate(iso: string) {
+  const d = new Date(`${iso}T00:00:00Z`);
+  return d.toLocaleDateString("pt-BR", { timeZone: "UTC", day: "2-digit", month: "2-digit" });
+}
+
+/**
+ * Cartão de KPI simples — número grande + rótulo, sem gráfico. Uso: o
+ * headline que não precisa de forma nenhuma (checks do dataviz).
+ */
+function StatCard({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: string | number;
+  accent?: string;
+}) {
+  return (
+    <div className="rounded-lg border border-zinc-200 bg-white p-4">
+      <p className="text-xs font-medium text-zinc-500">{label}</p>
+      <p className="mt-1 text-2xl font-semibold" style={{ color: accent ?? "#15004d" }}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Barra empilhada horizontal 100% mostrando a distribuição de status —
+ * uma faixa por status, sempre com legenda (cor nunca sozinha).
+ */
+function StatusStackedBar({ totals, total }: { totals: Record<string, number>; total: number }) {
+  if (total === 0) {
+    return <p className="text-xs text-zinc-400">Sem atendimentos no período.</p>;
+  }
+  return (
+    <div className="space-y-3">
+      <div className="flex h-6 w-full overflow-hidden rounded-full bg-zinc-100">
+        {STATUS_CHART_ORDER.map((key) => {
+          const count = totals[key] ?? 0;
+          if (count === 0) return null;
+          const pct = (count / total) * 100;
+          return (
+            <div
+              key={key}
+              style={{ width: `${pct}%`, backgroundColor: STATUS_CHART_COLORS[key] }}
+              className="h-full first:rounded-l-full last:rounded-r-full"
+              title={`${STATUS_CHART_LABELS[key]}: ${count} (${pct.toFixed(0)}%)`}
+            />
+          );
+        })}
+      </div>
+      <ul className="flex flex-wrap gap-x-4 gap-y-1.5">
+        {STATUS_CHART_ORDER.map((key) => {
+          const count = totals[key] ?? 0;
+          return (
+            <li key={key} className="flex items-center gap-1.5 text-xs text-zinc-600">
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-full"
+                style={{ backgroundColor: STATUS_CHART_COLORS[key] }}
+              />
+              {STATUS_CHART_LABELS[key]}
+              <span className="font-medium text-zinc-800">{count}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * Gráfico de barras verticais (evolução diária). Marcas finas, cantos
+ * arredondados nas pontas, grade recessiva, tooltip por barra.
+ */
+function DailyBarChart({ data }: { data: { date: string; count: number }[] }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const max = Math.max(1, ...data.map((d) => d.count));
+  const width = 720;
+  const height = 160;
+  const padding = { top: 8, bottom: 20, left: 4, right: 4 };
+  const plotHeight = height - padding.top - padding.bottom;
+  const barGap = 3;
+  const barWidth = (width - padding.left - padding.right) / data.length - barGap;
+
+  return (
+    <div className="overflow-x-auto">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="h-40 w-full min-w-[560px]"
+        role="img"
+        aria-label="Atendimentos por dia nos últimos 30 dias"
+      >
+        {/* grade recessiva (25/50/75/100%) */}
+        {[0.25, 0.5, 0.75, 1].map((f) => (
+          <line
+            key={f}
+            x1={padding.left}
+            x2={width - padding.right}
+            y1={padding.top + plotHeight * (1 - f)}
+            y2={padding.top + plotHeight * (1 - f)}
+            stroke="#e4e4e7"
+            strokeWidth={1}
+          />
+        ))}
+        {data.map((d, i) => {
+          const x = padding.left + i * (barWidth + barGap);
+          const h = max === 0 ? 0 : (d.count / max) * plotHeight;
+          const y = padding.top + plotHeight - h;
+          const isHover = hover === i;
+          return (
+            <g key={d.date}>
+              <rect
+                x={x}
+                y={y}
+                width={Math.max(barWidth, 1)}
+                height={Math.max(h, 1)}
+                rx={2}
+                fill={isHover ? "#009594" : "#00e2c3"}
+                onMouseEnter={() => setHover(i)}
+                onMouseLeave={() => setHover((cur) => (cur === i ? null : cur))}
+              >
+                <title>{`${formatShortDate(d.date)}: ${d.count} atendimento${d.count === 1 ? "" : "s"}`}</title>
+              </rect>
+              {(i === 0 || i === data.length - 1 || i % 5 === 0) && (
+                <text
+                  x={x + barWidth / 2}
+                  y={height - 4}
+                  fontSize={9}
+                  textAnchor="middle"
+                  fill="#a1a1aa"
+                >
+                  {formatShortDate(d.date)}
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+/**
+ * Ranking em barras horizontais (especialidade / médico) — magnitude,
+ * então uma única cor (não é comparação de identidade entre séries).
+ */
+function RankedBarChart({ data, emptyLabel }: { data: { name: string; count: number }[]; emptyLabel: string }) {
+  if (data.length === 0) {
+    return <p className="text-xs text-zinc-400">{emptyLabel}</p>;
+  }
+  const max = Math.max(...data.map((d) => d.count));
+  return (
+    <ul className="space-y-2">
+      {data.map((d) => (
+        <li key={d.name} className="flex items-center gap-3 text-xs">
+          <span className="w-28 shrink-0 truncate text-zinc-600" title={d.name}>
+            {d.name}
+          </span>
+          <div className="h-3 flex-1 rounded-full bg-zinc-100">
+            <div
+              className="h-full rounded-full bg-brand-teal-dark"
+              style={{ width: `${max === 0 ? 0 : (d.count / max) * 100}%` }}
+            />
+          </div>
+          <span className="w-6 shrink-0 text-right font-medium text-zinc-800">{d.count}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function DashboardTab() {
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(false);
+    try {
+      const res = await fetch("/api/admin/dashboard");
+      if (!res.ok) {
+        setError(true);
+        return;
+      }
+      setData(await res.json());
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timeout = setTimeout(load, 0);
+    return () => clearTimeout(timeout);
+  }, [load]);
+
+  if (loading) return <p className="text-xs text-zinc-400">Carregando dashboard...</p>;
+  if (error || !data) {
+    return (
+      <div className="space-y-2">
+        <p className="text-xs text-red-600">Falha ao carregar os dados do dashboard.</p>
+        <button
+          onClick={load}
+          className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50"
+        >
+          Tentar de novo
+        </button>
+      </div>
+    );
+  }
+
+  const finalizados = data.totals.concluido ?? 0;
+  const emAberto = (data.totals.agendado ?? 0) + (data.totals.em_andamento ?? 0);
+  const naoCompareceu = (data.totals.faltou ?? 0) + (data.totals.cancelado ?? 0);
+  const taxaComparecimento =
+    finalizados + naoCompareceu > 0
+      ? `${Math.round((finalizados / (finalizados + naoCompareceu)) * 100)}%`
+      : "—";
+
+  return (
+    <div className="space-y-6">
+      <p className="text-xs text-zinc-400">Últimos {data.rangeDays} dias</p>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard label="Total de atendimentos" value={data.total} />
+        <StatCard label="Concluídos" value={finalizados} accent="#009594" />
+        <StatCard label="Em aberto" value={emAberto} accent="#d97706" />
+        <StatCard label="Taxa de comparecimento" value={taxaComparecimento} />
+      </div>
+
+      <div className="rounded-lg border border-zinc-200 bg-white p-4">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-400">
+          Atendimentos por dia (últimos 30 dias)
+        </p>
+        <DailyBarChart data={data.byDay} />
+      </div>
+
+      <div className="rounded-lg border border-zinc-200 bg-white p-4">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-400">
+          Status dos atendimentos
+        </p>
+        <StatusStackedBar totals={data.totals} total={data.total} />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="rounded-lg border border-zinc-200 bg-white p-4">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-400">
+            Por especialidade
+          </p>
+          <RankedBarChart data={data.bySpecialty} emptyLabel="Sem atendimentos no período." />
+        </div>
+        <div className="rounded-lg border border-zinc-200 bg-white p-4">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-400">
+            Por médico
+          </p>
+          <RankedBarChart data={data.byDoctor} emptyLabel="Sem atendimentos no período." />
         </div>
       </div>
     </div>
