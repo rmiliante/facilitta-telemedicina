@@ -89,6 +89,19 @@ export default function ConsultationClient({
   const [savingPrescription, setSavingPrescription] = useState(false);
   const [prescriptionSavedAt, setPrescriptionSavedAt] = useState<Date | null>(null);
 
+  // Sinais vitais desta consulta — sempre começam em branco (são só da
+  // consulta atual); o valor mais recente de uma consulta anterior é
+  // mostrado como referência ao lado de cada campo (ver getLastVital).
+  const [vitals, setVitals] = useState({
+    spo2: appointment.vital_spo2 ?? "",
+    bpm: appointment.vital_bpm ?? "",
+    pa: appointment.vital_pa ?? "",
+    peso: appointment.vital_peso ?? "",
+    hgt: appointment.vital_hgt ?? "",
+  });
+  const [savingVitals, setSavingVitals] = useState(false);
+  const [vitalsSavedAt, setVitalsSavedAt] = useState<Date | null>(null);
+
   const memedInitedRef = useRef(false);
   const [memedStatus, setMemedStatus] = useState<"idle" | "loading" | "error">("idle");
   const [memedError, setMemedError] = useState<string | null>(null);
@@ -216,6 +229,30 @@ export default function ConsultationClient({
     }
   }
 
+  async function handleSaveVitals(next: typeof vitals) {
+    setSavingVitals(true);
+    try {
+      const res = await fetch(`/api/doctor/appointments/${appointmentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vitalSpo2: next.spo2,
+          vitalBpm: next.bpm,
+          vitalPa: next.pa,
+          vitalPeso: next.peso,
+          vitalHgt: next.hgt,
+        }),
+      });
+      if (res.ok) setVitalsSavedAt(new Date());
+    } finally {
+      setSavingVitals(false);
+    }
+  }
+
+  function updateVital(field: keyof typeof vitals, value: string) {
+    setVitals((v) => ({ ...v, [field]: value }));
+  }
+
   /** Callback da Memed quando o médico emite uma receita dentro do módulo embutido. */
   async function handlePrescricaoEmitida(data: MemedPrescricaoEvent) {
     const medicamentos = data.prescricao?.medicamentos ?? data.medicamentos ?? [];
@@ -339,6 +376,28 @@ export default function ConsultationClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prescriptionUrl]);
 
+  // Idem pros sinais vitais desta consulta.
+  useEffect(() => {
+    const initial = {
+      spo2: appointment.vital_spo2 ?? "",
+      bpm: appointment.vital_bpm ?? "",
+      pa: appointment.vital_pa ?? "",
+      peso: appointment.vital_peso ?? "",
+      hgt: appointment.vital_hgt ?? "",
+    };
+    if (JSON.stringify(vitals) === JSON.stringify(initial)) return;
+    const t = setTimeout(() => handleSaveVitals(vitals), 1500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vitals]);
+
+  /** Valor mais recente de um sinal vital em consultas anteriores desse paciente, com a data. */
+  function getLastVital(field: "vital_spo2" | "vital_bpm" | "vital_pa" | "vital_peso" | "vital_hgt") {
+    const found = history.find((h) => h[field]);
+    if (!found) return null;
+    return { value: found[field] as string, date: formatDate(found.scheduled_at.slice(0, 10)) };
+  }
+
   const patient = appointment.patients;
 
   return (
@@ -431,6 +490,59 @@ export default function ConsultationClient({
           <div className="flex-1 overflow-y-auto p-4">
             {tab === "dados" ? (
               <div className="space-y-3">
+                <div>
+                  <div className="mb-2 flex items-center justify-between">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                      Sinais vitais desta consulta
+                    </p>
+                    {savingVitals ? (
+                      <span className="text-[10px] text-zinc-400">Salvando...</span>
+                    ) : (
+                      vitalsSavedAt && <span className="text-[10px] text-zinc-400">Salvo</span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <VitalField
+                      label="SpO2 (%)"
+                      placeholder="Ex: 98"
+                      value={vitals.spo2}
+                      last={getLastVital("vital_spo2")}
+                      onChange={(v) => updateVital("spo2", v)}
+                    />
+                    <VitalField
+                      label="BPM"
+                      placeholder="Ex: 80"
+                      value={vitals.bpm}
+                      last={getLastVital("vital_bpm")}
+                      onChange={(v) => updateVital("bpm", v)}
+                    />
+                    <VitalField
+                      label="PA (mmHg)"
+                      placeholder="Ex: 120/80"
+                      value={vitals.pa}
+                      last={getLastVital("vital_pa")}
+                      onChange={(v) => updateVital("pa", v)}
+                      full
+                    />
+                    <VitalField
+                      label="Peso (kg)"
+                      placeholder="Ex: 68,0"
+                      value={vitals.peso}
+                      last={getLastVital("vital_peso")}
+                      onChange={(v) => updateVital("peso", v)}
+                    />
+                    <VitalField
+                      label="HGT (mg/dL)"
+                      placeholder="Ex: 95"
+                      value={vitals.hgt}
+                      last={getLastVital("vital_hgt")}
+                      onChange={(v) => updateVital("hgt", v)}
+                    />
+                  </div>
+                </div>
+
+                <hr className="border-zinc-100" />
+
                 <div className="flex justify-end">
                   <button
                     onClick={handleCopyPatientData}
@@ -656,6 +768,50 @@ function InfoRow({ label, value }: { label: string; value: string | null | undef
     <div className="text-xs">
       <span className="block font-medium text-zinc-500">{label}</span>
       <span className="block text-zinc-800">{value || "—"}</span>
+    </div>
+  );
+}
+
+/**
+ * Campo de um sinal vital na consulta atual: mostra o último valor
+ * registrado (de uma consulta anterior) como referência e um campo
+ * sempre em branco pra digitar o valor de hoje.
+ */
+function VitalField({
+  label,
+  placeholder,
+  value,
+  last,
+  onChange,
+  full,
+}: {
+  label: string;
+  placeholder: string;
+  value: string;
+  last: { value: string; date: string } | null;
+  onChange: (value: string) => void;
+  full?: boolean;
+}) {
+  return (
+    <div className={full ? "col-span-2" : undefined}>
+      <label className="mb-0.5 block text-[11px] font-semibold text-zinc-700">{label}</label>
+      <span className="mb-1 block text-[10.5px] italic text-zinc-400">
+        {last ? (
+          <>
+            Última: <span className="font-semibold not-italic text-zinc-500">{last.value}</span> ·{" "}
+            {last.date}
+          </>
+        ) : (
+          "Sem registro anterior"
+        )}
+      </span>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+      />
     </div>
   );
 }
