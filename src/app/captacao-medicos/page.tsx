@@ -43,7 +43,6 @@ export default function DoctorApplicationPage() {
   function toggle(list: string[], setList: (v: string[]) => void, key: string) {
     setList(list.includes(key) ? list.filter((k) => k !== key) : [...list, key]);
   }
-
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
@@ -88,7 +87,6 @@ export default function DoctorApplicationPage() {
       </div>
     );
   }
-
   return (
     <div className="min-h-screen bg-brand-bg pb-16">
       <div className="bg-brand-navy px-4 py-4">
@@ -138,7 +136,6 @@ export default function DoctorApplicationPage() {
             <span className={labelClass}>Nome completo</span>
             <input required name="name" className={inputClass} placeholder="Dra. Ana Paula Ribeiro" />
           </label>
-
           <div className="grid grid-cols-[2fr_1fr] gap-4">
             <label className="block">
               <span className={labelClass}>CRM</span>
@@ -189,7 +186,6 @@ export default function DoctorApplicationPage() {
               <input required type="tel" name="whatsapp" className={inputClass} placeholder="(11) 98421-3390" />
             </label>
           </div>
-
           <div className="grid grid-cols-[2fr_1fr] gap-4">
             <label className="block">
               <span className={labelClass}>Cidade</span>
@@ -244,7 +240,6 @@ export default function DoctorApplicationPage() {
               ))}
             </div>
           </div>
-
           <label className="block">
             <span className={labelClass}>Foto de perfil (opcional)</span>
             <div className="relative flex items-center gap-3 rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-4 py-4 text-sm">
@@ -276,8 +271,16 @@ export default function DoctorApplicationPage() {
 
           <label className="flex items-start gap-2.5 text-xs leading-relaxed text-zinc-600">
             <input required type="checkbox" className="mt-0.5" />
-            Li e aceito os termos de credenciamento e a política de privacidade da Facilitta
-            Saúde.
+            Li e concordo com o{" "}
+            <a
+              href="/termos-captacao"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-brand-navy underline"
+            >
+              termo de autorização de contato
+            </a>{" "}
+            da Facilitta Saúde.
           </label>
 
           {error && <p className="text-sm text-red-600">{error}</p>}
