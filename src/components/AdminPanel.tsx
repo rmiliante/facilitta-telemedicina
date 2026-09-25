@@ -1,6 +1,12 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import {
+  APPLICATION_STATUSES,
+  SHIFTS,
+  SPECIALTIES,
+  type ApplicationStatus,
+} from "@/lib/doctorApplications";
 
 interface Specialty {
   id: string;
@@ -48,7 +54,34 @@ interface StaffMember {
   active: boolean;
 }
 
-type Tab = "dashboard" | "agenda" | "pacientes" | "medicos" | "especialidades" | "equipe";
+type Tab =
+  | "dashboard"
+  | "agenda"
+  | "pacientes"
+  | "medicos"
+  | "captacao"
+  | "especialidades"
+  | "equipe";
+
+interface DoctorApplication {
+  id: string;
+  name: string;
+  crm: string;
+  crm_uf: string;
+  specialty: string;
+  experience_years: number | null;
+  email: string;
+  whatsapp: string;
+  city: string;
+  state: string;
+  consult_price: number | null;
+  available_days: string[];
+  available_shifts: string[];
+  presentation: string | null;
+  photo_url: string | null;
+  status: ApplicationStatus;
+  created_at: string;
+}
 
 interface DashboardData {
   totals: Record<string, number>;
@@ -110,6 +143,16 @@ function IconStethoscope() {
   );
 }
 
+function IconClipboard() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+      <rect x="5" y="4.5" width="14" height="16" rx="2" />
+      <path d="M9 4.5V3.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1" strokeLinecap="round" />
+      <path d="M8.5 11h7M8.5 14.5h7M8.5 18h4.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function IconTag() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
@@ -142,6 +185,7 @@ const NAV_ITEMS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: "agenda", label: "Agenda", icon: <IconCalendar /> },
   { key: "pacientes", label: "Pacientes", icon: <IconUsers /> },
   { key: "medicos", label: "Médicos", icon: <IconStethoscope /> },
+  { key: "captacao", label: "Captação", icon: <IconClipboard /> },
   { key: "especialidades", label: "Especialidades", icon: <IconTag /> },
   { key: "equipe", label: "Equipe", icon: <IconTeam /> },
 ];
@@ -246,6 +290,7 @@ export default function AdminPanel() {
             {tab === "dashboard" && <DashboardTab />}
             {tab === "especialidades" && <SpecialtiesTab />}
             {tab === "medicos" && <DoctorsTab />}
+            {tab === "captacao" && <CaptacaoTab />}
             {tab === "pacientes" && <PatientsTab />}
             {tab === "agenda" && <AgendaTab />}
             {tab === "equipe" && <StaffTab />}
@@ -2223,6 +2268,403 @@ function StaffTab() {
           <p className="text-xs text-zinc-400">Nenhum membro da equipe cadastrado ainda.</p>
         )}
       </ul>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------
+// Captação de médicos (formulário público de cadastro)
+// ------------------------------------------------------------
+const APPLICATION_STATUS_LABELS: Record<ApplicationStatus, string> = {
+  novo: "Novo",
+  em_avaliacao: "Em avaliação",
+  aprovado: "Aprovado",
+  recusado: "Recusado",
+};
+
+const APPLICATION_STATUS_STYLES: Record<ApplicationStatus, string> = {
+  novo: "bg-sky-50 text-sky-700",
+  em_avaliacao: "bg-amber-50 text-amber-700",
+  aprovado: "bg-emerald-50 text-emerald-700",
+  recusado: "bg-red-50 text-red-700",
+};
+
+const WEEKDAY_LABELS: Record<string, string> = {
+  seg: "Seg",
+  ter: "Ter",
+  qua: "Qua",
+  qui: "Qui",
+  sex: "Sex",
+  sab: "Sáb",
+  dom: "Dom",
+};
+
+function formatApplicationDays(app: DoctorApplication) {
+  const days = app.available_days.map((d) => WEEKDAY_LABELS[d] ?? d).join(", ");
+  const shifts = app.available_shifts
+    .map((s) => SHIFTS.find((x) => x.key === s)?.label ?? s)
+    .join("/");
+  if (!days && !shifts) return "—";
+  return [days, shifts].filter(Boolean).join(" · ");
+}
+
+function formatPrice(value: number | null) {
+  if (value === null) return "—";
+  return `R$ ${value.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+}
+
+function initials(name: string) {
+  return name
+    .replace(/^Dra?\.\s*/i, "")
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase())
+    .join("");
+}
+
+function CaptacaoTab() {
+  const [applications, setApplications] = useState<DoctorApplication[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [specialty, setSpecialty] = useState("");
+  const [city, setCity] = useState("");
+  const [shift, setShift] = useState("");
+  const [status, setStatus] = useState("");
+  const [selected, setSelected] = useState<DoctorApplication | null>(null);
+
+  const [weekAgo, setWeekAgo] = useState(0);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setWeekAgo(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    try {
+      const res = await fetch("/api/admin/doctor-applications");
+      if (res.ok) setApplications((await res.json()).applications);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timeout = setTimeout(load, 0);
+    return () => clearTimeout(timeout);
+  }, [load]);
+
+  async function updateStatus(app: DoctorApplication, next: ApplicationStatus) {
+    const res = await fetch(`/api/admin/doctor-applications/${app.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: next }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert(err.error ?? "Falha ao atualizar candidatura");
+      return;
+    }
+    setSelected(null);
+    await load();
+  }
+
+  const cities = Array.from(new Set(applications.map((a) => a.city))).sort();
+
+  const filtered = applications.filter((a) => {
+    if (search) {
+      const q = search.toLowerCase();
+      if (!a.name.toLowerCase().includes(q) && !a.crm.toLowerCase().includes(q)) return false;
+    }
+    if (specialty && a.specialty !== specialty) return false;
+    if (city && a.city !== city) return false;
+    if (shift && !a.available_shifts.includes(shift)) return false;
+    if (status && a.status !== status) return false;
+    return true;
+  });
+
+  const totals = {
+    total: applications.length,
+    novaSemana: applications.filter((a) => new Date(a.created_at).getTime() >= weekAgo).length,
+    emAvaliacao: applications.filter((a) => a.status === "em_avaliacao").length,
+    aprovados: applications.filter((a) => a.status === "aprovado").length,
+  };
+  const taxaAprovacao = totals.total > 0 ? Math.round((totals.aprovados / totals.total) * 100) : 0;
+
+  function clearFilters() {
+    setSearch("");
+    setSpecialty("");
+    setCity("");
+    setShift("");
+    setStatus("");
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="rounded-lg border border-zinc-200 bg-white p-4">
+          <p className="text-xs font-medium text-zinc-500">Total cadastrados</p>
+          <p className="mt-1 text-2xl font-semibold text-zinc-900">{totals.total}</p>
+        </div>
+        <div className="rounded-lg border border-zinc-200 bg-white p-4">
+          <p className="text-xs font-medium text-zinc-500">Novos esta semana</p>
+          <p className="mt-1 text-2xl font-semibold text-zinc-900">{totals.novaSemana}</p>
+        </div>
+        <div className="rounded-lg border border-zinc-200 bg-white p-4">
+          <p className="text-xs font-medium text-zinc-500">Em avaliação</p>
+          <p className="mt-1 text-2xl font-semibold text-zinc-900">{totals.emAvaliacao}</p>
+        </div>
+        <div className="rounded-lg border border-zinc-200 bg-white p-4">
+          <p className="text-xs font-medium text-zinc-500">Aprovados · taxa</p>
+          <p className="mt-1 text-2xl font-semibold text-zinc-900">
+            {totals.aprovados}{" "}
+            <span className="text-sm font-medium text-brand-teal-dark">({taxaAprovacao}%)</span>
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 bg-white p-3">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar por nome ou CRM"
+          className="w-48 rounded-md border border-zinc-300 px-3 py-1.5 text-xs outline-none focus:border-brand-teal-dark"
+        />
+        <select
+          value={specialty}
+          onChange={(e) => setSpecialty(e.target.value)}
+          className="rounded-md border border-zinc-300 px-2.5 py-1.5 text-xs outline-none focus:border-brand-teal-dark"
+        >
+          <option value="">Especialidade: todas</option>
+          {SPECIALTIES.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+        <select
+          value={city}
+          onChange={(e) => setCity(e.target.value)}
+          className="rounded-md border border-zinc-300 px-2.5 py-1.5 text-xs outline-none focus:border-brand-teal-dark"
+        >
+          <option value="">Cidade: todas</option>
+          {cities.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        <select
+          value={shift}
+          onChange={(e) => setShift(e.target.value)}
+          className="rounded-md border border-zinc-300 px-2.5 py-1.5 text-xs outline-none focus:border-brand-teal-dark"
+        >
+          <option value="">Disponibilidade: qualquer</option>
+          {SHIFTS.map((s) => (
+            <option key={s.key} value={s.key}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+          className="rounded-md border border-zinc-300 px-2.5 py-1.5 text-xs outline-none focus:border-brand-teal-dark"
+        >
+          <option value="">Status: todos</option>
+          {APPLICATION_STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {APPLICATION_STATUS_LABELS[s]}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={clearFilters}
+          className="text-xs font-medium text-brand-teal-dark hover:underline"
+        >
+          Limpar filtros
+        </button>
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-zinc-200 text-left text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
+              <th className="px-4 py-3">Médico</th>
+              <th className="px-4 py-3">Especialidade</th>
+              <th className="px-4 py-3">Cidade</th>
+              <th className="px-4 py-3">Disponibilidade</th>
+              <th className="px-4 py-3">Valor/consulta</th>
+              <th className="px-4 py-3">Cadastrado em</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((a) => (
+              <tr key={a.id} className="border-b border-zinc-100 last:border-0">
+                <td className="px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => setSelected(a)}
+                    className="flex items-center gap-2.5 text-left"
+                  >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-xs font-semibold text-zinc-500">
+                      {initials(a.name)}
+                    </span>
+                    <span>
+                      <span className="block font-medium text-zinc-800">{a.name}</span>
+                      <span className="block text-xs text-zinc-400">
+                        CRM {a.crm}-{a.crm_uf}
+                      </span>
+                    </span>
+                  </button>
+                </td>
+                <td className="px-4 py-3 text-zinc-600">{a.specialty}</td>
+                <td className="px-4 py-3 text-zinc-600">
+                  {a.city} - {a.state}
+                </td>
+                <td className="px-4 py-3 text-zinc-600">{formatApplicationDays(a)}</td>
+                <td className="px-4 py-3 text-zinc-600">{formatPrice(a.consult_price)}</td>
+                <td className="px-4 py-3 text-zinc-500">
+                  {new Date(a.created_at).toLocaleDateString("pt-BR")}
+                </td>
+                <td className="px-4 py-3">
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-xs font-semibold ${APPLICATION_STATUS_STYLES[a.status]}`}
+                  >
+                    {APPLICATION_STATUS_LABELS[a.status]}
+                  </span>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex gap-1.5">
+                    <button
+                      onClick={() => setSelected(a)}
+                      title="Ver perfil"
+                      className="rounded-md border border-zinc-300 p-1.5 text-zinc-600 hover:bg-zinc-50"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-3.5 w-3.5">
+                        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => updateStatus(a, "aprovado")}
+                      title="Aprovar"
+                      className="rounded-md border border-emerald-200 p-1.5 text-emerald-600 hover:bg-emerald-50"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5">
+                        <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => updateStatus(a, "recusado")}
+                      title="Recusar"
+                      className="rounded-md border border-red-200 p-1.5 text-red-600 hover:bg-red-50"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5">
+                        <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+                      </svg>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!loading && filtered.length === 0 && (
+          <p className="p-6 text-center text-xs text-zinc-400">Nenhuma candidatura encontrada.</p>
+        )}
+        {loading && <p className="p-6 text-center text-xs text-zinc-400">Carregando...</p>}
+      </div>
+
+      {selected && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setSelected(null)}
+        >
+          <div
+            className="w-full max-w-lg rounded-xl bg-white p-6 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              {selected.photo_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={selected.photo_url}
+                  alt={selected.name}
+                  className="h-14 w-14 shrink-0 rounded-full object-cover"
+                />
+              ) : (
+                <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-sm font-semibold text-zinc-500">
+                  {initials(selected.name)}
+                </span>
+              )}
+              <div className="flex-1">
+                <h3 className="text-base font-semibold text-zinc-900">{selected.name}</h3>
+                <p className="text-xs text-zinc-500">
+                  CRM {selected.crm}-{selected.crm_uf} · {selected.specialty}
+                  {selected.experience_years ? ` · ${selected.experience_years} anos de experiência` : ""}
+                </p>
+              </div>
+              <span
+                className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${APPLICATION_STATUS_STYLES[selected.status]}`}
+              >
+                {APPLICATION_STATUS_LABELS[selected.status]}
+              </span>
+            </div>
+
+            <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2.5 text-xs">
+              <div>
+                <dt className="font-medium text-zinc-400">E-mail</dt>
+                <dd className="text-zinc-700">{selected.email}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-400">WhatsApp</dt>
+                <dd className="text-zinc-700">{selected.whatsapp}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-400">Cidade</dt>
+                <dd className="text-zinc-700">
+                  {selected.city} - {selected.state}
+                </dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-400">Valor pretendido</dt>
+                <dd className="text-zinc-700">{formatPrice(selected.consult_price)}</dd>
+              </div>
+              <div className="col-span-2">
+                <dt className="font-medium text-zinc-400">Disponibilidade</dt>
+                <dd className="text-zinc-700">{formatApplicationDays(selected)}</dd>
+              </div>
+              {selected.presentation && (
+                <div className="col-span-2">
+                  <dt className="font-medium text-zinc-400">Apresentação</dt>
+                  <dd className="text-zinc-700">{selected.presentation}</dd>
+                </div>
+              )}
+            </dl>
+
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              {(["novo", "em_avaliacao", "aprovado", "recusado"] as ApplicationStatus[])
+                .filter((s) => s !== selected.status)
+                .map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => updateStatus(selected, s)}
+                    className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50"
+                  >
+                    Marcar como {APPLICATION_STATUS_LABELS[s]}
+                  </button>
+                ))}
+              <button
+                onClick={() => setSelected(null)}
+                className="rounded-md bg-brand-navy px-3 py-1.5 text-xs font-medium text-white"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
