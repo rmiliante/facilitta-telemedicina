@@ -2588,11 +2588,7 @@ function CaptacaoTab() {
             <div className="flex items-start gap-3">
               {selected.photo_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={selected.photo_url}
-                  alt={selected.name}
-                  className="h-14 w-14 shrink-0 rounded-full object-cover"
-                />
+                <a href={selected.photo_url} target="_blank" rel="noopener noreferrer" title="Ver foto em tamanho maior"><img src={selected.photo_url} alt={selected.name} className="h-14 w-14 shrink-0 cursor-pointer rounded-full object-cover transition-opacity hover:opacity-80" /></a>
               ) : (
                 <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-sm font-semibold text-zinc-500">
                   {initials(selected.name)}
