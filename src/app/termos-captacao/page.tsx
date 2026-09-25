@@ -8,14 +8,7 @@ export default function TermoCaptacaoPage() {
       <div className="bg-brand-navy px-4 py-4">
         <div className="mx-auto flex max-w-2xl items-center gap-2.5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/icon-facilitta.png"
-            alt=""
-            className="h-7 w-7 rounded-md"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
-          />
+          <img src="/icon-facilitta.png" alt="" className="h-7 w-7 rounded-md" />
           <span className="text-base font-semibold leading-none text-white">
             facilitta<span className="text-brand-teal"> saúde</span>
           </span>
