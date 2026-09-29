@@ -16,10 +16,8 @@ function baseUrl() {
 function wlKey() {
   const key = process.env.PRESCREVE_WL_KEY;
   if (!key) {
-    throw new PrescreveError(
-      "Receita digital indisponível: falta a variável PRESCREVE_WL_KEY nas configurações do servidor.",
-      500
-    );
+    console.error("Assinatura digital: falta a variável PRESCREVE_WL_KEY no servidor.");
+    throw new PrescreveError("Assinatura digital indisponível: configuração pendente no servidor.", 500);
   }
   return key;
 }
@@ -106,6 +104,6 @@ export function signPdf(sessionId: string, pdf: Uint8Array): Promise<SignResult>
 /** Baixa o PDF assinado (o link da Prescreve expira em 3h). */
 export async function downloadSigned(url: string): Promise<Uint8Array> {
   const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new PrescreveError("PDF assinado, mas falhou ao baixar o arquivo da Prescreve.");
+  if (!res.ok) throw new PrescreveError("PDF assinado, mas falhou ao baixar o arquivo do serviço de assinatura.");
   return new Uint8Array(await res.arrayBuffer());
 }

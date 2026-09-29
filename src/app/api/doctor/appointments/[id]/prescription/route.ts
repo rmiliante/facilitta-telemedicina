@@ -142,7 +142,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   } catch (err) {
     if (err instanceof PrescreveError) {
       const msg =
-        err.status === 402 ? "Sem créditos de assinatura na Prescreve. Compre um pacote no painel." : err.message;
+        err.status === 402 ? "Sem créditos de assinatura digital. Avise a administração." : err.message;
       return NextResponse.json({ error: msg }, { status: err.status });
     }
     console.error("Erro ao emitir documento assinado:", err);

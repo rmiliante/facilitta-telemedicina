@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { uploadPatientDocuments } from "@/lib/uploadPatientDocument";
 import VideoRoom from "./VideoRoom";
@@ -8,34 +8,6 @@ import PrescriptionPanel from "./PrescriptionPanel";
 
 const KIND_TAGS = { receita: "Receita", exame: "Exame", atestado: "Atestado" } as const;
 import type { AppointmentDetail, HistoryItem } from "@/lib/appointments";
-
-// Tipos mínimos do script global da Memed (carregado dinamicamente —
-// ver handleOpenMemed). Docs: https://doc.memed.com.br/docs/primeiros-passos/
-interface MemedPrescricaoEvent {
-  prescricao?: { medicamentos?: unknown[]; data?: string };
-  medicamentos?: unknown[];
-  data?: string;
-}
-interface MemedHub {
-  command: { send: (module: string, command: string, data: unknown) => Promise<void> };
-  module: { show: (module: string) => Promise<void> };
-  event: { add: (name: string, cb: (data: MemedPrescricaoEvent) => void) => void };
-}
-interface MemedSinapse {
-  event: { add: (name: string, cb: (module: { name: string }) => void) => void };
-}
-declare global {
-  interface Window {
-    MdHub?: MemedHub;
-    MdSinapsePrescricao?: MemedSinapse;
-  }
-}
-
-/** Converte "AAAA-MM-DD" (formato do banco) pra "DD/MM/AAAA" (formato que a Memed espera). */
-function toBrDate(isoDate: string) {
-  const [y, m, d] = isoDate.split("-");
-  return `${d}/${m}/${y}`;
-}
 
 const STATUS_LABELS: Record<string, string> = {
   agendado: "Agendado",
@@ -89,9 +61,6 @@ export default function ConsultationClient({
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesSavedAt, setNotesSavedAt] = useState<Date | null>(null);
 
-  const [prescriptionUrl, setPrescriptionUrl] = useState(appointment.prescription_url ?? "");
-  const [savingPrescription, setSavingPrescription] = useState(false);
-  const [prescriptionSavedAt, setPrescriptionSavedAt] = useState<Date | null>(null);
 
   // Sinais vitais desta consulta — sempre começam em branco (são só da
   // consulta atual); o valor mais recente de uma consulta anterior é
@@ -106,10 +75,6 @@ export default function ConsultationClient({
   const [savingVitals, setSavingVitals] = useState(false);
   const [vitalsSavedAt, setVitalsSavedAt] = useState<Date | null>(null);
 
-  const memedInitedRef = useRef(false);
-  const [memedStatus, setMemedStatus] = useState<"idle" | "loading" | "error">("idle");
-  const [memedError, setMemedError] = useState<string | null>(null);
-  const [memedHomologacao, setMemedHomologacao] = useState(false);
 
   const [patientDocuments, setPatientDocuments] = useState(appointment.patients?.documents ?? []);
   const [uploadingDoc, setUploadingDoc] = useState(false);
@@ -212,22 +177,7 @@ export default function ConsultationClient({
     }
   }
 
-  async function handleSavePrescription() {
-    setSavingPrescription(true);
-    try {
-      const res = await fetch(`/api/doctor/appointments/${appointmentId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prescriptionUrl }),
-      });
-      if (res.ok) {
-        setPrescriptionSavedAt(new Date());
-        setAppointment((a) => ({ ...a, prescription_url: prescriptionUrl.trim() || null }));
-      }
-    } finally {
-      setSavingPrescription(false);
-    }
-  }
+
 
   async function handleSaveVitals(next: typeof vitals) {
     setSavingVitals(true);
@@ -253,99 +203,7 @@ export default function ConsultationClient({
     setVitals((v) => ({ ...v, [field]: value }));
   }
 
-  /** Callback da Memed quando o médico emite uma receita dentro do módulo embutido. */
-  async function handlePrescricaoEmitida(data: MemedPrescricaoEvent) {
-    const medicamentos = data.prescricao?.medicamentos ?? data.medicamentos ?? [];
-    const dataEmissao = data.prescricao?.data ?? data.data ?? "";
-    const summary = `Receita emitida pela Memed${dataEmissao ? ` em ${dataEmissao}` : ""} · ${medicamentos.length} item(ns)`;
-    try {
-      await fetch(`/api/doctor/appointments/${appointmentId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ memedPrescriptionSummary: summary }),
-      });
-      setAppointment((a) => ({
-        ...a,
-        memed_prescription_summary: summary,
-        memed_prescription_at: new Date().toISOString(),
-      }));
-    } catch {
-      // Se falhar em salvar o resumo, a receita já foi emitida na Memed
-      // mesmo assim — só não fica registrada aqui, sem gravidade.
-    }
-  }
 
-  /**
-   * Abre o módulo de prescrição da Memed embutido na tela: busca um
-   * token fresco do médico (prescritor já vinculado), carrega o
-   * script uma única vez por sessão e manda os dados do paciente
-   * antes de mostrar a tela de prescrição.
-   */
-  async function handleOpenMemed() {
-    setMemedStatus("loading");
-    setMemedError(null);
-    try {
-      if (!memedInitedRef.current) {
-        const tokenRes = await fetch("/api/doctor/memed-token");
-        if (!tokenRes.ok) {
-          const err = await tokenRes.json().catch(() => ({}));
-          throw new Error(err.error ?? "Falha ao conectar com a Memed");
-        }
-        const { token, scriptUrl, homologacao } = await tokenRes.json();
-        setMemedHomologacao(Boolean(homologacao));
-
-        if (!document.getElementById("memed-sinapse-script")) {
-          await new Promise<void>((resolve, reject) => {
-            const script = document.createElement("script");
-            script.id = "memed-sinapse-script";
-            script.src = scriptUrl;
-            script.setAttribute("data-token", token);
-            script.onload = () => resolve();
-            script.onerror = () => reject(new Error("Falha ao carregar o script da Memed"));
-            document.body.appendChild(script);
-          });
-        }
-
-        await new Promise<void>((resolve, reject) => {
-          const timeoutId = setTimeout(
-            () => reject(new Error("A Memed demorou demais pra responder. Tente de novo.")),
-            15000
-          );
-          const check = () => {
-            if (window.MdSinapsePrescricao?.event) {
-              window.MdSinapsePrescricao.event.add("core:moduleInit", (module) => {
-                if (module.name === "plataforma.prescricao") {
-                  clearTimeout(timeoutId);
-                  window.MdHub?.event.add("prescricaoImpressa", handlePrescricaoEmitida);
-                  resolve();
-                }
-              });
-            } else {
-              setTimeout(check, 150);
-            }
-          };
-          check();
-        });
-
-        memedInitedRef.current = true;
-      }
-
-      await window.MdHub!.command.send("plataforma.prescricao", "setPaciente", {
-        idExterno: patient?.id,
-        nome: patient?.full_name,
-        cpf: patient?.cpf || undefined,
-        telefone: patient?.phone || undefined,
-        email: patient?.email || undefined,
-        data_nascimento: patient?.birth_date ? toBrDate(patient.birth_date) : undefined,
-        cidade: patient?.city || undefined,
-      });
-      await window.MdHub!.module.show("plataforma.prescricao");
-      setMemedStatus("idle");
-    } catch (err) {
-      setMemedStatus("error");
-      setMemedError(err instanceof Error ? err.message : "Erro ao abrir a Memed");
-    }
-  }
 
   async function handleFinish() {
     if (!confirm("Finalizar essa consulta? Isso encerra o atendimento e registra o horário de término.")) {
@@ -373,13 +231,6 @@ export default function ConsultationClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notes]);
 
-  // Idem pro link da receita gerada na Memed.
-  useEffect(() => {
-    if (prescriptionUrl === (appointment.prescription_url ?? "")) return;
-    const t = setTimeout(handleSavePrescription, 1500);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prescriptionUrl]);
 
   // Idem pros sinais vitais desta consulta.
   useEffect(() => {
@@ -663,88 +514,6 @@ export default function ConsultationClient({
             <p className="mt-1 text-[11px] text-zinc-400">
               Fica vinculado ao paciente — a atendente consegue abrir e imprimir daqui a pouco.
             </p>
-          </div>
-
-          <div className="border-t border-zinc-200 p-4">
-            <div className="mb-1 flex items-center justify-between">
-              <span className="text-xs font-medium text-zinc-600">Receita (Memed)</span>
-              {savingPrescription ? (
-                <span className="text-[10px] text-zinc-400">Salvando...</span>
-              ) : (
-                prescriptionSavedAt && (
-                  <span className="text-[10px] text-zinc-400">
-                    Link salvo às {prescriptionSavedAt.toLocaleTimeString("pt-BR")}
-                  </span>
-                )
-              )}
-            </div>
-
-            {appointment.doctors?.memed_linked_at ? (
-              <>
-                <button
-                  onClick={handleOpenMemed}
-                  disabled={memedStatus === "loading"}
-                  className="mb-1 w-full rounded-md bg-brand-navy px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
-                >
-                  {memedStatus === "loading" ? "Abrindo Memed..." : "Emitir receita (Memed)"}
-                </button>
-                <p className="mb-2 text-[11px] text-zinc-400">
-                  Abre o módulo da Memed aqui na tela, já com os dados do paciente preenchidos.
-                  {memedHomologacao && (
-                    <span className="font-medium text-amber-600"> Ambiente de teste — receita não vale legalmente.</span>
-                  )}
-                </p>
-                {memedError && <p className="mb-2 text-[11px] text-red-600">{memedError}</p>}
-                {appointment.memed_prescription_summary && (
-                  <p className="mb-2 rounded-md bg-brand-teal/10 px-2 py-1.5 text-[11px] text-brand-teal-dark">
-                    {appointment.memed_prescription_summary}
-                    {appointment.memed_prescription_at
-                      ? ` · ${formatTime(appointment.memed_prescription_at)}`
-                      : ""}
-                  </p>
-                )}
-              </>
-            ) : (
-              <>
-                <p className="mb-2 text-[11px] text-zinc-400">
-                  Esse médico ainda não foi vinculado à Memed (peça pra Admin vincular no
-                  cadastro). Por enquanto, gere a receita com o login pessoal dele na Memed e
-                  cole aqui o link.
-                </p>
-                <a
-                  href="https://memed.com.br/login"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mb-1 inline-block rounded-md border border-brand-teal-dark px-3 py-1.5 text-xs font-medium text-brand-teal-dark hover:bg-brand-teal/10"
-                >
-                  Abrir Memed ↗
-                </a>
-                {appointment.doctors?.memed_email && (
-                  <p className="mb-2 text-[11px] text-zinc-400">
-                    Login: {appointment.doctors.memed_email}
-                  </p>
-                )}
-              </>
-            )}
-
-            <input
-              type="url"
-              value={prescriptionUrl}
-              onChange={(e) => setPrescriptionUrl(e.target.value)}
-              onBlur={handleSavePrescription}
-              placeholder="Cole aqui o link da receita (opcional)"
-              className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-xs outline-none focus:border-brand-teal-dark"
-            />
-            {appointment.prescription_url && (
-              <a
-                href={appointment.prescription_url}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-1 inline-block text-[11px] text-brand-teal-dark underline"
-              >
-                Abrir receita salva
-              </a>
-            )}
           </div>
 
           <div className="border-t border-zinc-200 p-4">

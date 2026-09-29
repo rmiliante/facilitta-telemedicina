@@ -42,7 +42,7 @@ export async function getSigningDoctor(doctorId: string): Promise<SigningDoctor 
     // 42703 = coluna não existe: migração da receita ainda não rodada.
     if (error.code === "42703") {
       throw new PrescreveError(
-        "Receita digital ainda não configurada no banco (falta rodar a migração migration_receita_prescreve.sql).",
+        "Receita digital ainda não configurada no banco. Avise a administração.",
         500
       );
     }
