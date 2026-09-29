@@ -22,6 +22,9 @@ interface Doctor {
   active: boolean;
   memed_email: string | null;
   memed_linked_at: string | null;
+  cpf?: string | null;
+  crm?: string | null;
+  crm_uf?: string | null;
   specialties: { name: string } | null;
 }
 
@@ -780,10 +783,10 @@ function SpecialtiesTab() {
 function DoctorsTab() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
-  const [form, setForm] = useState({ name: "", email: "", password: "", specialtyId: "", memedEmail: "" });
+  const [form, setForm] = useState({ name: "", email: "", password: "", specialtyId: "", memedEmail: "", cpf: "", crm: "", crmUf: "" });
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", email: "", specialtyId: "", password: "", memedEmail: "" });
+  const [editForm, setEditForm] = useState({ name: "", email: "", specialtyId: "", password: "", memedEmail: "", cpf: "", crm: "", crmUf: "" });
   const [editSaving, setEditSaving] = useState(false);
   const [memedLinkId, setMemedLinkId] = useState<string | null>(null);
   const [memedLinkForm, setMemedLinkForm] = useState({ cpf: "", crm: "", uf: "", birthDate: "" });
@@ -842,7 +845,7 @@ function DoctorsTab() {
         alert(err.error);
         return;
       }
-      setForm({ name: "", email: "", password: "", specialtyId: "", memedEmail: "" });
+      setForm({ name: "", email: "", password: "", specialtyId: "", memedEmail: "", cpf: "", crm: "", crmUf: "" });
       await load();
     } finally {
       setSaving(false);
@@ -866,6 +869,9 @@ function DoctorsTab() {
       specialtyId: d.specialty_id ?? "",
       password: "",
       memedEmail: d.memed_email ?? "",
+      cpf: d.cpf ?? "",
+      crm: d.crm ?? "",
+      crmUf: d.crm_uf ?? "",
     });
   }
 
@@ -888,6 +894,9 @@ function DoctorsTab() {
         email: editForm.email,
         specialtyId: editForm.specialtyId,
         memedEmail: editForm.memedEmail,
+        cpf: editForm.cpf,
+        crm: editForm.crm,
+        crmUf: editForm.crmUf,
       };
       if (editForm.password) body.password = editForm.password;
       const res = await fetch(`/api/admin/doctors/${id}`, {
@@ -966,6 +975,37 @@ function DoctorsTab() {
             className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
           />
         </label>
+        <div className="grid gap-3 sm:col-span-2 sm:grid-cols-3">
+          <label className="text-xs">
+            <span className="mb-1 block font-medium text-zinc-600">CPF (receita digital)</span>
+            <input
+              value={form.cpf}
+              onChange={(e) => setForm((f) => ({ ...f, cpf: e.target.value }))}
+              placeholder="só números"
+              inputMode="numeric"
+              className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+            />
+          </label>
+          <label className="text-xs">
+            <span className="mb-1 block font-medium text-zinc-600">CRM</span>
+            <input
+              value={form.crm}
+              onChange={(e) => setForm((f) => ({ ...f, crm: e.target.value }))}
+              inputMode="numeric"
+              className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+            />
+          </label>
+          <label className="text-xs">
+            <span className="mb-1 block font-medium text-zinc-600">UF do CRM</span>
+            <input
+              value={form.crmUf}
+              onChange={(e) => setForm((f) => ({ ...f, crmUf: e.target.value.toUpperCase() }))}
+              maxLength={2}
+              placeholder="BA"
+              className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+            />
+          </label>
+        </div>
         <div className="sm:col-span-2">
           <button
             disabled={saving}
@@ -1036,6 +1076,37 @@ function DoctorsTab() {
                   className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
                 />
               </label>
+              <div className="grid gap-3 sm:col-span-2 sm:grid-cols-3">
+                <label className="text-xs">
+                  <span className="mb-1 block font-medium text-zinc-600">CPF (receita digital)</span>
+                  <input
+                    value={editForm.cpf}
+                    onChange={(e) => setEditForm((f) => ({ ...f, cpf: e.target.value }))}
+                    placeholder="só números"
+                    inputMode="numeric"
+                    className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                  />
+                </label>
+                <label className="text-xs">
+                  <span className="mb-1 block font-medium text-zinc-600">CRM</span>
+                  <input
+                    value={editForm.crm}
+                    onChange={(e) => setEditForm((f) => ({ ...f, crm: e.target.value }))}
+                    inputMode="numeric"
+                    className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                  />
+                </label>
+                <label className="text-xs">
+                  <span className="mb-1 block font-medium text-zinc-600">UF do CRM</span>
+                  <input
+                    value={editForm.crmUf}
+                    onChange={(e) => setEditForm((f) => ({ ...f, crmUf: e.target.value.toUpperCase() }))}
+                    maxLength={2}
+                    placeholder="BA"
+                    className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                  />
+                </label>
+              </div>
               <div className="flex gap-2 sm:col-span-2">
                 <button
                   onClick={() => saveEdit(d.id)}
@@ -1064,6 +1135,15 @@ function DoctorsTab() {
                 </p>
                 {d.memed_email && (
                   <p className="text-[11px] text-zinc-400">Memed: {d.memed_email}</p>
+                )}
+                {d.cpf && d.crm && d.crm_uf ? (
+                  <p className="text-[11px] text-brand-teal-dark">
+                    Receita digital: CRM-{d.crm_uf} {d.crm}
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-amber-700">
+                    Receita digital: falta CPF/CRM (clique em Editar)
+                  </p>
                 )}
                 {memedLinkId === d.id && (
                   <div className="mt-2 grid gap-2 rounded-md border border-brand-teal-dark bg-brand-teal/5 p-3 sm:grid-cols-4">

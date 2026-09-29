@@ -2,7 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { uploadPatientDocuments } from "@/lib/uploadPatientDocument";
 import VideoRoom from "./VideoRoom";
+import PrescriptionPanel from "./PrescriptionPanel";
+
+const KIND_TAGS = { receita: "Receita", exame: "Exame", atestado: "Atestado" } as const;
 import type { AppointmentDetail, HistoryItem } from "@/lib/appointments";
 
 // Tipos mínimos do script global da Memed (carregado dinamicamente —
@@ -115,19 +119,15 @@ export default function ConsultationClient({
     if (selected.length === 0 || !appointment.patient_id) return;
     setUploadingDoc(true);
     try {
-      const formData = new FormData();
-      selected.forEach((f) => formData.append("files", f));
-      const res = await fetch(`/api/doctor/patients/${appointment.patient_id}/documents`, {
-        method: "POST",
-        body: formData,
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setPatientDocuments(data.files);
-      } else {
-        const err = await res.json().catch(() => ({}));
-        alert(err.error ?? "Falha ao anexar pedido de exame");
-      }
+      // Envio direto pro Storage (mesmo fluxo da fila/atendente) — pelo
+      // servidor, arquivos acima de ~4,5 MB eram recusados.
+      const files = await uploadPatientDocuments<(typeof patientDocuments)[number]>(
+        `/api/doctor/patients/${appointment.patient_id}/documents`,
+        selected
+      );
+      setPatientDocuments(files);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Falha ao anexar pedido de exame");
     } finally {
       setUploadingDoc(false);
       e.target.value = "";
@@ -352,11 +352,16 @@ export default function ConsultationClient({
       return;
     }
     const finishedAt = new Date().toISOString();
-    await fetch(`/api/doctor/appointments/${appointmentId}`, {
+    const res = await fetch(`/api/doctor/appointments/${appointmentId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "concluido", doctorNotes: notes }),
-    });
+    }).catch(() => null);
+    if (!res?.ok) {
+      // Antes a tela mostrava "concluído" mesmo quando não salvava.
+      alert("Não foi possível finalizar a consulta. Verifique a conexão e tente de novo.");
+      return;
+    }
     setAppointment((a) => ({ ...a, status: "concluido", finished_at: a.finished_at ?? finishedAt }));
   }
 
@@ -604,6 +609,12 @@ export default function ConsultationClient({
             )}
           </div>
 
+          <PrescriptionPanel
+            appointmentId={appointmentId}
+            patientName={appointment.patients?.full_name ?? "Paciente"}
+            onIssued={(doc) => setPatientDocuments((prev) => [...prev, doc])}
+          />
+
           <div className="border-t border-zinc-200 p-4">
             <span className="mb-1 block text-xs font-medium text-zinc-600">
               Exames / documentos do paciente
@@ -621,7 +632,8 @@ export default function ConsultationClient({
                         rel="noreferrer"
                         className="truncate text-brand-teal-dark underline"
                       >
-                        📎 {f.name}
+                        {f.kind ? `${KIND_TAGS[f.kind]} · ` : "📎 "}
+                        {f.name}
                       </a>
                     ) : (
                       <span className="truncate text-zinc-400">📎 {f.name} (link indisponível)</span>

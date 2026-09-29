@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { cpfLikePattern, formatCpf, sanitizeSearch } from "@/lib/format";
 
 export async function GET(req: NextRequest) {
-  const search = req.nextUrl.searchParams.get("q")?.trim();
+  const search = sanitizeSearch(req.nextUrl.searchParams.get("q") ?? "");
   const supabase = getSupabaseAdmin();
 
   let query = supabase.from("patients").select("*").order("full_name", { ascending: true });
   if (search) {
-    query = query.or(`full_name.ilike.%${search}%,cpf.ilike.%${search}%`);
+    // Busca pelo nome ou pelo CPF, com ou sem pontuação.
+    const cpfPattern = cpfLikePattern(search);
+    query = query.or(
+      cpfPattern ? `full_name.ilike.%${search}%,cpf.ilike.${cpfPattern}` : `full_name.ilike.%${search}%`
+    );
   }
 
   const { data, error } = await query;
@@ -30,7 +35,7 @@ export async function POST(req: NextRequest) {
     .from("patients")
     .insert({
       full_name: fullName.trim(),
-      cpf: cpf || null,
+      cpf: formatCpf(cpf),
       birth_date: birthDate || null,
       phone: phone || null,
       email: email || null,

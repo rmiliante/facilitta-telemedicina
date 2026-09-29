@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDoctorSession } from "@/lib/auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { todayKeySaoPaulo, utcDayRange } from "@/lib/format";
 
 /**
  * GET /api/doctor/queue
@@ -11,11 +12,8 @@ export async function GET() {
   const session = await getDoctorSession();
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const dayKey = `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}`;
-  const dayStart = new Date(`${dayKey}T00:00:00.000Z`).toISOString();
-  const dayEnd = new Date(new Date(`${dayKey}T00:00:00.000Z`).getTime() + 24 * 60 * 60 * 1000).toISOString();
+  // "Hoje" no fuso de São Paulo (antes era o dia UTC, que virava às 21h).
+  const { start: dayStart, end: dayEnd } = utcDayRange(todayKeySaoPaulo());
 
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase

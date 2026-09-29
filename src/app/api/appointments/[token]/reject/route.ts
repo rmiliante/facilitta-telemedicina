@@ -24,6 +24,12 @@ export async function POST(
     return NextResponse.json({ error: "Link inválido ou expirado" }, { status: 404 });
   }
 
+  // Só vale enquanto a pessoa está sendo chamada pra cabine — antes, o
+  // link conseguia voltar pra fila até consulta já concluída/cancelada.
+  if (appointment.status !== "em_andamento") {
+    return NextResponse.json({ error: "Essa consulta não está aguardando na cabine" }, { status: 409 });
+  }
+
   const { error: updateErr } = await supabase
     .from("appointments")
     .update({

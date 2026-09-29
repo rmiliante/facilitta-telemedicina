@@ -3,11 +3,16 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { BRAZIL_STATES, uploadApplicationPhoto } from "@/lib/doctorApplications";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+// A Vercel recusa requisições acima de ~4,5 MB antes de chegar aqui,
+// então o limite da foto precisa ficar abaixo disso.
+const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
 
 /** POST /api/public/doctor-applications — cadastro publico de medicos interessados. */
 export async function POST(req: NextRequest) {
-  const formData = await req.formData();
+  const formData = await req.formData().catch(() => null);
+  if (!formData) {
+    return NextResponse.json({ error: "Envio inválido. Tente novamente." }, { status: 400 });
+  }
 
   // Honeypot: bots preenchem esse campo invisivel; humano nunca ve.
   const website = formData.get("website");
@@ -60,7 +65,7 @@ export async function POST(req: NextRequest) {
   const photo = formData.get("photo");
   if (photo instanceof File && photo.size > 0) {
     if (photo.size > MAX_PHOTO_BYTES) {
-      return NextResponse.json({ error: "A foto deve ter no maximo 5MB" }, { status: 400 });
+      return NextResponse.json({ error: "A foto deve ter no maximo 4MB" }, { status: 400 });
     }
     if (!photo.type.startsWith("image/")) {
       return NextResponse.json({ error: "A foto deve ser uma imagem" }, { status: 400 });

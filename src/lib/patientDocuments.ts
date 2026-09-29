@@ -87,6 +87,12 @@ export async function finalizePatientDocument(
   path: string,
   name: string
 ): Promise<PatientDocument[]> {
+  // Só aceita arquivos da pasta desse paciente (o caminho vem do
+  // navegador — sem isso, dava pra "anexar" arquivo de outro paciente).
+  if (!path.startsWith(`pacientes/${patientId}/`) || path.includes("..")) {
+    throw new Error("Arquivo inválido para esse paciente");
+  }
+
   const supabase = getSupabaseAdmin();
 
   const { data: current, error: fetchErr } = await supabase
@@ -128,6 +134,11 @@ export async function removePatientDocument(patientId: string, path: string): Pr
   }
 
   const existing = (current.documents as PatientDocument[] | null) ?? [];
+  // Só apaga do Storage se o arquivo for mesmo desse paciente — antes,
+  // qualquer caminho enviado era apagado do bucket.
+  if (!existing.some((f) => f.path === path)) {
+    throw new Error("Documento não encontrado nesse paciente");
+  }
   const nextDocuments = existing.filter((f) => f.path !== path);
 
   await supabase.storage.from(EXAM_FILES_BUCKET).remove([path]);
@@ -146,3 +157,60 @@ export async function removePatientDocument(patientId: string, path: string): Pr
 
 /** Reaproveita o mesmo gerador de link assinado usado pros exames de consulta. */
 export const signPatientDocuments = signExamFiles;
+
+/**
+ * Salva no cadastro do paciente um PDF gerado pelo sistema (receita,
+ * pedido de exame ou atestado já assinados), marcado pra atendente imprimir.
+ */
+export async function addGeneratedPatientDocument(
+  patientId: string,
+  pdf: Uint8Array,
+  fileName: string,
+  meta: Pick<PatientDocument, "kind" | "signed" | "author" | "appointment_id" | "needs_print">
+): Promise<PatientDocument> {
+  const supabase = getSupabaseAdmin();
+  const path = `pacientes/${patientId}/${Date.now()}-${crypto.randomUUID()}-${sanitizeFileName(fileName)}`;
+
+  const { error: uploadErr } = await supabase.storage
+    .from(EXAM_FILES_BUCKET)
+    .upload(path, pdf, { contentType: "application/pdf" });
+  if (uploadErr) throw new Error(`Falha ao salvar o PDF: ${uploadErr.message}`);
+
+  const { data: current, error: fetchErr } = await supabase
+    .from("patients")
+    .select("documents")
+    .eq("id", patientId)
+    .maybeSingle();
+  if (fetchErr || !current) throw new Error("Paciente não encontrado");
+
+  const doc: PatientDocument = { path, name: fileName, uploaded_at: new Date().toISOString(), ...meta };
+  const existing = (current.documents as PatientDocument[] | null) ?? [];
+  const { error: updateErr } = await supabase
+    .from("patients")
+    .update({ documents: [...existing, doc] })
+    .eq("id", patientId);
+  if (updateErr) throw new Error("PDF salvo, mas falha ao registrar no cadastro do paciente");
+
+  return doc;
+}
+
+/** Marca um documento como impresso (tira o aviso da fila da atendente). */
+export async function markPatientDocumentPrinted(patientId: string, path: string): Promise<PatientDocument[]> {
+  const supabase = getSupabaseAdmin();
+  const { data: current, error } = await supabase
+    .from("patients")
+    .select("documents")
+    .eq("id", patientId)
+    .maybeSingle();
+  if (error || !current) throw new Error("Paciente não encontrado");
+
+  const existing = (current.documents as PatientDocument[] | null) ?? [];
+  if (!existing.some((d) => d.path === path)) throw new Error("Documento não encontrado nesse paciente");
+
+  const next = existing.map((d) =>
+    d.path === path ? { ...d, needs_print: false, printed_at: new Date().toISOString() } : d
+  );
+  const { error: updateErr } = await supabase.from("patients").update({ documents: next }).eq("id", patientId);
+  if (updateErr) throw new Error("Falha ao marcar como impresso");
+  return next;
+}

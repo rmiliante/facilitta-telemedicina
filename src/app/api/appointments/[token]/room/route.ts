@@ -24,19 +24,19 @@ export async function POST(
     return NextResponse.json({ error: "Link inválido ou expirado" }, { status: 404 });
   }
 
-  // Sinaliza pro médico, na fila, que esse paciente já está esperando
-  // na sala de vídeo.
-  await supabase
-    .from("appointments")
-    .update({ patient_joined_at: new Date().toISOString() })
-    .eq("id", appointment.id);
-
   if (appointment.status === "cancelado") {
     return NextResponse.json({ error: "Essa consulta foi cancelada" }, { status: 410 });
   }
   if (appointment.status === "concluido") {
     return NextResponse.json({ error: "Essa consulta já foi encerrada" }, { status: 410 });
   }
+
+  // Sinaliza pro médico, na fila, que esse paciente já está esperando
+  // na sala de vídeo.
+  await supabase
+    .from("appointments")
+    .update({ patient_joined_at: new Date().toISOString() })
+    .eq("id", appointment.id);
 
   const patientName =
     (appointment.patients as unknown as { full_name: string } | null)?.full_name ??

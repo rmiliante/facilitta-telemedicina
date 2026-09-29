@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import LogoutButton from "./LogoutButton";
 import { uploadPatientDocuments as uploadPatientDocumentsDirect } from "@/lib/uploadPatientDocument";
+import { printPdf } from "@/lib/printPdf";
 
 interface Doctor {
   id: string;
@@ -22,7 +23,26 @@ interface DocFile {
   path: string;
   name: string;
   uploaded_at: string;
+  kind?: "receita" | "exame" | "atestado";
+  signed?: boolean;
+  author?: string;
+  needs_print?: boolean;
 }
+
+const DOC_KIND_LABELS = { receita: "Receita", exame: "Exame", atestado: "Atestado" } as const;
+
+interface PrintItem {
+  patientId: string;
+  patientName: string;
+  path: string;
+  name: string;
+  uploaded_at: string;
+  url: string | null;
+  kind?: "receita" | "exame" | "atestado";
+  author?: string;
+}
+
+const PRINT_POLL_INTERVAL_MS = 8000;
 
 interface Patient {
   id: string;
@@ -104,6 +124,47 @@ export default function StaffPanel({ staffName }: { staffName: string }) {
   const [tab, setTab] = useState<Tab>("fila");
   const [navOpen, setNavOpen] = useState(false);
   const [alerts, setAlerts] = useState<BoothAlert[]>([]);
+  const [toPrint, setToPrint] = useState<PrintItem[]>([]);
+
+  // Documentos emitidos pelos médicos que ainda não foram impressos.
+  useEffect(() => {
+    let cancelled = false;
+    async function pollPrint() {
+      try {
+        const res = await fetch("/api/admin/patients/print-queue");
+        if (res.ok && !cancelled) {
+          const data = await res.json();
+          setToPrint(data.pending ?? []);
+        }
+      } catch {
+        // silencioso — tenta de novo no próximo ciclo
+      }
+    }
+    pollPrint();
+    const interval = setInterval(pollPrint, PRINT_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  async function markPrinted(item: PrintItem) {
+    setToPrint((prev) => prev.filter((p) => p.path !== item.path));
+    await fetch(`/api/admin/patients/${item.patientId}/documents/printed`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: item.path }),
+    }).catch(() => {});
+  }
+
+  async function printNow(item: PrintItem) {
+    if (!item.url) {
+      alert("Link do arquivo indisponível. Abra pelo cadastro da paciente.");
+      return;
+    }
+    await printPdf(item.url);
+    await markPrinted(item);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -233,6 +294,41 @@ export default function StaffPanel({ staffName }: { staffName: string }) {
                     >
                       OK
                     </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {toPrint.length > 0 && (
+              <div className="mb-4 space-y-2">
+                {toPrint.map((item) => (
+                  <div
+                    key={item.path}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-brand-teal-dark/40 bg-brand-teal/10 px-4 py-3 text-sm"
+                  >
+                    <div>
+                      <p className="font-semibold text-brand-navy">
+                        {item.kind ? DOC_KIND_LABELS[item.kind] : "Documento"} novo para imprimir
+                      </p>
+                      <p className="text-xs text-zinc-600">
+                        {item.patientName}
+                        {item.author ? ` · emitido por ${item.author}` : ""} às{" "}
+                        {new Date(item.uploaded_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <button
+                        onClick={() => printNow(item)}
+                        className="rounded-md bg-brand-teal-dark px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
+                      >
+                        Imprimir agora
+                      </button>
+                      <button
+                        onClick={() => markPrinted(item)}
+                        className="rounded-md px-2.5 py-1.5 text-xs font-medium text-brand-teal-dark hover:bg-brand-teal/15"
+                      >
+                        Marcar como impresso
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -909,24 +1005,44 @@ function DocumentsPanel({
             <ul className="mb-2 space-y-1">
               {files.map((f) => (
                 <li key={f.path} className="flex items-center justify-between gap-2 text-xs">
-                  {f.url ? (
-                    <a
-                      href={f.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="truncate text-brand-teal-dark underline"
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    {f.kind && (
+                      <span className="shrink-0 rounded bg-brand-navy px-1.5 py-0.5 text-[9px] font-bold uppercase text-white">
+                        {DOC_KIND_LABELS[f.kind]}
+                      </span>
+                    )}
+                    {f.url ? (
+                      <a
+                        href={f.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="truncate text-brand-teal-dark underline"
+                      >
+                        {f.name}
+                      </a>
+                    ) : (
+                      <span className="truncate text-zinc-500">{f.name}</span>
+                    )}
+                    {f.signed && (
+                      <span className="shrink-0 text-[9px] font-semibold text-brand-teal-dark">assinado</span>
+                    )}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    {f.url && (
+                      <button
+                        onClick={() => printPdf(f.url!)}
+                        className="rounded border border-brand-navy px-2 py-0.5 text-[10px] font-semibold text-brand-navy hover:bg-brand-navy hover:text-white"
+                      >
+                        Imprimir
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleRemove(f.path)}
+                      className="text-[10px] font-medium text-red-600 hover:underline"
                     >
-                      {f.name}
-                    </a>
-                  ) : (
-                    <span className="truncate text-zinc-500">{f.name}</span>
-                  )}
-                  <button
-                    onClick={() => handleRemove(f.path)}
-                    className="shrink-0 text-[10px] font-medium text-red-600 hover:underline"
-                  >
-                    Remover
-                  </button>
+                      Remover
+                    </button>
+                  </span>
                 </li>
               ))}
             </ul>

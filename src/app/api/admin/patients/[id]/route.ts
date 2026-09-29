@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { formatCpf } from "@/lib/format";
 
 const EDITABLE_FIELDS: Record<string, string> = {
   fullName: "full_name",
@@ -47,7 +48,7 @@ export async function PATCH(
 
   const update: Record<string, unknown> = {};
   for (const [key, column] of Object.entries(EDITABLE_FIELDS)) {
-    if (key in body) update[column] = body[key] || null;
+    if (key in body) update[column] = key === "cpf" ? formatCpf(body[key]) : body[key] || null;
   }
 
   if (Object.keys(update).length === 0) {

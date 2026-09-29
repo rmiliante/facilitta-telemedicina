@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { sanitizeSearch } from "@/lib/format";
 import { APPLICATION_STATUSES, signApplicationPhoto } from "@/lib/doctorApplications";
 
 /**
@@ -10,7 +11,7 @@ import { APPLICATION_STATUSES, signApplicationPhoto } from "@/lib/doctorApplicat
  */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const q = searchParams.get("q")?.trim();
+  const q = sanitizeSearch(searchParams.get("q") ?? "");
   const specialty = searchParams.get("specialty")?.trim();
   const city = searchParams.get("city")?.trim();
   const state = searchParams.get("state")?.trim();

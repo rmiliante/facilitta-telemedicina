@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDoctorSession } from "@/lib/auth";
+import { doctorCanAccessPatient } from "@/lib/appointments";
 import { createPatientDocumentUploadTicket } from "@/lib/patientDocuments";
 
 /**
@@ -16,6 +17,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
   const { id } = await params;
+  if (!(await doctorCanAccessPatient(session.doctorId, id))) {
+    return NextResponse.json({ error: "Paciente não encontrado" }, { status: 404 });
+  }
   const body = await req.json().catch(() => ({}));
   const fileName = body?.fileName;
 

@@ -32,6 +32,25 @@ function Pill({
   );
 }
 
+/** Reduz a imagem pra no máximo 1600px (JPEG), mantendo a proporção. Se não der, devolve a original. */
+async function shrinkImage(file: File): Promise<File> {
+  if (!file.type.startsWith("image/") || file.size < 1024 * 1024) return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
+    if (!blob) return file;
+    const baseName = file.name.replace(/\.[^.]+$/, "") || "foto";
+    return new File([blob], `${baseName}.jpg`, { type: "image/jpeg" });
+  } catch {
+    return file;
+  }
+}
+
 export default function DoctorApplicationPage() {
   const [days, setDays] = useState<string[]>([]);
   const [shifts, setShifts] = useState<string[]>([]);
@@ -49,6 +68,12 @@ export default function DoctorApplicationPage() {
     setSubmitting(true);
     try {
       const formData = new FormData(e.currentTarget);
+      // Fotos de celular costumam ter 5-10 MB, acima do limite de envio
+      // da hospedagem (~4,5 MB): reduz no navegador antes de enviar.
+      const photo = formData.get("photo");
+      if (photo instanceof File && photo.size > 0) {
+        formData.set("photo", await shrinkImage(photo));
+      }
       days.forEach((d) => formData.append("availableDays", d));
       shifts.forEach((s) => formData.append("availableShifts", s));
 

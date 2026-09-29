@@ -22,7 +22,7 @@ export async function POST(
 
   const { data: appointment, error } = await supabase
     .from("appointments")
-    .select("id, doctor_id, status")
+    .select("id, doctor_id, status, called_at")
     .eq("id", id)
     .maybeSingle();
 
@@ -40,7 +40,12 @@ export async function POST(
     if (appointment.status === "agendado") {
       await supabase
         .from("appointments")
-        .update({ status: "em_andamento" })
+        .update({
+          status: "em_andamento",
+          // Registra o início do atendimento (antes ficava vazio quando o
+          // médico abria o vídeo direto, e o tempo de atendimento sumia).
+          ...(appointment.called_at ? {} : { called_at: new Date().toISOString() }),
+        })
         .eq("id", appointment.id);
     }
 

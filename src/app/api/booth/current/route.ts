@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { maskCpf, todayKeySaoPaulo, utcDayRange } from "@/lib/format";
 
 /**
  * GET /api/booth/current
@@ -13,11 +14,8 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 export async function GET() {
   const supabase = getSupabaseAdmin();
 
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const dayKey = `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}`;
-  const dayStart = new Date(`${dayKey}T00:00:00.000Z`).toISOString();
-  const dayEnd = new Date(new Date(`${dayKey}T00:00:00.000Z`).getTime() + 24 * 60 * 60 * 1000).toISOString();
+  // "Hoje" no fuso de São Paulo (antes era o dia UTC, que virava às 21h).
+  const { start: dayStart, end: dayEnd } = utcDayRange(todayKeySaoPaulo());
 
   const { data, error } = await supabase
     .from("appointments")
@@ -35,5 +33,17 @@ export async function GET() {
     return NextResponse.json({ error: "Falha ao buscar atendimento atual" }, { status: 500 });
   }
 
-  return NextResponse.json({ pending: data ?? null });
+  // Rota pública: nunca devolve o CPF completo, só parte dele (o
+  // suficiente pra pessoa na cabine confirmar que é ela).
+  const pending = data
+    ? (() => {
+        const patient = data.patients as unknown as { full_name: string; cpf: string | null } | null;
+        return {
+          ...data,
+          patients: patient ? { full_name: patient.full_name, cpf: maskCpf(patient.cpf) } : null,
+        };
+      })()
+    : null;
+
+  return NextResponse.json({ pending });
 }

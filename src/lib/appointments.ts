@@ -55,19 +55,34 @@ export interface HistoryItem {
   specialties: { name: string } | null;
 }
 
+const VITAL_COLUMNS = "vital_spo2, vital_bpm, vital_pa, vital_peso, vital_hgt";
+
+/**
+ * Tira as colunas de sinais vitais do select quando o banco ainda não
+ * tem elas (migration_sinais_vitais.sql não rodada). Sem isso, a falta
+ * da migração derrubava a tela de consulta e o histórico do paciente.
+ */
+export function withoutVitals(columns: string): string {
+  return columns.replace(`, ${VITAL_COLUMNS}`, "");
+}
+
+/** Erro do Postgres "coluna não existe". */
+export function isMissingColumnError(error: { code?: string } | null): boolean {
+  return error?.code === "42703";
+}
+
 /** Busca uma consulta garantindo que ela pertence ao médico informado. */
 export async function getOwnedAppointment(
   id: string,
   doctorId: string
 ): Promise<AppointmentDetail | null> {
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("appointments")
-    .select(
-      "id, doctor_id, status, scheduled_at, doctor_notes, called_at, finished_at, prescription_url, memed_prescription_at, memed_prescription_summary, vital_spo2, vital_bpm, vital_pa, vital_peso, vital_hgt, patient_id, patients(*), specialties(name), doctors(memed_email, memed_linked_at)"
-    )
-    .eq("id", id)
-    .maybeSingle();
+  const columns =
+    "id, doctor_id, status, scheduled_at, doctor_notes, called_at, finished_at, prescription_url, memed_prescription_at, memed_prescription_summary, vital_spo2, vital_bpm, vital_pa, vital_peso, vital_hgt, patient_id, patients(*), specialties(name), doctors(memed_email, memed_linked_at)";
+  let { data, error } = await supabase.from("appointments").select(columns).eq("id", id).maybeSingle();
+  if (isMissingColumnError(error)) {
+    ({ data, error } = await supabase.from("appointments").select(withoutVitals(columns)).eq("id", id).maybeSingle());
+  }
 
   if (error || !data || data.doctor_id !== doctorId) return null;
 
@@ -84,15 +99,33 @@ export async function getPatientHistory(
   excludeAppointmentId: string
 ): Promise<HistoryItem[]> {
   const supabase = getSupabaseAdmin();
-  const { data } = await supabase
-    .from("appointments")
-    .select(
-      "id, scheduled_at, status, doctor_notes, called_at, finished_at, prescription_url, memed_prescription_at, memed_prescription_summary, vital_spo2, vital_bpm, vital_pa, vital_peso, vital_hgt, specialties(name)"
-    )
-    .eq("patient_id", patientId)
-    .neq("id", excludeAppointmentId)
-    .order("scheduled_at", { ascending: false })
-    .limit(10);
+  const columns =
+    "id, scheduled_at, status, doctor_notes, called_at, finished_at, prescription_url, memed_prescription_at, memed_prescription_summary, vital_spo2, vital_bpm, vital_pa, vital_peso, vital_hgt, specialties(name)";
+  const run = (cols: string) =>
+    supabase
+      .from("appointments")
+      .select(cols)
+      .eq("patient_id", patientId)
+      .neq("id", excludeAppointmentId)
+      .order("scheduled_at", { ascending: false })
+      .limit(10);
+  let { data, error } = await run(columns);
+  if (isMissingColumnError(error)) ({ data, error } = await run(withoutVitals(columns)));
 
   return (data ?? []) as unknown as HistoryItem[];
+}
+
+/**
+ * O médico só pode ver/anexar documentos de pacientes que ele atende
+ * (tem ou teve consulta com ele). Antes, qualquer médico logado
+ * conseguia ler e apagar documentos de qualquer paciente pelo id.
+ */
+export async function doctorCanAccessPatient(doctorId: string, patientId: string): Promise<boolean> {
+  const supabase = getSupabaseAdmin();
+  const { count, error } = await supabase
+    .from("appointments")
+    .select("id", { count: "exact", head: true })
+    .eq("doctor_id", doctorId)
+    .eq("patient_id", patientId);
+  return !error && (count ?? 0) > 0;
 }

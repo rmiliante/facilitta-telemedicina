@@ -9,6 +9,16 @@ export interface ExamFile {
   path: string;
   name: string;
   uploaded_at: string;
+  /** Tipo do documento (receita, exame, atestado); ausente = anexo comum. */
+  kind?: "receita" | "exame" | "atestado";
+  /** true = PDF com assinatura digital ICP-Brasil (emitido pelo sistema). */
+  signed?: boolean;
+  /** Quem emitiu (nome do médico), quando gerado pelo sistema. */
+  author?: string;
+  appointment_id?: string;
+  /** Aguardando a atendente imprimir. */
+  needs_print?: boolean;
+  printed_at?: string;
 }
 
 export interface ExamFileWithUrl extends ExamFile {

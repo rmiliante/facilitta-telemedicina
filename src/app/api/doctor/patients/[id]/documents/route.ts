@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDoctorSession } from "@/lib/auth";
+import { doctorCanAccessPatient } from "@/lib/appointments";
 import {
   addPatientDocuments,
   removePatientDocument,
@@ -20,6 +21,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
   const { id } = await params;
+  if (!(await doctorCanAccessPatient(session.doctorId, id))) {
+    return NextResponse.json({ error: "Paciente não encontrado" }, { status: 404 });
+  }
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("patients")
@@ -40,6 +44,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
   const { id } = await params;
+  if (!(await doctorCanAccessPatient(session.doctorId, id))) {
+    return NextResponse.json({ error: "Paciente não encontrado" }, { status: 404 });
+  }
   const formData = await req.formData().catch(() => null);
   if (!formData) {
     return NextResponse.json({ error: "Envie os arquivos como multipart/form-data" }, { status: 400 });
@@ -67,6 +74,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
   const { id } = await params;
+  if (!(await doctorCanAccessPatient(session.doctorId, id))) {
+    return NextResponse.json({ error: "Paciente não encontrado" }, { status: 404 });
+  }
   const body = await req.json().catch(() => ({}));
   const { path } = body ?? {};
 

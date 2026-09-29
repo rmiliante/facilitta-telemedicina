@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDoctorSession } from "@/lib/auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { cpfLikePattern } from "@/lib/format";
 
 /**
  * GET /api/doctor/appointments
@@ -34,8 +35,11 @@ export async function GET(req: NextRequest) {
   if (name) {
     query = query.ilike("patients.full_name", `%${name}%`);
   }
-  if (cpf) {
-    query = query.ilike("patients.cpf", `%${cpf.replace(/\D/g, "")}%`);
+  const cpfPattern = cpf ? cpfLikePattern(cpf) : null;
+  if (cpfPattern) {
+    // Acha o CPF com ou sem pontuação (antes só achava quem estava
+    // cadastrado sem pontos e traço).
+    query = query.ilike("patients.cpf", cpfPattern);
   }
 
   const { data, error } = await query;

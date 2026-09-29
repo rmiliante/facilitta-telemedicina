@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { professionalFields } from "@/lib/doctorFields";
 
 /** PATCH /api/admin/doctors/:id — ativar/desativar ou redefinir senha. */
 export async function PATCH(
@@ -17,8 +18,9 @@ export async function PATCH(
   }
   if (typeof body.specialtyId === "string") update.specialty_id = body.specialtyId || null;
   if (typeof body.name === "string" && body.name.trim()) update.name = body.name.trim();
-  if (typeof body.email === "string" && body.email.trim()) update.email = body.email.trim();
+  if (typeof body.email === "string" && body.email.trim()) update.email = body.email.trim().toLowerCase(); // o login compara em minúsculas
   if (typeof body.memedEmail === "string") update.memed_email = body.memedEmail.trim().toLowerCase() || null;
+  Object.assign(update, professionalFields(body));
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: "Nada para atualizar" }, { status: 400 });
