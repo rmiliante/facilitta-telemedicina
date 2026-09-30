@@ -76,8 +76,19 @@ export default function PrescriptionPanel({
   }, [signing?.status, signing?.expiresAt]); // eslint-disable-line react-hooks/exhaustive-deps
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<Kind>("receita");
-  const [items, setItems] = useState<Item[]>([{ ...EMPTY_ITEM }]);
-  const [notes, setNotes] = useState("");
+  // Cada aba (receita, pedido de exame, atestado) tem a sua própria lista,
+  // pra trocar de aba sem levar exames pra receita e vice-versa.
+  const [itemsByKind, setItemsByKind] = useState<Record<Kind, Item[]>>(() => ({
+    receita: [{ ...EMPTY_ITEM }],
+    exame: [{ ...EMPTY_ITEM }],
+    atestado: [{ ...EMPTY_ITEM }],
+  }));
+  const [notesByKind, setNotesByKind] = useState<Record<Kind, string>>({ receita: "", exame: "", atestado: "" });
+  const items = itemsByKind[kind];
+  const notes = notesByKind[kind];
+  const setItems = (next: Item[] | ((prev: Item[]) => Item[])) =>
+    setItemsByKind((all) => ({ ...all, [kind]: typeof next === "function" ? next(all[kind]) : next }));
+  const setNotes = (next: string) => setNotesByKind((all) => ({ ...all, [kind]: next }));
   const [phase, setPhase] = useState<
     "edit" | "credentials" | "authorizing" | "emitting"
   >("edit");
@@ -124,8 +135,8 @@ export default function PrescriptionPanel({
 
   function openModal(k: Kind) {
     setKind(k);
-    setItems([{ ...EMPTY_ITEM }]);
-    setNotes("");
+    setItemsByKind({ receita: [{ ...EMPTY_ITEM }], exame: [{ ...EMPTY_ITEM }], atestado: [{ ...EMPTY_ITEM }] });
+    setNotesByKind({ receita: "", exame: "", atestado: "" });
     setError(null);
     setPhase("edit");
     setOpen(true);
