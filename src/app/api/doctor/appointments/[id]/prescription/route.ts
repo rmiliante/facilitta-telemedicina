@@ -71,7 +71,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const state = await refreshSigningState(doctor);
     if (!state.ready) {
       return NextResponse.json(
-        { error: `Falta no cadastro do médico: ${state.missing.join(", ")}. Peça pra Admin completar.` },
+        { error: `Falta no cadastro do médico: ${state.missing.join(", ")}. Complete em Meu cadastro (endereço/RQE) ou peça para a administração (CPF/CRM).` },
         { status: 400 }
       );
     }

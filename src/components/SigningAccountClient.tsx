@@ -521,7 +521,15 @@ function ShiftActivation({
     <div className="flex flex-col gap-3">
       {!state.ready && (
         <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          Falta no seu cadastro: {state.missing.join(", ")}. Peça para a administração completar antes de ativar.
+          Falta no seu cadastro: {state.missing.join(", ")}.{" "}
+          {state.missing.includes("endereço profissional") ? (
+            <a href="/medico/cadastro" className="font-semibold underline">
+              Complete em Meu cadastro
+            </a>
+          ) : (
+            "Peça para a administração completar"
+          )}{" "}
+          antes de ativar.
         </p>
       )}
       <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">

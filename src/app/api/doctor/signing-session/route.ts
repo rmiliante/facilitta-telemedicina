@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
     }
     if (!state.ready) {
       return NextResponse.json(
-        { ...state, error: `Falta no cadastro do médico: ${state.missing.join(", ")}. Peça pra Admin completar.` },
+        { ...state, error: `Falta no cadastro do médico: ${state.missing.join(", ")}. Complete em Meu cadastro (endereço/RQE) ou peça para a administração (CPF/CRM).` },
         { status: 400 }
       );
     }
