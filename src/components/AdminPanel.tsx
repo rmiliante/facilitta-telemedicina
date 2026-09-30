@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import VitalSignsPanel from "./VitalSigns";
+import TipoConsultaBadge, { TipoConsultaChoice, tipoSuffix } from "./TipoConsultaBadge";
 import PatientTimeline from "./PatientTimeline";
-import { tipoSuffix } from "./TipoConsultaBadge";
 import { printFile } from "@/lib/printPdf";
 import type { TimelineDoc } from "@/lib/patientTimeline";
 import {
@@ -51,6 +51,7 @@ interface Appointment {
   status: string;
   access_token: string;
   queue_position?: number | null;
+  tipo_consulta?: string | null;
   patients: { id: string; full_name: string } | null;
   doctors: { id: string; name: string } | null;
   specialties: { id: string; name: string } | null;
@@ -1742,11 +1743,11 @@ function AgendaTab() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
-  const [form, setForm] = useState({ patientId: "", doctorId: "", specialtyId: "", scheduledDate: "" });
+  const [form, setForm] = useState({ patientId: "", doctorId: "", specialtyId: "", scheduledDate: "", tipoConsulta: "" });
   const [saving, setSaving] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ doctorId: "", scheduledDate: "" });
+  const [editForm, setEditForm] = useState({ doctorId: "", scheduledDate: "", tipoConsulta: "" });
   const [editSaving, setEditSaving] = useState(false);
   const [boothCopied, setBoothCopied] = useState(false);
   const [scheduledPatientIds, setScheduledPatientIds] = useState<Set<string>>(new Set());
@@ -1803,6 +1804,10 @@ function AgendaTab() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
+    if (!form.tipoConsulta) {
+      alert("Marque se é primeiro atendimento (rotina) ou retorno.");
+      return;
+    }
     setSaving(true);
     try {
       const res = await fetch("/api/admin/appointments", {
@@ -1815,7 +1820,7 @@ function AgendaTab() {
         alert(err.error);
         return;
       }
-      setForm({ patientId: "", doctorId: "", specialtyId: "", scheduledDate: "" });
+      setForm({ patientId: "", doctorId: "", specialtyId: "", scheduledDate: "", tipoConsulta: "" });
       await load();
     } finally {
       setSaving(false);
@@ -1830,6 +1835,20 @@ function AgendaTab() {
       body: JSON.stringify({ status: "cancelado" }),
     });
     await load();
+  }
+
+  async function setTipo(a: Appointment, tipo: string) {
+    const res = await fetch(`/api/admin/appointments/${a.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tipoConsulta: tipo }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert(err.error ?? "Falha ao salvar o tipo de consulta");
+      return;
+    }
+    setAppointments((prev) => prev.map((x) => (x.id === a.id ? { ...x, tipo_consulta: tipo } : x)));
   }
 
   async function handleDelete(id: string) {
@@ -1851,7 +1870,7 @@ function AgendaTab() {
 
   function startEdit(a: Appointment) {
     setEditingId(a.id);
-    setEditForm({ doctorId: a.doctors?.id ?? "", scheduledDate: toDateInputValue(a.scheduled_at) });
+    setEditForm({ doctorId: a.doctors?.id ?? "", scheduledDate: toDateInputValue(a.scheduled_at), tipoConsulta: a.tipo_consulta ?? "" });
   }
 
   async function saveEdit(id: string) {
@@ -1860,7 +1879,11 @@ function AgendaTab() {
       const res = await fetch(`/api/admin/appointments/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ doctorId: editForm.doctorId, scheduledDate: editForm.scheduledDate }),
+        body: JSON.stringify({
+          doctorId: editForm.doctorId,
+          scheduledDate: editForm.scheduledDate,
+          ...(editForm.tipoConsulta ? { tipoConsulta: editForm.tipoConsulta } : {}),
+        }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -1976,6 +1999,10 @@ function AgendaTab() {
             O atendimento é por ordem de chegada — não é preciso marcar horário.
           </span>
         </label>
+        <div className="text-xs sm:col-span-2">
+          <span className="mb-1 block font-medium text-zinc-600">Tipo de consulta</span>
+          <TipoConsultaChoice value={form.tipoConsulta} onChange={(v) => setForm((f) => ({ ...f, tipoConsulta: v }))} />
+        </div>
         <div className="sm:col-span-2">
           <button
             disabled={saving}
@@ -2019,6 +2046,13 @@ function AgendaTab() {
                   className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
                 />
               </label>
+              <div className="text-xs sm:col-span-2">
+                <span className="mb-1 block font-medium text-zinc-600">Tipo de consulta</span>
+                <TipoConsultaChoice
+                  value={editForm.tipoConsulta}
+                  onChange={(v) => setEditForm((f) => ({ ...f, tipoConsulta: v }))}
+                />
+              </div>
               <div className="flex gap-2 sm:col-span-2">
                 <button
                   onClick={() => saveEdit(a.id)}
@@ -2053,6 +2087,29 @@ function AgendaTab() {
                   {a.doctors?.name ? ` · ${a.doctors.name}` : " · sem médico definido"}
                   {a.queue_position != null ? ` · fila: #${a.queue_position}` : ""}
                 </p>
+                <div className="mt-1">
+                  {a.tipo_consulta ? (
+                    <button
+                      type="button"
+                      title="Clique para trocar entre rotina e retorno"
+                      onClick={() => setTipo(a, a.tipo_consulta === "rotina" ? "retorno" : "rotina")}
+                    >
+                      <TipoConsultaBadge tipo={a.tipo_consulta} />
+                    </button>
+                  ) : (
+                    a.status !== "cancelado" && (
+                      <select
+                        value=""
+                        onChange={(e) => e.target.value && setTipo(a, e.target.value)}
+                        className="rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 outline-none"
+                      >
+                        <option value="">Primeiro atendimento ou retorno?</option>
+                        <option value="rotina">Rotina (primeiro atendimento)</option>
+                        <option value="retorno">Retorno</option>
+                      </select>
+                    )
+                  )}
+                </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-600">

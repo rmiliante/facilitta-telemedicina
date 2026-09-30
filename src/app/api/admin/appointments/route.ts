@@ -6,17 +6,18 @@ export async function GET(req: NextRequest) {
   const to = req.nextUrl.searchParams.get("to");
 
   const supabase = getSupabaseAdmin();
-  let query = supabase
-    .from("appointments")
-    .select(
-      "id, scheduled_at, status, access_token, queue_position, patients(id, full_name), doctors(id, name), specialties(id, name)"
-    )
-    .order("scheduled_at", { ascending: true });
+  const columns =
+    "id, scheduled_at, status, access_token, queue_position, tipo_consulta, patients(id, full_name), doctors(id, name), specialties(id, name)";
+  const run = (cols: string) => {
+    let query = supabase.from("appointments").select(cols).order("scheduled_at", { ascending: true });
+    if (from) query = query.gte("scheduled_at", from);
+    if (to) query = query.lt("scheduled_at", to);
+    return query;
+  };
 
-  if (from) query = query.gte("scheduled_at", from);
-  if (to) query = query.lt("scheduled_at", to);
-
-  const { data, error } = await query;
+  let { data, error } = await run(columns);
+  // Sem migration_tipo_consulta.sql a coluna ainda não existe.
+  if (error?.code === "42703") ({ data, error } = await run(columns.replace(", tipo_consulta", "")));
   if (error) {
     console.error("Erro ao buscar consultas:", error);
     return NextResponse.json({ error: "Falha ao buscar consultas" }, { status: 500 });

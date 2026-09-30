@@ -5,7 +5,7 @@ import LogoutButton from "./LogoutButton";
 import { uploadPatientDocuments as uploadPatientDocumentsDirect } from "@/lib/uploadPatientDocument";
 import { printFile, printPdf } from "@/lib/printPdf";
 import PatientTimeline from "./PatientTimeline";
-import TipoConsultaBadge, { tipoSuffix } from "./TipoConsultaBadge";
+import TipoConsultaBadge, { TipoConsultaChoice, tipoSuffix } from "./TipoConsultaBadge";
 import VitalSignsPanel from "./VitalSigns";
 import type { TimelineAppointment, TimelineDoc } from "@/lib/patientTimeline";
 
@@ -579,7 +579,7 @@ function FilaTab() {
       return;
     }
     if (!addForm.tipo) {
-      alert("Marque se é consulta de rotina ou retorno.");
+      alert("Marque se é primeiro atendimento (rotina) ou retorno.");
       return;
     }
     setAdding(true);
@@ -763,26 +763,7 @@ function FilaTab() {
           </label>
           <div className="text-xs sm:col-span-2">
             <span className="mb-1 block font-medium text-zinc-600">Tipo de consulta</span>
-            <div className="flex gap-2">
-              {[
-                { v: "rotina", l: "Consulta de rotina" },
-                { v: "retorno", l: "Retorno de consulta" },
-              ].map((o) => (
-                <button
-                  key={o.v}
-                  type="button"
-                  onClick={() => setAddForm((f) => ({ ...f, tipo: o.v }))}
-                  className={`rounded-md border px-3 py-1.5 text-xs font-medium ${
-                    addForm.tipo === o.v
-                      ? "border-brand-teal-dark bg-brand-teal/15 text-brand-navy"
-                      : "border-zinc-300 text-zinc-600 hover:bg-zinc-50"
-                  }`}
-                >
-                  {addForm.tipo === o.v ? "● " : "○ "}
-                  {o.l}
-                </button>
-              ))}
-            </div>
+            <TipoConsultaChoice value={addForm.tipo} onChange={(v) => setAddForm((f) => ({ ...f, tipo: v }))} />
             {selectedPatient && patientHasHistory && !addForm.tipo && (
               <span className="mt-1 block text-[11px] text-violet-700">
                 Esse paciente já teve consulta antes — confira se é retorno.
@@ -882,8 +863,8 @@ function FilaTab() {
                           onChange={(e) => e.target.value && setTipo(item, e.target.value)}
                           className="rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 outline-none"
                         >
-                          <option value="">Rotina ou retorno?</option>
-                          <option value="rotina">Rotina</option>
+                          <option value="">Primeiro atendimento ou retorno?</option>
+                          <option value="rotina">Rotina (primeiro atendimento)</option>
                           <option value="retorno">Retorno</option>
                         </select>
                       )}
