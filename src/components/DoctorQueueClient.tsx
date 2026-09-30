@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AttachmentsButton, DocumentsPanel, type DocFile } from "./DoctorDocuments";
+import TipoConsultaBadge from "./TipoConsultaBadge";
 
 interface QueueItem {
   id: string;
@@ -13,6 +14,7 @@ interface QueueItem {
   patient_joined_at: string | null;
   patients: { id: string; full_name: string; documents: DocFile[] } | null;
   specialties: { name: string } | null;
+  tipo_consulta?: string | null;
 }
 
 function formatTime(iso: string) {
@@ -106,7 +108,10 @@ export default function DoctorQueueClient() {
           </p>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-lg font-semibold text-zinc-800">{next.patients?.full_name}</p>
+              <p className="flex items-center gap-2 text-lg font-semibold text-zinc-800">
+                {next.patients?.full_name}
+                <TipoConsultaBadge tipo={next.tipo_consulta} />
+              </p>
               <p className="text-xs text-zinc-500">
                 {next.specialties?.name ?? ""}
                 {next.status === "em_andamento" && next.called_at
@@ -173,7 +178,10 @@ export default function DoctorQueueClient() {
                       <p className="truncate font-medium text-zinc-800">
                         {item.patients?.full_name ?? "Paciente"}
                       </p>
-                      <p className="text-xs text-zinc-500">{item.specialties?.name ?? ""}</p>
+                      <p className="flex items-center gap-1.5 text-xs text-zinc-500">
+                        {item.specialties?.name ?? ""}
+                        <TipoConsultaBadge tipo={item.tipo_consulta} />
+                      </p>
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
@@ -233,7 +241,10 @@ export default function DoctorQueueClient() {
                     <p className="truncate font-medium text-zinc-800">
                       {item.patients?.full_name ?? "Paciente"}
                     </p>
-                    <p className="text-xs text-zinc-500">{item.specialties?.name ?? ""}</p>
+                    <p className="flex items-center gap-1.5 text-xs text-zinc-500">
+                        {item.specialties?.name ?? ""}
+                        <TipoConsultaBadge tipo={item.tipo_consulta} />
+                      </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <span

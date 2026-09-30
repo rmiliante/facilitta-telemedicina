@@ -36,7 +36,8 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
-  const { patientId, doctorId, specialtyId, scheduledDate, scheduledAt } = body ?? {};
+  const { patientId, doctorId, specialtyId, scheduledDate, scheduledAt, tipoConsulta } = body ?? {};
+  const tipo = tipoConsulta === "rotina" || tipoConsulta === "retorno" ? tipoConsulta : null;
 
   const dateOnly = typeof scheduledDate === "string" && scheduledDate ? scheduledDate : null;
   const legacyDateTime = typeof scheduledAt === "string" && scheduledAt ? scheduledAt : null;
@@ -124,17 +125,22 @@ export async function POST(req: NextRequest) {
     queuePosition = (lastInQueue?.queue_position ?? 0) + 1;
   }
 
-  const { data: appointment, error } = await supabase
-    .from("appointments")
-    .insert({
-      patient_id: patientId,
-      doctor_id: finalDoctorId,
-      specialty_id: specialtyId,
-      scheduled_at: scheduledAtIso,
-      queue_position: queuePosition,
-    })
-    .select("*, patients(full_name), doctors(name), specialties(name)")
-    .single();
+  const row: Record<string, unknown> = {
+    patient_id: patientId,
+    doctor_id: finalDoctorId,
+    specialty_id: specialtyId,
+    scheduled_at: scheduledAtIso,
+    queue_position: queuePosition,
+  };
+  if (tipo) row.tipo_consulta = tipo;
+  const insert = (r: Record<string, unknown>) =>
+    supabase.from("appointments").insert(r).select("*, patients(full_name), doctors(name), specialties(name)").single();
+  let { data: appointment, error } = await insert(row);
+  if (error?.code === "42703" && tipo) {
+    // Coluna tipo_consulta ainda não criada: agenda assim mesmo.
+    delete row.tipo_consulta;
+    ({ data: appointment, error } = await insert(row));
+  }
 
   if (error) {
     console.error("Erro ao criar consulta:", error);

@@ -47,6 +47,9 @@ export async function PATCH(
   if (body.clearBoothRejected === true) {
     update.booth_rejected_at = null;
   }
+  if (body.tipoConsulta === "rotina" || body.tipoConsulta === "retorno" || body.tipoConsulta === null) {
+    update.tipo_consulta = body.tipoConsulta;
+  }
 
   const supabase = getSupabaseAdmin();
 
@@ -89,6 +92,12 @@ export async function PATCH(
 
   const { error } = await supabase.from("appointments").update(update).eq("id", id);
 
+  if (error?.code === "42703" && "tipo_consulta" in update) {
+    return NextResponse.json(
+      { error: "Para salvar rotina/retorno, rode o arquivo supabase/migration_tipo_consulta.sql no Supabase." },
+      { status: 503 }
+    );
+  }
   if (error) {
     return NextResponse.json({ error: "Falha ao atualizar consulta" }, { status: 500 });
   }

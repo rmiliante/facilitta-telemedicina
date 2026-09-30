@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatCpf } from "@/lib/format";
+import { findPatientsByCpf } from "@/lib/patientLookup";
 
 const EDITABLE_FIELDS: Record<string, string> = {
   fullName: "full_name",
@@ -56,6 +57,15 @@ export async function PATCH(
   }
 
   const supabase = getSupabaseAdmin();
+  if (typeof update.cpf === "string") {
+    const others = (await findPatientsByCpf(update.cpf)).filter((p) => p.id !== id);
+    if (others.length > 0) {
+      return NextResponse.json(
+        { error: `Esse CPF já pertence ao cadastro de ${others[0].full_name}.`, existing: others[0] },
+        { status: 409 }
+      );
+    }
+  }
   const { error } = await supabase.from("patients").update(update).eq("id", id);
 
   if (error) {

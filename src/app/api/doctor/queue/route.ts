@@ -16,25 +16,29 @@ export async function GET() {
   const { start: dayStart, end: dayEnd } = utcDayRange(todayKeySaoPaulo());
 
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("appointments")
-    .select(
-      "id, scheduled_at, status, queue_position, called_at, finished_at, patient_joined_at, patients(id, full_name, documents), specialties(name)"
-    )
-    .eq("doctor_id", session.doctorId)
-    .gte("scheduled_at", dayStart)
-    .lt("scheduled_at", dayEnd)
-    .neq("status", "cancelado")
-    .order("queue_position", { ascending: true, nullsFirst: false })
-    .order("scheduled_at", { ascending: true });
+  const columns =
+    "id, scheduled_at, status, queue_position, called_at, finished_at, patient_joined_at, tipo_consulta, patients(id, full_name, documents), specialties(name)";
+  const run = (cols: string) =>
+    supabase
+      .from("appointments")
+      .select(cols)
+      .eq("doctor_id", session.doctorId)
+      .gte("scheduled_at", dayStart)
+      .lt("scheduled_at", dayEnd)
+      .neq("status", "cancelado")
+      .order("queue_position", { ascending: true, nullsFirst: false })
+      .order("scheduled_at", { ascending: true });
+  let { data, error } = await run(columns);
+  if (error?.code === "42703") ({ data, error } = await run(columns.replace(", tipo_consulta", "")));
 
   if (error) {
     console.error("Erro ao buscar fila do médico:", error);
     return NextResponse.json({ error: "Falha ao buscar fila" }, { status: 500 });
   }
 
-  const withPosition = (data ?? []).filter((a) => a.queue_position != null);
-  const withoutPosition = (data ?? []).filter((a) => a.queue_position == null);
+  const rows = (data ?? []) as unknown as { queue_position: number | null }[];
+  const withPosition = rows.filter((a) => a.queue_position != null);
+  const withoutPosition = rows.filter((a) => a.queue_position == null);
 
   return NextResponse.json({ queue: [...withPosition, ...withoutPosition] });
 }

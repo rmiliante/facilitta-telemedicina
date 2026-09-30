@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import VitalSignsPanel from "./VitalSigns";
 import PatientTimeline from "./PatientTimeline";
+import { tipoSuffix } from "./TipoConsultaBadge";
 import { printFile } from "@/lib/printPdf";
 import type { TimelineDoc } from "@/lib/patientTimeline";
 import {
@@ -1265,6 +1266,7 @@ function DoctorsTab() {
 // Pacientes
 // ------------------------------------------------------------
 interface PatientHistoryItem {
+  tipo_consulta?: string | null;
   id: string;
   scheduled_at: string;
   status: string;
@@ -1398,7 +1400,7 @@ function PatientHistoryPanel({ patientId }: { patientId: string }) {
         scheduled_at: h.scheduled_at,
         status: h.status,
         doctorName: h.doctors?.name ?? null,
-        specialty: h.specialties?.name ?? null,
+        specialty: (h.specialties?.name ?? "") + tipoSuffix(h.tipo_consulta) || null,
       }))}
       documents={documents}
       renderDetails={details}

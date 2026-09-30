@@ -5,6 +5,7 @@ import LogoutButton from "./LogoutButton";
 import { uploadPatientDocuments as uploadPatientDocumentsDirect } from "@/lib/uploadPatientDocument";
 import { printFile, printPdf } from "@/lib/printPdf";
 import PatientTimeline from "./PatientTimeline";
+import TipoConsultaBadge, { tipoSuffix } from "./TipoConsultaBadge";
 import VitalSignsPanel from "./VitalSigns";
 import type { TimelineAppointment, TimelineDoc } from "@/lib/patientTimeline";
 
@@ -55,6 +56,8 @@ interface Patient {
   email: string | null;
   city: string | null;
   state: string | null;
+  birth_date?: string | null;
+  created_at?: string;
   documents: DocFile[];
 }
 
@@ -66,6 +69,7 @@ interface QueueItem {
   queue_position: number | null;
   called_at: string | null;
   booth_rejected_at: string | null;
+  tipo_consulta?: string | null;
   patients: { id: string; full_name: string; documents: DocFile[] } | null;
   doctors: { id: string; name: string } | null;
   specialties: { id: string; name: string } | null;
@@ -367,7 +371,8 @@ function FilaTab() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const [showAddForm, setShowAddForm] = useState(false);
-  const [addForm, setAddForm] = useState({ patientId: "", specialtyId: "" });
+  const [addForm, setAddForm] = useState({ patientId: "", specialtyId: "", tipo: "" });
+  const [patientHasHistory, setPatientHasHistory] = useState(false);
   const [adding, setAdding] = useState(false);
   const [examFilesToUpload, setExamFilesToUpload] = useState<File[]>([]);
   const [expandedDocsPatientId, setExpandedDocsPatientId] = useState<string | null>(null);
@@ -471,6 +476,20 @@ function FilaTab() {
     saveOrder(next);
   }
 
+  async function setTipo(item: QueueItem, tipo: string) {
+    const res = await fetch(`/api/admin/appointments/${item.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tipoConsulta: tipo }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert(err.error ?? "Falha ao salvar o tipo de consulta");
+      return;
+    }
+    setQueue((prev) => prev.map((q) => (q.id === item.id ? { ...q, tipo_consulta: tipo } : q)));
+  }
+
   async function markCalled(item: QueueItem) {
     await fetch(`/api/admin/appointments/${item.id}`, {
       method: "PATCH",
@@ -539,6 +558,17 @@ function FilaTab() {
     setAddForm((f) => ({ ...f, patientId: p.id }));
     setPatientQuery(p.full_name);
     setPatientDropdownOpen(false);
+    setPatientHasHistory(false);
+    // Já teve consulta antes? Mostra um lembrete de que pode ser retorno.
+    fetch(`/api/admin/patients/${p.id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const past = (d?.appointments ?? []).filter(
+          (a: { status: string }) => a.status !== "cancelado"
+        );
+        setPatientHasHistory(past.length > 0);
+      })
+      .catch(() => {});
   }
 
   async function handleAddToQueue(e: React.FormEvent) {
@@ -546,6 +576,10 @@ function FilaTab() {
     if (!doctorId || !date) return;
     if (!addForm.patientId) {
       alert("Selecione um paciente na busca antes de confirmar.");
+      return;
+    }
+    if (!addForm.tipo) {
+      alert("Marque se é consulta de rotina ou retorno.");
       return;
     }
     setAdding(true);
@@ -558,6 +592,7 @@ function FilaTab() {
           doctorId,
           specialtyId: addForm.specialtyId,
           scheduledDate: date,
+          tipoConsulta: addForm.tipo,
         }),
       });
       if (!res.ok) {
@@ -570,7 +605,7 @@ function FilaTab() {
         // Liga os exames a essa consulta (aparecem nela no histórico do paciente).
         await uploadPatientDocuments(addForm.patientId, examFilesToUpload, created?.appointment?.id);
       }
-      setAddForm({ patientId: "", specialtyId: "" });
+      setAddForm({ patientId: "", specialtyId: addForm.specialtyId, tipo: "" });
       setPatientQuery("");
       setExamFilesToUpload([]);
       setShowAddForm(false);
@@ -641,7 +676,7 @@ function FilaTab() {
           onClick={() => {
             setShowAddForm((s) => !s);
             const doc = doctors.find((d) => d.id === doctorId);
-            setAddForm({ patientId: "", specialtyId: doc?.specialty_id ?? "" });
+            setAddForm({ patientId: "", specialtyId: doc?.specialty_id ?? "", tipo: "" });
             setPatientQuery("");
             setPatientDropdownOpen(false);
             setExamFilesToUpload([]);
@@ -726,6 +761,34 @@ function FilaTab() {
               ))}
             </select>
           </label>
+          <div className="text-xs sm:col-span-2">
+            <span className="mb-1 block font-medium text-zinc-600">Tipo de consulta</span>
+            <div className="flex gap-2">
+              {[
+                { v: "rotina", l: "Consulta de rotina" },
+                { v: "retorno", l: "Retorno de consulta" },
+              ].map((o) => (
+                <button
+                  key={o.v}
+                  type="button"
+                  onClick={() => setAddForm((f) => ({ ...f, tipo: o.v }))}
+                  className={`rounded-md border px-3 py-1.5 text-xs font-medium ${
+                    addForm.tipo === o.v
+                      ? "border-brand-teal-dark bg-brand-teal/15 text-brand-navy"
+                      : "border-zinc-300 text-zinc-600 hover:bg-zinc-50"
+                  }`}
+                >
+                  {addForm.tipo === o.v ? "● " : "○ "}
+                  {o.l}
+                </button>
+              ))}
+            </div>
+            {selectedPatient && patientHasHistory && !addForm.tipo && (
+              <span className="mt-1 block text-[11px] text-violet-700">
+                Esse paciente já teve consulta antes — confira se é retorno.
+              </span>
+            )}
+          </div>
           <label className="text-xs sm:col-span-2">
             <span className="mb-1 block font-medium text-zinc-600">
               Exames (opcional)
@@ -800,9 +863,30 @@ function FilaTab() {
                     >
                       {item.patients?.full_name}
                     </p>
-                    <p className="text-xs text-zinc-500">
-                      {item.specialties?.name ?? ""}
-                      {index === 0 && item.status === "agendado" ? " · próximo da fila" : ""}
+                    <p className="flex flex-wrap items-center gap-1.5 text-xs text-zinc-500">
+                      <span>
+                        {item.specialties?.name ?? ""}
+                        {index === 0 && item.status === "agendado" ? " · próximo da fila" : ""}
+                      </span>
+                      {item.tipo_consulta ? (
+                        <button
+                          type="button"
+                          title="Clique para trocar entre rotina e retorno"
+                          onClick={() => setTipo(item, item.tipo_consulta === "rotina" ? "retorno" : "rotina")}
+                        >
+                          <TipoConsultaBadge tipo={item.tipo_consulta} />
+                        </button>
+                      ) : (
+                        <select
+                          value=""
+                          onChange={(e) => e.target.value && setTipo(item, e.target.value)}
+                          className="rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 outline-none"
+                        >
+                          <option value="">Rotina ou retorno?</option>
+                          <option value="rotina">Rotina</option>
+                          <option value="retorno">Retorno</option>
+                        </select>
+                      )}
                     </p>
                     {item.booth_rejected_at && (
                       <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-amber-700">
@@ -958,6 +1042,7 @@ async function uploadPatientDocuments(patientId: string, files: File[], appointm
 }
 
 interface StaffHistoryItem {
+  tipo_consulta?: string | null;
   id: string;
   scheduled_at: string;
   status: string;
@@ -1004,7 +1089,7 @@ function DocumentsPanel({
             scheduled_at: h.scheduled_at,
             status: h.status,
             doctorName: h.doctors?.name ?? null,
-            specialty: h.specialties?.name ?? null,
+            specialty: (h.specialties?.name ?? "") + tipoSuffix(h.tipo_consulta) || null,
           }))
         );
       }
@@ -1100,11 +1185,81 @@ function PacientesTab() {
   const [newPatientDocs, setNewPatientDocs] = useState<File[]>([]);
   const [expandedDocsPatientId, setExpandedDocsPatientId] = useState<string | null>(null);
   const [expandedVitalsId, setExpandedVitalsId] = useState<string | null>(null);
+  // Paciente que já existe com o CPF digitado no formulário de cadastro.
+  const [cpfMatch, setCpfMatch] = useState<Patient | null>(null);
+  const [allPatients, setAllPatients] = useState<Patient[]>([]);
+  const [merging, setMerging] = useState<string | null>(null);
 
   const load = useCallback(async (q?: string) => {
     const res = await fetch(`/api/admin/patients${q ? `?q=${encodeURIComponent(q)}` : ""}`);
-    if (res.ok) setPatients((await res.json()).patients);
+    if (res.ok) {
+      const list = (await res.json()).patients as Patient[];
+      setPatients(list);
+      if (!q) setAllPatients(list);
+    }
   }, []);
+
+  async function checkCpf(value: string) {
+    const digits = value.replace(/\D/g, "");
+    if (digits.length !== 11) {
+      setCpfMatch(null);
+      return;
+    }
+    const res = await fetch(`/api/admin/patients?cpf=${digits}`);
+    const data = res.ok ? await res.json() : { matches: [] };
+    setCpfMatch((data.matches?.[0] as Patient) ?? null);
+  }
+
+  /** Abre o cadastro existente na lista, já com os sinais vitais abertos. */
+  function openExisting(p: Patient, withVitals = true) {
+    const digits = (p.cpf ?? "").replace(/\D/g, "");
+    const q = digits || p.full_name;
+    setSearch(q);
+    load(q);
+    if (withVitals) setExpandedVitalsId(p.id);
+    setForm({ fullName: "", cpf: "", birthDate: "", phone: "", email: "", city: "", state: "" });
+    setCpfMatch(null);
+    setTimeout(() => document.getElementById(`paciente-${p.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 400);
+  }
+
+  // Cadastros com o mesmo CPF (o mais antigo é o original).
+  const duplicateGroups = (() => {
+    const groups = new Map<string, Patient[]>();
+    for (const p of allPatients) {
+      const d = (p.cpf ?? "").replace(/\D/g, "");
+      if (d.length !== 11) continue;
+      groups.set(d, [...(groups.get(d) ?? []), p]);
+    }
+    return [...groups.values()]
+      .filter((g) => g.length > 1)
+      .map((g) => [...g].sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? "")));
+  })();
+
+  async function mergeInto(original: Patient, duplicate: Patient) {
+    const sameName = original.full_name.trim().toLowerCase() === duplicate.full_name.trim().toLowerCase();
+    const msg =
+      `Unificar os cadastros?\n\nFICA (original): ${original.full_name}\nSAI (repetido): ${duplicate.full_name}\n\n` +
+      "Consultas, sinais vitais e documentos do repetido passam para o original, e o repetido é apagado." +
+      (sameName ? "" : "\n\nATENÇÃO: os nomes são diferentes. Confira se é mesmo a mesma pessoa.");
+    if (!confirm(msg)) return;
+    setMerging(duplicate.id);
+    try {
+      const res = await fetch(`/api/admin/patients/${original.id}/merge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ duplicateId: duplicate.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.error ?? "Falha ao unificar");
+        return;
+      }
+      await load();
+      if (search) await load(search);
+    } finally {
+      setMerging(null);
+    }
+  }
 
   useEffect(() => {
     const timeout = setTimeout(load, 0);
@@ -1122,6 +1277,10 @@ function PacientesTab() {
       });
       if (!res.ok) {
         const err = await res.json();
+        if (res.status === 409 && err.existing) {
+          setCpfMatch(err.existing as Patient);
+          return;
+        }
         alert(err.error);
         return;
       }
@@ -1140,20 +1299,56 @@ function PacientesTab() {
   return (
     <div className="space-y-6">
       <form onSubmit={handleCreate} className="grid gap-3 rounded-lg border border-zinc-200 bg-white p-4 sm:grid-cols-2">
+        <label className="text-xs">
+          <span className="mb-1 block font-medium text-zinc-600">CPF</span>
+          <input
+            value={form.cpf}
+            onChange={(e) => {
+              setForm((f) => ({ ...f, cpf: e.target.value }));
+              checkCpf(e.target.value);
+            }}
+            placeholder="Digite primeiro o CPF"
+            className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+          />
+        </label>
+        {cpfMatch && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 sm:col-span-2">
+            <p className="text-xs font-semibold text-amber-800">Paciente já cadastrado com esse CPF</p>
+            <p className="mt-0.5 text-sm font-medium text-zinc-800">{cpfMatch.full_name}</p>
+            <p className="text-[11px] text-zinc-600">
+              CPF {cpfMatch.cpf}
+              {cpfMatch.birth_date
+                ? ` · nasc. ${new Date(`${cpfMatch.birth_date}T12:00:00Z`).toLocaleDateString("pt-BR", { timeZone: "UTC" })}`
+                : ""}
+              {cpfMatch.city ? ` · ${cpfMatch.city}${cpfMatch.state ? `/${cpfMatch.state}` : ""}` : ""}
+            </p>
+            <p className="mt-1 text-[11px] text-amber-800">
+              Não crie outro cadastro: use o original para registrar os sinais vitais de hoje e colocar na fila.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => openExisting(cpfMatch, true)}
+                className="rounded-md bg-brand-navy px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
+              >
+                ❤ Abrir cadastro e registrar sinais vitais
+              </button>
+              <button
+                type="button"
+                onClick={() => openExisting(cpfMatch, false)}
+                className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+              >
+                Só abrir o cadastro
+              </button>
+            </div>
+          </div>
+        )}
         <label className="text-xs sm:col-span-2">
           <span className="mb-1 block font-medium text-zinc-600">Nome completo</span>
           <input
             required
             value={form.fullName}
             onChange={(e) => setForm((f) => ({ ...f, fullName: e.target.value }))}
-            className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
-          />
-        </label>
-        <label className="text-xs">
-          <span className="mb-1 block font-medium text-zinc-600">CPF</span>
-          <input
-            value={form.cpf}
-            onChange={(e) => setForm((f) => ({ ...f, cpf: e.target.value }))}
             className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
           />
         </label>
@@ -1216,13 +1411,73 @@ function PacientesTab() {
         </label>
         <div className="sm:col-span-2">
           <button
-            disabled={saving}
+            disabled={saving || !!cpfMatch}
             className="rounded-md bg-brand-navy px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
           >
             Cadastrar paciente
           </button>
         </div>
       </form>
+
+      {duplicateGroups.length > 0 && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50/60 p-4">
+          <p className="text-sm font-semibold text-amber-900">
+            Cadastros repetidos ({duplicateGroups.length} {duplicateGroups.length === 1 ? "CPF" : "CPFs"})
+          </p>
+          <p className="mb-3 text-[11px] text-amber-800">
+            O cadastro mais antigo é mantido como original. Unificar passa consultas, sinais vitais e documentos
+            do repetido para o original e apaga o repetido.
+          </p>
+          <div className="space-y-2">
+            {duplicateGroups.map((g) => {
+              const [original, ...dups] = g;
+              return (
+                <div key={original.id} className="rounded-md border border-amber-200 bg-white p-3 text-xs">
+                  <p className="text-zinc-500">CPF {original.cpf}</p>
+                  <p className="mt-1">
+                    <span className="mr-1.5 rounded bg-brand-teal/15 px-1.5 py-0.5 text-[10px] font-semibold text-brand-teal-dark">
+                      ORIGINAL
+                    </span>
+                    <b className="text-zinc-800">{original.full_name}</b>
+                    <span className="text-zinc-400">
+                      {" "}
+                      · criado em {original.created_at ? new Date(original.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—"}
+                    </span>
+                  </p>
+                  {dups.map((d) => {
+                    const sameName = d.full_name.trim().toLowerCase() === original.full_name.trim().toLowerCase();
+                    return (
+                      <div key={d.id} className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
+                        <p>
+                          <span className="mr-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+                            REPETIDO
+                          </span>
+                          <b className="text-zinc-800">{d.full_name}</b>
+                          <span className="text-zinc-400">
+                            {" "}
+                            · criado em {d.created_at ? new Date(d.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—"}
+                          </span>
+                          {!sameName && (
+                            <span className="ml-1.5 font-semibold text-red-600">nome diferente — confira</span>
+                          )}
+                        </p>
+                        <button
+                          type="button"
+                          disabled={merging === d.id}
+                          onClick={() => mergeInto(original, d)}
+                          className="rounded-md border border-amber-400 bg-white px-2.5 py-1 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                        >
+                          {merging === d.id ? "Unificando..." : "Unificar no original"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center gap-2">
         <input
@@ -1238,7 +1493,7 @@ function PacientesTab() {
 
       <ul className="space-y-2">
         {patients.map((p) => (
-          <li key={p.id} className="rounded-md border border-zinc-200 bg-white px-4 py-2.5 text-sm">
+          <li key={p.id} id={`paciente-${p.id}`} className="scroll-mt-4 rounded-md border border-zinc-200 bg-white px-4 py-2.5 text-sm">
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="font-medium text-zinc-800">{p.full_name}</p>

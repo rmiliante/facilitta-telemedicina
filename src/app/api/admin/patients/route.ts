@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { cpfLikePattern, formatCpf, sanitizeSearch } from "@/lib/format";
+import { findPatientsByCpf } from "@/lib/patientLookup";
 
 export async function GET(req: NextRequest) {
+  // ?cpf=... → confere se já existe cadastro com esse CPF (aviso no formulário).
+  const cpfParam = req.nextUrl.searchParams.get("cpf");
+  if (cpfParam !== null) {
+    return NextResponse.json({ matches: await findPatientsByCpf(cpfParam) });
+  }
+
   const search = sanitizeSearch(req.nextUrl.searchParams.get("q") ?? "");
   const supabase = getSupabaseAdmin();
 
@@ -28,6 +35,15 @@ export async function POST(req: NextRequest) {
 
   if (typeof fullName !== "string" || !fullName.trim()) {
     return NextResponse.json({ error: "fullName é obrigatório" }, { status: 400 });
+  }
+
+  // Não cria cadastro repetido: se o CPF já existe, devolve o original.
+  const existing = await findPatientsByCpf(cpf);
+  if (existing.length > 0) {
+    return NextResponse.json(
+      { error: `Paciente já cadastrado com esse CPF: ${existing[0].full_name}.`, existing: existing[0] },
+      { status: 409 }
+    );
   }
 
   const supabase = getSupabaseAdmin();

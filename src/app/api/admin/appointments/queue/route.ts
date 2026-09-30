@@ -32,17 +32,21 @@ export async function GET(req: NextRequest) {
   const { start, end } = dayRange(date);
   const supabase = getSupabaseAdmin();
 
-  const { data, error } = await supabase
-    .from("appointments")
-    .select(
-      "id, scheduled_at, status, access_token, queue_position, called_at, booth_rejected_at, patients(id, full_name, documents), doctors(id, name), specialties(id, name)"
-    )
-    .eq("doctor_id", doctorId)
-    .gte("scheduled_at", start)
-    .lt("scheduled_at", end)
-    .neq("status", "cancelado")
-    .order("queue_position", { ascending: true, nullsFirst: false })
-    .order("scheduled_at", { ascending: true });
+  const columns =
+    "id, scheduled_at, status, access_token, queue_position, called_at, booth_rejected_at, tipo_consulta, patients(id, full_name, cpf, documents), doctors(id, name), specialties(id, name)";
+  const run = (cols: string) =>
+    supabase
+      .from("appointments")
+      .select(cols)
+      .eq("doctor_id", doctorId)
+      .gte("scheduled_at", start)
+      .lt("scheduled_at", end)
+      .neq("status", "cancelado")
+      .order("queue_position", { ascending: true, nullsFirst: false })
+      .order("scheduled_at", { ascending: true });
+  let { data, error } = await run(columns);
+  // Sem migration_tipo_consulta.sql a coluna não existe ainda.
+  if (error?.code === "42703") ({ data, error } = await run(columns.replace(", tipo_consulta", "")));
 
   if (error) {
     console.error("Erro ao buscar fila:", error);
@@ -51,8 +55,9 @@ export async function GET(req: NextRequest) {
 
   // Coloca quem não tem posição de fila ainda por último, preservando
   // a ordem relativa entre eles.
-  const withPosition = (data ?? []).filter((a) => a.queue_position != null);
-  const withoutPosition = (data ?? []).filter((a) => a.queue_position == null);
+  const rows = (data ?? []) as unknown as { queue_position: number | null }[];
+  const withPosition = rows.filter((a) => a.queue_position != null);
+  const withoutPosition = rows.filter((a) => a.queue_position == null);
 
   return NextResponse.json({ appointments: [...withPosition, ...withoutPosition] });
 }

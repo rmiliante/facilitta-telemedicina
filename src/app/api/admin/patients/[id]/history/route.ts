@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { isMissingColumnError, withoutVitals } from "@/lib/appointments";
+import { isMissingColumnError, withoutTipo, withoutVitals } from "@/lib/appointments";
 import { getStaffSession } from "@/lib/auth";
 
 /**
@@ -15,11 +15,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const supabase = getSupabaseAdmin();
 
   const columns =
-    "id, scheduled_at, status, called_at, finished_at, doctor_notes, prescription_url, memed_prescription_at, memed_prescription_summary, vital_spo2, vital_bpm, vital_pa, vital_peso, vital_hgt, doctors(name), specialties(name)";
+    "id, scheduled_at, status, called_at, finished_at, doctor_notes, prescription_url, memed_prescription_at, memed_prescription_summary, vital_spo2, vital_bpm, vital_pa, vital_peso, vital_hgt, tipo_consulta, doctors(name), specialties(name)";
   const run = (cols: string) =>
     supabase.from("appointments").select(cols).eq("patient_id", id).order("scheduled_at", { ascending: false });
 
   let { data, error } = await run(columns);
+  if (isMissingColumnError(error)) ({ data, error } = await run(withoutTipo(columns)));
   // Sem a migração de sinais vitais, as colunas vital_* não existem e o
   // histórico inteiro falhava ("Falha ao carregar o histórico médico").
   if (isMissingColumnError(error)) ({ data, error } = await run(withoutVitals(columns)));
@@ -39,6 +40,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         id: r.id,
         scheduled_at: r.scheduled_at,
         status: r.status,
+        tipo_consulta: r.tipo_consulta,
         called_at: r.called_at,
         finished_at: r.finished_at,
         doctors: r.doctors,

@@ -7,6 +7,7 @@ import VideoRoom from "./VideoRoom";
 import PrescriptionPanel from "./PrescriptionPanel";
 import PatientTimeline from "./PatientTimeline";
 import SigningSessionBadge from "./SigningSessionBadge";
+import TipoConsultaBadge, { tipoSuffix } from "./TipoConsultaBadge";
 import { VitalsCompare, VitalHistoryList, useVitalSigns } from "./VitalSigns";
 import { buildTimeline, type TimelineDoc } from "@/lib/patientTimeline";
 
@@ -132,14 +133,14 @@ export default function ConsultationClient({
       scheduled_at: appointment.scheduled_at,
       status: appointment.status,
       doctorName: appointment.doctors?.name ?? null,
-      specialty: appointment.specialties?.name ?? null,
+      specialty: (appointment.specialties?.name ?? "") + tipoSuffix(appointment.tipo_consulta) || null,
     },
     ...history.map((h) => ({
       id: h.id,
       scheduled_at: h.scheduled_at,
       status: h.status,
       doctorName: h.doctors?.name ?? null,
-      specialty: h.specialties?.name ?? null,
+      specialty: (h.specialties?.name ?? "") + tipoSuffix(h.tipo_consulta) || null,
     })),
   ];
   const currentGroup = buildTimeline(
@@ -280,6 +281,11 @@ export default function ConsultationClient({
               {appointment.specialties?.name
                 ? ` · ${appointment.specialties.name}`
                 : ""}
+              {appointment.tipo_consulta && (
+                <span className="ml-2 align-middle">
+                  <TipoConsultaBadge tipo={appointment.tipo_consulta} dark />
+                </span>
+              )}
             </p>
           </div>
         </div>

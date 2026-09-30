@@ -31,6 +31,7 @@ export interface AppointmentDetail {
   vital_pa: string | null;
   vital_peso: string | null;
   vital_hgt: string | null;
+  tipo_consulta?: string | null;
   patient_id: string;
   patients: PatientRecord | null;
   specialties: { name: string } | null;
@@ -52,6 +53,7 @@ export interface HistoryItem {
   vital_pa: string | null;
   vital_peso: string | null;
   vital_hgt: string | null;
+  tipo_consulta?: string | null;
   specialties: { name: string } | null;
   doctors?: { name: string } | null;
 }
@@ -64,7 +66,12 @@ const VITAL_COLUMNS = "vital_spo2, vital_bpm, vital_pa, vital_peso, vital_hgt";
  * da migração derrubava a tela de consulta e o histórico do paciente.
  */
 export function withoutVitals(columns: string): string {
-  return columns.replace(`, ${VITAL_COLUMNS}`, "");
+  return columns.replace(`, ${VITAL_COLUMNS}`, "").replace(", tipo_consulta", "");
+}
+
+/** Tira só a coluna tipo_consulta (migration_tipo_consulta.sql não rodada). */
+export function withoutTipo(columns: string): string {
+  return columns.replace(", tipo_consulta", "");
 }
 
 /** Erro do Postgres "coluna não existe". */
@@ -79,8 +86,11 @@ export async function getOwnedAppointment(
 ): Promise<AppointmentDetail | null> {
   const supabase = getSupabaseAdmin();
   const columns =
-    "id, doctor_id, status, scheduled_at, doctor_notes, called_at, finished_at, prescription_url, memed_prescription_at, memed_prescription_summary, vital_spo2, vital_bpm, vital_pa, vital_peso, vital_hgt, patient_id, patients(*), specialties(name), doctors(name, memed_email, memed_linked_at)";
+    "id, doctor_id, status, scheduled_at, doctor_notes, called_at, finished_at, prescription_url, memed_prescription_at, memed_prescription_summary, vital_spo2, vital_bpm, vital_pa, vital_peso, vital_hgt, tipo_consulta, patient_id, patients(*), specialties(name), doctors(name, memed_email, memed_linked_at)";
   let { data, error } = await supabase.from("appointments").select(columns).eq("id", id).maybeSingle();
+  if (isMissingColumnError(error)) {
+    ({ data, error } = await supabase.from("appointments").select(withoutTipo(columns)).eq("id", id).maybeSingle());
+  }
   if (isMissingColumnError(error)) {
     ({ data, error } = await supabase.from("appointments").select(withoutVitals(columns)).eq("id", id).maybeSingle());
   }
@@ -101,7 +111,7 @@ export async function getPatientHistory(
 ): Promise<HistoryItem[]> {
   const supabase = getSupabaseAdmin();
   const columns =
-    "id, scheduled_at, status, doctor_notes, called_at, finished_at, prescription_url, memed_prescription_at, memed_prescription_summary, vital_spo2, vital_bpm, vital_pa, vital_peso, vital_hgt, specialties(name), doctors(name)";
+    "id, scheduled_at, status, doctor_notes, called_at, finished_at, prescription_url, memed_prescription_at, memed_prescription_summary, vital_spo2, vital_bpm, vital_pa, vital_peso, vital_hgt, tipo_consulta, specialties(name), doctors(name)";
   const run = (cols: string) =>
     supabase
       .from("appointments")
@@ -111,6 +121,7 @@ export async function getPatientHistory(
       .order("scheduled_at", { ascending: false })
       .limit(30);
   let { data, error } = await run(columns);
+  if (isMissingColumnError(error)) ({ data, error } = await run(withoutTipo(columns)));
   if (isMissingColumnError(error)) ({ data, error } = await run(withoutVitals(columns)));
 
   return (data ?? []) as unknown as HistoryItem[];
