@@ -16,6 +16,8 @@ export interface ExamFile {
   /** Quem emitiu (nome do médico), quando gerado pelo sistema. */
   author?: string;
   appointment_id?: string;
+  /** Quem anexou: "medico" (emitido ou anexado na consulta) ou "paciente" (exames trazidos, anexados pela recepção). */
+  source?: "medico" | "paciente";
   /** Aguardando a atendente imprimir. */
   needs_print?: boolean;
   printed_at?: string;

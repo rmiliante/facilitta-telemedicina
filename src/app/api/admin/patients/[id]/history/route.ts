@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { isMissingColumnError, withoutVitals } from "@/lib/appointments";
+import { getStaffSession } from "@/lib/auth";
 
 /**
  * GET /api/admin/patients/:id/history
@@ -26,6 +27,25 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (error) {
     console.error("Erro ao buscar histórico do paciente:", error);
     return NextResponse.json({ error: "Falha ao buscar histórico do paciente" }, { status: 500 });
+  }
+
+  // A recepção vê as consultas (data, médico, situação) pra organizar os
+  // anexos, mas não o conteúdo clínico — isso fica pro médico e o admin.
+  const staff = await getStaffSession();
+  if (staff?.role === "atendente") {
+    const safe = (data ?? []).map((row) => {
+      const r = row as unknown as Record<string, unknown>;
+      return {
+        id: r.id,
+        scheduled_at: r.scheduled_at,
+        status: r.status,
+        called_at: r.called_at,
+        finished_at: r.finished_at,
+        doctors: r.doctors,
+        specialties: r.specialties,
+      };
+    });
+    return NextResponse.json({ history: safe });
   }
 
   return NextResponse.json({ history: data });

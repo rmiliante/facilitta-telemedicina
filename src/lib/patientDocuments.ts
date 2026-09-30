@@ -14,7 +14,18 @@ function sanitizeFileName(name: string) {
  * médico vê em qualquer atendimento tudo que já foi anexado daquele
  * paciente, não só o que entrou junto de um agendamento em particular.
  */
-export async function addPatientDocuments(patientId: string, files: File[]): Promise<PatientDocument[]> {
+export type DocumentOrigin = Pick<PatientDocument, "source" | "appointment_id">;
+
+/** Aceita só um id de consulta com formato válido (vem do navegador). */
+export function cleanAppointmentId(value: unknown): string | undefined {
+  return typeof value === "string" && /^[0-9a-f-]{36}$/i.test(value) ? value : undefined;
+}
+
+export async function addPatientDocuments(
+  patientId: string,
+  files: File[],
+  origin: DocumentOrigin = {}
+): Promise<PatientDocument[]> {
   const supabase = getSupabaseAdmin();
 
   const { data: current, error: fetchErr } = await supabase
@@ -40,7 +51,7 @@ export async function addPatientDocuments(patientId: string, files: File[]): Pro
       throw new Error(`Falha ao enviar "${file.name}": ${uploadErr.message}`);
     }
 
-    uploaded.push({ path, name: file.name, uploaded_at: new Date().toISOString() });
+    uploaded.push({ path, name: file.name, uploaded_at: new Date().toISOString(), ...origin });
   }
 
   const nextDocuments = [...existing, ...uploaded];
@@ -85,7 +96,8 @@ export async function createPatientDocumentUploadTicket(
 export async function finalizePatientDocument(
   patientId: string,
   path: string,
-  name: string
+  name: string,
+  origin: DocumentOrigin = {}
 ): Promise<PatientDocument[]> {
   // Só aceita arquivos da pasta desse paciente (o caminho vem do
   // navegador — sem isso, dava pra "anexar" arquivo de outro paciente).
@@ -106,7 +118,7 @@ export async function finalizePatientDocument(
   }
 
   const existing = (current.documents as PatientDocument[] | null) ?? [];
-  const nextDocuments = [...existing, { path, name, uploaded_at: new Date().toISOString() }];
+  const nextDocuments = [...existing, { path, name, uploaded_at: new Date().toISOString(), ...origin }];
 
   const { error: updateErr } = await supabase
     .from("patients")
@@ -183,7 +195,7 @@ export async function addGeneratedPatientDocument(
     .maybeSingle();
   if (fetchErr || !current) throw new Error("Paciente não encontrado");
 
-  const doc: PatientDocument = { path, name: fileName, uploaded_at: new Date().toISOString(), ...meta };
+  const doc: PatientDocument = { path, name: fileName, uploaded_at: new Date().toISOString(), source: "medico", ...meta };
   const existing = (current.documents as PatientDocument[] | null) ?? [];
   const { error: updateErr } = await supabase
     .from("patients")

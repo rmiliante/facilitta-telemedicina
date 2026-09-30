@@ -34,7 +34,7 @@ export interface AppointmentDetail {
   patient_id: string;
   patients: PatientRecord | null;
   specialties: { name: string } | null;
-  doctors: { memed_email: string | null; memed_linked_at: string | null } | null;
+  doctors: { name?: string | null; memed_email: string | null; memed_linked_at: string | null } | null;
 }
 
 export interface HistoryItem {
@@ -53,6 +53,7 @@ export interface HistoryItem {
   vital_peso: string | null;
   vital_hgt: string | null;
   specialties: { name: string } | null;
+  doctors?: { name: string } | null;
 }
 
 const VITAL_COLUMNS = "vital_spo2, vital_bpm, vital_pa, vital_peso, vital_hgt";
@@ -78,7 +79,7 @@ export async function getOwnedAppointment(
 ): Promise<AppointmentDetail | null> {
   const supabase = getSupabaseAdmin();
   const columns =
-    "id, doctor_id, status, scheduled_at, doctor_notes, called_at, finished_at, prescription_url, memed_prescription_at, memed_prescription_summary, vital_spo2, vital_bpm, vital_pa, vital_peso, vital_hgt, patient_id, patients(*), specialties(name), doctors(memed_email, memed_linked_at)";
+    "id, doctor_id, status, scheduled_at, doctor_notes, called_at, finished_at, prescription_url, memed_prescription_at, memed_prescription_summary, vital_spo2, vital_bpm, vital_pa, vital_peso, vital_hgt, patient_id, patients(*), specialties(name), doctors(name, memed_email, memed_linked_at)";
   let { data, error } = await supabase.from("appointments").select(columns).eq("id", id).maybeSingle();
   if (isMissingColumnError(error)) {
     ({ data, error } = await supabase.from("appointments").select(withoutVitals(columns)).eq("id", id).maybeSingle());
@@ -100,7 +101,7 @@ export async function getPatientHistory(
 ): Promise<HistoryItem[]> {
   const supabase = getSupabaseAdmin();
   const columns =
-    "id, scheduled_at, status, doctor_notes, called_at, finished_at, prescription_url, memed_prescription_at, memed_prescription_summary, vital_spo2, vital_bpm, vital_pa, vital_peso, vital_hgt, specialties(name)";
+    "id, scheduled_at, status, doctor_notes, called_at, finished_at, prescription_url, memed_prescription_at, memed_prescription_summary, vital_spo2, vital_bpm, vital_pa, vital_peso, vital_hgt, specialties(name), doctors(name)";
   const run = (cols: string) =>
     supabase
       .from("appointments")
@@ -108,7 +109,7 @@ export async function getPatientHistory(
       .eq("patient_id", patientId)
       .neq("id", excludeAppointmentId)
       .order("scheduled_at", { ascending: false })
-      .limit(10);
+      .limit(30);
   let { data, error } = await run(columns);
   if (isMissingColumnError(error)) ({ data, error } = await run(withoutVitals(columns)));
 

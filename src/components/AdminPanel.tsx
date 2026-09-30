@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import PatientTimeline from "./PatientTimeline";
+import { printPdf } from "@/lib/printPdf";
+import type { TimelineDoc } from "@/lib/patientTimeline";
 import {
   APPLICATION_STATUSES,
   SHIFTS,
@@ -1287,16 +1290,6 @@ const VITAL_HISTORY_LABELS: [key: "vital_spo2" | "vital_bpm" | "vital_pa" | "vit
   ["vital_hgt", "HGT"],
 ];
 
-function formatHistoryDateTime(iso: string) {
-  return new Date(iso).toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 function formatHistoryTime(iso: string) {
   return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
@@ -1320,7 +1313,7 @@ function PatientHistoryPanel({ patientId }: { patientId: string }) {
   const [history, setHistory] = useState<PatientHistoryItem[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
+  const [documents, setDocuments] = useState<TimelineDoc[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1333,6 +1326,8 @@ function PatientHistoryPanel({ patientId }: { patientId: string }) {
       }
       const data = await res.json();
       setHistory(data.history ?? []);
+      const docsRes = await fetch(`/api/admin/patients/${patientId}/documents`);
+      if (docsRes.ok) setDocuments((await docsRes.json()).files ?? []);
     } catch {
       setError(true);
     } finally {
@@ -1347,82 +1342,68 @@ function PatientHistoryPanel({ patientId }: { patientId: string }) {
 
   if (loading) return <p className="text-xs text-zinc-400">Carregando histórico...</p>;
   if (error) return <p className="text-xs text-red-600">Falha ao carregar o histórico médico.</p>;
-  if (!history || history.length === 0) {
-    return <p className="text-xs text-zinc-400">Nenhum atendimento registrado ainda.</p>;
+
+  const byId = new Map((history ?? []).map((h) => [h.id, h]));
+  const details = (id: string) => {
+    const h = byId.get(id);
+    if (!h) return null;
+    const hasVitals = VITAL_HISTORY_LABELS.some(([key]) => h[key]);
+    return (
+      <div className="mt-2 space-y-1.5 rounded-md bg-zinc-50 px-3 py-2 text-xs">
+        <p className="text-zinc-500">
+          {h.called_at ? `Início ${formatHistoryTime(h.called_at)}` : "Início não registrado"}
+          {h.finished_at ? ` · Fim ${formatHistoryTime(h.finished_at)}` : ""}
+          {h.called_at && h.finished_at ? ` · Duração ${formatHistoryDuration(h.called_at, h.finished_at)}` : ""}
+        </p>
+        {hasVitals && (
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-zinc-600">
+            {VITAL_HISTORY_LABELS.filter(([key]) => h[key]).map(([key, label]) => (
+              <span key={key}>
+                <span className="font-medium text-zinc-500">{label}:</span> {h[key]}
+              </span>
+            ))}
+          </div>
+        )}
+        {h.doctor_notes && <p className="whitespace-pre-wrap text-zinc-700">{h.doctor_notes}</p>}
+        {h.prescription_url && (
+          <a href={h.prescription_url} target="_blank" rel="noreferrer" className="inline-block text-brand-teal-dark underline">
+            Ver receita
+          </a>
+        )}
+        {h.memed_prescription_summary && (
+          <p className="text-brand-teal-dark">
+            {h.memed_prescription_summary}
+            {h.memed_prescription_at ? ` · ${formatHistoryTime(h.memed_prescription_at)}` : ""}
+          </p>
+        )}
+      </div>
+    );
+  };
+
+  async function removeDoc(doc: TimelineDoc) {
+    if (!confirm(`Remover "${doc.name}"?`)) return;
+    const res = await fetch(`/api/admin/patients/${patientId}/documents`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: doc.path }),
+    });
+    if (res.ok) setDocuments((await res.json()).files ?? []);
   }
 
   return (
-    <ul className="space-y-2">
-      {history.map((h) => {
-        const isOpen = expandedItemId === h.id;
-        return (
-          <li key={h.id} className="rounded-md border border-zinc-200 bg-brand-bg/40 text-xs">
-            <button
-              type="button"
-              onClick={() => setExpandedItemId((cur) => (cur === h.id ? null : h.id))}
-              className="flex w-full flex-wrap items-center justify-between gap-2 p-3 text-left"
-            >
-              <span className="flex items-center gap-1.5 font-medium text-zinc-700">
-                <span className={`text-zinc-400 transition-transform ${isOpen ? "rotate-90" : ""}`}>
-                  ▶
-                </span>
-                {formatHistoryDateTime(h.scheduled_at)}
-                {h.specialties?.name ? ` · ${h.specialties.name}` : ""}
-                {h.doctors?.name ? ` · Dr(a). ${h.doctors.name}` : ""}
-              </span>
-              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-600">
-                {STATUS_LABELS[h.status] ?? h.status}
-              </span>
-            </button>
-            {isOpen && (
-              <div className="border-t border-zinc-200 px-3 pb-3 pt-2">
-                <p className="text-zinc-500">
-                  {h.called_at ? `Início ${formatHistoryTime(h.called_at)}` : "Início não registrado"}
-                  {h.finished_at ? ` · Fim ${formatHistoryTime(h.finished_at)}` : ""}
-                  {h.called_at && h.finished_at
-                    ? ` · Duração ${formatHistoryDuration(h.called_at, h.finished_at)}`
-                    : ""}
-                </p>
-                {VITAL_HISTORY_LABELS.some(([key]) => h[key]) && (
-                  <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-zinc-600">
-                    {VITAL_HISTORY_LABELS.filter(([key]) => h[key]).map(([key, label]) => (
-                      <span key={key}>
-                        <span className="font-medium text-zinc-500">{label}:</span> {h[key]}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {h.doctor_notes && (
-                  <p className="mt-1.5 whitespace-pre-wrap text-zinc-700">{h.doctor_notes}</p>
-                )}
-                {h.prescription_url && (
-                  <a
-                    href={h.prescription_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-1.5 inline-block text-brand-teal-dark underline"
-                  >
-                    Ver receita
-                  </a>
-                )}
-                {h.memed_prescription_summary && (
-                  <p className="mt-1.5 text-brand-teal-dark">
-                    {h.memed_prescription_summary}
-                    {h.memed_prescription_at ? ` · ${formatHistoryTime(h.memed_prescription_at)}` : ""}
-                  </p>
-                )}
-                {!h.doctor_notes &&
-                  !h.prescription_url &&
-                  !h.memed_prescription_summary &&
-                  !VITAL_HISTORY_LABELS.some(([key]) => h[key]) && (
-                    <p className="mt-1.5 text-zinc-400">Sem anotações registradas nesse atendimento.</p>
-                  )}
-              </div>
-            )}
-          </li>
-        );
-      })}
-    </ul>
+    <PatientTimeline
+      appointments={(history ?? []).map((h) => ({
+        id: h.id,
+        scheduled_at: h.scheduled_at,
+        status: h.status,
+        doctorName: h.doctors?.name ?? null,
+        specialty: h.specialties?.name ?? null,
+      }))}
+      documents={documents}
+      renderDetails={details}
+      onPrint={(d) => d.url && printPdf(d.url)}
+      onRemove={removeDoc}
+    />
   );
 }
 
@@ -1715,7 +1696,7 @@ function PatientsTab() {
                         : "border-zinc-300 text-zinc-600 hover:bg-zinc-50"
                     }`}
                   >
-                    {expandedId === p.id ? "Ocultar histórico" : "Histórico médico"}
+                    {expandedId === p.id ? "Ocultar histórico" : "Histórico e documentos"}
                   </button>
                   <button
                     onClick={() => startEdit(p)}

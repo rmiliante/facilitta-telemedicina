@@ -20,7 +20,11 @@ const EXAM_FILES_BUCKET = "exames";
  * `basePath` é a raiz da rota de documentos do paciente, ex:
  * "/api/doctor/patients/123/documents" ou "/api/admin/patients/123/documents".
  */
-export async function uploadPatientDocument(basePath: string, file: File): Promise<{ files: unknown[] }> {
+export async function uploadPatientDocument(
+  basePath: string,
+  file: File,
+  appointmentId?: string
+): Promise<{ files: unknown[] }> {
   const ticketRes = await fetch(`${basePath}/upload-url`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -41,7 +45,7 @@ export async function uploadPatientDocument(basePath: string, file: File): Promi
   const finalizeRes = await fetch(`${basePath}/finalize`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path, name: file.name }),
+    body: JSON.stringify({ path, name: file.name, appointmentId }),
   });
   if (!finalizeRes.ok) {
     const err = await finalizeRes.json().catch(() => ({}));
@@ -51,10 +55,14 @@ export async function uploadPatientDocument(basePath: string, file: File): Promi
 }
 
 /** Envia vários arquivos em sequência; retorna a lista final (já com o último enviado). */
-export async function uploadPatientDocuments<T>(basePath: string, files: File[]): Promise<T[]> {
+export async function uploadPatientDocuments<T>(
+  basePath: string,
+  files: File[],
+  appointmentId?: string
+): Promise<T[]> {
   let files_: T[] = [];
   for (const file of files) {
-    const result = (await uploadPatientDocument(basePath, file)) as { files: T[] };
+    const result = (await uploadPatientDocument(basePath, file, appointmentId)) as { files: T[] };
     files_ = result.files;
   }
   return files_;

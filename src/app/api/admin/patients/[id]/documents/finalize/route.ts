@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { finalizePatientDocument, signPatientDocuments } from "@/lib/patientDocuments";
+import { cleanAppointmentId, finalizePatientDocument, signPatientDocuments } from "@/lib/patientDocuments";
 
 /**
  * POST /api/admin/patients/:id/documents/finalize
@@ -16,7 +16,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   try {
-    const updated = await finalizePatientDocument(id, path, name);
+    const updated = await finalizePatientDocument(id, path, name, {
+      source: "paciente",
+      appointment_id: cleanAppointmentId(body?.appointmentId),
+    });
     const signed = await signPatientDocuments(updated);
     return NextResponse.json({ files: signed });
   } catch (err) {

@@ -5,8 +5,9 @@ import Link from "next/link";
 import { uploadPatientDocuments } from "@/lib/uploadPatientDocument";
 import VideoRoom from "./VideoRoom";
 import PrescriptionPanel from "./PrescriptionPanel";
+import PatientTimeline from "./PatientTimeline";
+import { buildTimeline, type TimelineDoc } from "@/lib/patientTimeline";
 
-const KIND_TAGS = { receita: "Receita", exame: "Exame", atestado: "Atestado" } as const;
 import type { AppointmentDetail, HistoryItem } from "@/lib/appointments";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -88,7 +89,8 @@ export default function ConsultationClient({
       // servidor, arquivos acima de ~4,5 MB eram recusados.
       const files = await uploadPatientDocuments<(typeof patientDocuments)[number]>(
         `/api/doctor/patients/${appointment.patient_id}/documents`,
-        selected
+        selected,
+        appointmentId
       );
       setPatientDocuments(files);
     } catch (err) {
@@ -101,6 +103,10 @@ export default function ConsultationClient({
 
   async function handleRemovePatientDocument(path: string) {
     if (!confirm("Remover esse documento anexado?")) return;
+    await removeDocByPath(path);
+  }
+
+  async function removeDocByPath(path: string) {
     const res = await fetch(`/api/doctor/patients/${appointment.patient_id}/documents`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
@@ -111,6 +117,27 @@ export default function ConsultationClient({
       setPatientDocuments(data.files);
     }
   }
+
+  const timelineAppointments = [
+    {
+      id: appointmentId,
+      scheduled_at: appointment.scheduled_at,
+      status: appointment.status,
+      doctorName: appointment.doctors?.name ?? null,
+      specialty: appointment.specialties?.name ?? null,
+    },
+    ...history.map((h) => ({
+      id: h.id,
+      scheduled_at: h.scheduled_at,
+      status: h.status,
+      doctorName: h.doctors?.name ?? null,
+      specialty: h.specialties?.name ?? null,
+    })),
+  ];
+  const currentGroup = buildTimeline(timelineAppointments, patientDocuments as TimelineDoc[]).find(
+    (g) => g.key === appointmentId
+  );
+  const currentDocs: TimelineDoc[] = currentGroup ? [...currentGroup.medico, ...currentGroup.paciente] : [];
 
   const [videoStarted, setVideoStarted] = useState(false);
   const [room, setRoom] = useState<{ roomUrl: string; token: string } | null>(null);
@@ -339,7 +366,7 @@ export default function ConsultationClient({
                   : "text-zinc-500"
               }`}
             >
-              Histórico ({history.length})
+              Histórico ({history.length + 1})
             </button>
           </div>
 
@@ -422,41 +449,40 @@ export default function ConsultationClient({
                 <InfoRow label="Observações da equipe" value={patient?.notes} />
               </div>
             ) : (
-              <ul className="space-y-2">
-                {history.length === 0 && (
-                  <p className="text-xs text-zinc-400">Primeira consulta desse paciente.</p>
-                )}
-                {history.map((h) => (
-                  <li key={h.id} className="rounded-md border border-zinc-200 p-2.5 text-xs">
-                    <p className="font-medium text-zinc-700">
-                      {formatDateTime(h.scheduled_at)}
-                      {h.specialties?.name ? ` · ${h.specialties.name}` : ""}
-                    </p>
-                    <p className="mt-0.5 text-zinc-500">
-                      {STATUS_LABELS[h.status] ?? h.status}
-                      {h.called_at && h.finished_at
-                        ? ` · ${formatDuration(h.called_at, h.finished_at)} de atendimento`
-                        : ""}
-                    </p>
-                    {h.doctor_notes && (
-                      <p className="mt-1 whitespace-pre-wrap text-zinc-600">{h.doctor_notes}</p>
-                    )}
-                    {h.prescription_url && (
-                      <a
-                        href={h.prescription_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-1 inline-block text-brand-teal-dark underline"
-                      >
-                        Ver receita
-                      </a>
-                    )}
-                    {h.memed_prescription_summary && (
-                      <p className="mt-1 text-brand-teal-dark">{h.memed_prescription_summary}</p>
-                    )}
-                  </li>
-                ))}
-              </ul>
+              <PatientTimeline
+                appointments={timelineAppointments}
+                documents={patientDocuments as TimelineDoc[]}
+                currentAppointmentId={appointmentId}
+                showClinical
+                renderDetails={(id) => {
+                  const h = history.find((x) => x.id === id);
+                  if (!h) return null;
+                  return (
+                    <div className="mt-2 space-y-1 rounded-md bg-zinc-50 px-3 py-2 text-xs">
+                      {h.called_at && h.finished_at && (
+                        <p className="text-zinc-500">{formatDuration(h.called_at, h.finished_at)} de atendimento</p>
+                      )}
+                      {h.doctor_notes && <p className="whitespace-pre-wrap text-zinc-700">{h.doctor_notes}</p>}
+                      {h.prescription_url && (
+                        <a
+                          href={h.prescription_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-block text-brand-teal-dark underline"
+                        >
+                          Ver receita
+                        </a>
+                      )}
+                      {h.memed_prescription_summary && (
+                        <p className="text-brand-teal-dark">{h.memed_prescription_summary}</p>
+                      )}
+                      {!h.doctor_notes && !h.prescription_url && !h.memed_prescription_summary && !(h.called_at && h.finished_at) && (
+                        <p className="text-zinc-400">Sem anotações registradas.</p>
+                      )}
+                    </div>
+                  );
+                }}
+              />
             )}
           </div>
 
@@ -467,41 +493,28 @@ export default function ConsultationClient({
           />
 
           <div className="border-t border-zinc-200 p-4">
-            <span className="mb-1 block text-xs font-medium text-zinc-600">
-              Exames / documentos do paciente
-            </span>
-            {patientDocuments.length === 0 ? (
-              <p className="mb-2 text-xs text-zinc-400">Nenhum anexado ainda.</p>
-            ) : (
-              <ul className="mb-2 space-y-1">
-                {patientDocuments.map((f) => (
-                  <li key={f.path} className="flex items-center justify-between gap-2 text-xs">
-                    {f.url ? (
-                      <a
-                        href={f.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="truncate text-brand-teal-dark underline"
-                      >
-                        {f.kind ? `${KIND_TAGS[f.kind]} · ` : "📎 "}
-                        {f.name}
-                      </a>
-                    ) : (
-                      <span className="truncate text-zinc-400">📎 {f.name} (link indisponível)</span>
-                    )}
-                    <button
-                      onClick={() => handleRemovePatientDocument(f.path)}
-                      className="shrink-0 text-[10px] font-medium text-red-600 hover:underline"
-                    >
-                      Remover
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <div className="mb-2 flex items-baseline justify-between gap-2">
+              <span className="text-xs font-medium text-zinc-600">Documentos desta consulta</span>
+              <button
+                type="button"
+                onClick={() => setTab("historico")}
+                className="text-[11px] text-brand-teal-dark hover:underline"
+              >
+                Ver histórico completo
+              </button>
+            </div>
+            <div className="mb-2">
+              <PatientTimeline
+                appointments={timelineAppointments.filter((a) => a.id === appointmentId)}
+                documents={currentDocs}
+                currentAppointmentId={appointmentId}
+                compact
+                onRemove={(d) => handleRemovePatientDocument(d.path)}
+              />
+            </div>
             <label className="inline-block cursor-pointer">
               <span className="rounded-md bg-brand-teal/15 px-2.5 py-1 text-[11px] font-medium text-brand-teal-dark hover:bg-brand-teal/25">
-                {uploadingDoc ? "Enviando..." : "+ Anexar pedido de exame"}
+                {uploadingDoc ? "Enviando..." : "+ Anexar documento"}
               </span>
               <input
                 type="file"
@@ -512,7 +525,7 @@ export default function ConsultationClient({
               />
             </label>
             <p className="mt-1 text-[11px] text-zinc-400">
-              Fica vinculado ao paciente — a atendente consegue abrir e imprimir daqui a pouco.
+              Fica nesta consulta, na coluna &quot;Do médico&quot; — a atendente consegue abrir e imprimir.
             </p>
           </div>
 

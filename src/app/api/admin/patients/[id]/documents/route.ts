@@ -40,7 +40,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   try {
-    const updated = await addPatientDocuments(id, files);
+    const updated = await addPatientDocuments(id, files, { source: "paciente" });
     const signed = await signPatientDocuments(updated);
     return NextResponse.json({ files: signed });
   } catch (err) {
