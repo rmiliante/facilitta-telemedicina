@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import LogoutButton from "./LogoutButton";
 import { uploadPatientDocuments as uploadPatientDocumentsDirect } from "@/lib/uploadPatientDocument";
-import { printPdf } from "@/lib/printPdf";
+import { printFile, printPdf } from "@/lib/printPdf";
 import PatientTimeline from "./PatientTimeline";
 import type { TimelineAppointment, TimelineDoc } from "@/lib/patientTimeline";
 
@@ -1049,7 +1049,7 @@ function DocumentsPanel({
           appointments={history}
           documents={files as TimelineDoc[]}
           currentAppointmentId={appointmentId}
-          onPrint={(d) => d.url && printPdf(d.url)}
+          onPrint={(d) => d.url && printFile(d.url, d.name)}
           onRemove={handleRemove}
         />
       )}

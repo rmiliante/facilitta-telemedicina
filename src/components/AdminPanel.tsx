@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import PatientTimeline from "./PatientTimeline";
-import { printPdf } from "@/lib/printPdf";
+import { printFile } from "@/lib/printPdf";
 import type { TimelineDoc } from "@/lib/patientTimeline";
 import {
   APPLICATION_STATUSES,
@@ -1401,7 +1401,7 @@ function PatientHistoryPanel({ patientId }: { patientId: string }) {
       }))}
       documents={documents}
       renderDetails={details}
-      onPrint={(d) => d.url && printPdf(d.url)}
+      onPrint={(d) => d.url && printFile(d.url, d.name)}
       onRemove={removeDoc}
     />
   );

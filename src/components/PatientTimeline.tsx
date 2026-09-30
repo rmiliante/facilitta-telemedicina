@@ -6,6 +6,7 @@ import {
   type TimelineAppointment,
   type TimelineDoc,
 } from "@/lib/patientTimeline";
+import { downloadFile, fileAction } from "@/lib/printPdf";
 
 const KIND_LABEL = {
   receita: "Receita",
@@ -324,13 +325,23 @@ function DocColumn({
                       : ""}
                 </p>
               </div>
-              {onPrint && d.url && /\.pdf$/i.test(d.name) && (
+              {d.url && fileAction(d.name) === "print" && onPrint && (
                 <button
                   type="button"
                   onClick={() => onPrint(d)}
-                  className="shrink-0 rounded border border-zinc-200 px-2 py-0.5 text-[10px] text-zinc-600 hover:bg-zinc-50"
+                  className="shrink-0 rounded border border-brand-navy px-2 py-0.5 text-[10px] font-semibold text-brand-navy hover:bg-brand-navy hover:text-white"
                 >
                   Imprimir
+                </button>
+              )}
+              {d.url && fileAction(d.name) === "download" && (
+                <button
+                  type="button"
+                  onClick={() => downloadFile(d.url!, d.name)}
+                  title="Abra no Word ou no Excel para imprimir"
+                  className="shrink-0 rounded border border-zinc-300 px-2 py-0.5 text-[10px] font-semibold text-zinc-700 hover:bg-zinc-50"
+                >
+                  Baixar
                 </button>
               )}
               {onRemove && !d.signed && (
