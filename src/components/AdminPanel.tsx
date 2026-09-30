@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import VitalSignsPanel from "./VitalSigns";
 import TipoConsultaBadge, { TipoConsultaChoice, tipoSuffix } from "./TipoConsultaBadge";
 import PatientTimeline from "./PatientTimeline";
+import AttendanceHistoryTab from "./AttendanceHistoryTab";
 import { printFile } from "@/lib/printPdf";
 import type { TimelineDoc } from "@/lib/patientTimeline";
 import {
@@ -68,6 +69,7 @@ interface StaffMember {
 type Tab =
   | "dashboard"
   | "agenda"
+  | "historico"
   | "pacientes"
   | "medicos"
   | "captacao"
@@ -191,9 +193,18 @@ function IconChart() {
   );
 }
 
+function IconHistory() {
+  return (
+    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5m4-1v5l3 2" />
+    </svg>
+  );
+}
+
 const NAV_ITEMS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: "dashboard", label: "Dashboard", icon: <IconChart /> },
   { key: "agenda", label: "Agenda", icon: <IconCalendar /> },
+  { key: "historico", label: "Histórico de atendimentos", icon: <IconHistory /> },
   { key: "pacientes", label: "Pacientes", icon: <IconUsers /> },
   { key: "medicos", label: "Médicos", icon: <IconStethoscope /> },
   { key: "captacao", label: "Captação", icon: <IconClipboard /> },
@@ -297,13 +308,16 @@ export default function AdminPanel() {
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
-          <div className={tab === "dashboard" ? "mx-auto max-w-5xl" : "mx-auto max-w-4xl"}>
+          <div className={tab === "historico" ? "mx-auto max-w-6xl" : tab === "dashboard" ? "mx-auto max-w-5xl" : "mx-auto max-w-4xl"}>
             {tab === "dashboard" && <DashboardTab />}
             {tab === "especialidades" && <SpecialtiesTab />}
             {tab === "medicos" && <DoctorsTab />}
             {tab === "captacao" && <CaptacaoTab />}
             {tab === "pacientes" && <PatientsTab />}
             {tab === "agenda" && <AgendaTab />}
+            {tab === "historico" && (
+              <AttendanceHistoryTab renderPatientHistory={(id) => <PatientHistoryPanel patientId={id} />} />
+            )}
             {tab === "equipe" && <StaffTab />}
           </div>
         </div>
