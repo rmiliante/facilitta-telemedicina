@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface AccountInfo {
   name: string;
@@ -13,6 +13,7 @@ interface AccountInfo {
 }
 
 const DONE_KEY = "facilitta_sign_account";
+const CONFIRMED_KEY = "facilitta_sign_confirmed";
 
 function formatCpf(cpf: string | null) {
   const d = (cpf ?? "").replace(/\D/g, "");
@@ -34,6 +35,22 @@ export default function SigningAccountClient() {
   const [error, setError] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
+  const [shiftUntil, setShiftUntil] = useState<string | null>(null);
+  const [confirmed, setConfirmed] = useState(() => {
+    try {
+      return typeof window !== "undefined" && localStorage.getItem(CONFIRMED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const markConfirmed = useCallback(() => {
+    try {
+      localStorage.setItem(CONFIRMED_KEY, "1");
+    } catch {
+      // ignora
+    }
+    setConfirmed(true);
+  }, []);
 
   function load() {
     return fetch("/api/doctor/signing-account")
@@ -69,10 +86,12 @@ export default function SigningAccountClient() {
   function resetAccount() {
     try {
       localStorage.removeItem(DONE_KEY);
+      localStorage.removeItem(CONFIRMED_KEY);
     } catch {
       // ignora
     }
     setSentTo(null);
+    setConfirmed(false);
     setError(null);
   }
 
@@ -128,7 +147,7 @@ export default function SigningAccountClient() {
   const lbl = "truncate font-medium text-zinc-600";
 
   const step1 = certOk ? "done" : "todo";
-  const step2 = sentTo ? "wait" : "todo";
+  const step2 = confirmed ? "done" : sentTo ? "wait" : "todo";
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
@@ -141,7 +160,7 @@ export default function SigningAccountClient() {
         <ol className="mt-4 grid grid-cols-3 gap-2 text-[11px] font-medium">
           <Progress n={1} label="Certificado" state={step1} />
           <Progress n={2} label="Ativar com CRM" state={step2} />
-          <Progress n={3} label="Usar na consulta" state="info" />
+          <Progress n={3} label="Ativar no plantão" state={shiftUntil ? "done" : "todo"} />
         </ol>
       </header>
 
@@ -189,7 +208,12 @@ export default function SigningAccountClient() {
           <Data label="Conselho" value={conselho} />
         </div>
 
-        {sentTo ? (
+        {confirmed ? (
+          <p className="text-sm text-zinc-600">
+            Conta de assinatura ativa. O seu CRM vai gravado nas assinaturas quando você ativa o plantão com e-mail e
+            senha.
+          </p>
+        ) : sentTo ? (
           <div className="flex flex-col gap-2 text-sm text-zinc-600">
             <p>
               Conta criada. Enviamos um link de confirmação para <strong>{sentTo}</strong>. Abra o e-mail e clique em
@@ -253,15 +277,23 @@ export default function SigningAccountClient() {
       </Step>
 
       {/* Passo 3 */}
-      <Step n={3} title="Na consulta: prescreva e aprove no celular" state="info">
+      <Step
+        n={3}
+        title="No início do plantão: ative a assinatura"
+        state={shiftUntil ? "done" : "todo"}
+        badgeText={shiftUntil ? `Ativa até ${shiftUntil}` : "Ative antes de prescrever"}
+        hint="Aprove uma vez no app VIDaaS e assine tudo por 8 horas, sem aprovar de novo."
+      >
+        <ShiftActivation defaultEmail={sentTo || email} onActive={setShiftUntil} onAccountOk={markConfirmed} />
+        <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-zinc-500">Depois, em cada consulta</p>
         <ol className="grid gap-2 sm:grid-cols-3">
           <Flow n="a" title="Clique em Prescrever" text="Monte a receita, o pedido de exame ou o atestado." />
-          <Flow n="b" title="Aprove no app VIDaaS" text="Chega um aviso no celular. Você tem 3 minutos." />
+          <Flow n="b" title="Emita o documento" text="Com a assinatura ativa, ele sai assinado na hora." />
           <Flow n="c" title="A atendente imprime" text="O documento assinado vai para o cadastro do paciente." />
         </ol>
         <p className="mt-3 text-xs text-zinc-500">
-          A aprovação vale por <strong>8 horas</strong>: no resto do plantão, os documentos são assinados direto, sem
-          aprovar de novo. Nada é enviado ao paciente.
+          Se as 8 horas acabarem no meio do plantão, o sistema pede uma nova aprovação no app na hora de emitir. Nada é
+          enviado ao paciente.
         </p>
       </Step>
     </div>
@@ -294,15 +326,17 @@ function Step({
   title,
   state,
   hint,
+  badgeText,
   children,
 }: {
   n: number;
   title: string;
   state: StepState;
   hint?: string;
+  badgeText?: string;
   children: React.ReactNode;
 }) {
-  const badge = BADGE[state];
+  const badge = { ...BADGE[state], text: badgeText ?? BADGE[state].text };
   const circle =
     state === "done" ? "bg-brand-teal-dark text-white" : "border-2 border-brand-navy/20 bg-white text-brand-navy";
   return (
@@ -338,5 +372,193 @@ function Flow({ n, title, text }: { n: string; title: string; text: string }) {
       <p className="mt-0.5 text-sm font-semibold text-brand-navy">{title}</p>
       <p className="mt-0.5 text-xs text-zinc-600">{text}</p>
     </li>
+  );
+}
+
+interface SessionState {
+  ready: boolean;
+  missing: string[];
+  status: "none" | "awaiting_approval" | "active" | "expired";
+  expiresAt: string | null;
+  error?: string;
+}
+
+const SIGN_EMAIL_KEY = "facilitta_sign_email";
+
+function hhmm(iso: string | null) {
+  if (!iso) return null;
+  return new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }).format(
+    new Date(iso)
+  );
+}
+
+/**
+ * Ativa a sessão de assinatura do plantão (aprovação no app VIDaaS, vale 8h)
+ * antes da primeira receita. Com e-mail e senha da conta de assinatura, o
+ * CRM vai gravado; sem eles, assina só pelo CPF.
+ */
+function ShiftActivation({
+  defaultEmail,
+  onActive,
+  onAccountOk,
+}: {
+  defaultEmail: string;
+  onActive: (until: string | null) => void;
+  onAccountOk: () => void;
+}) {
+  const [state, setState] = useState<SessionState | null>(null);
+  const [typedEmail, setEmail] = useState<string | null>(() => {
+    try {
+      return typeof window === "undefined" ? null : localStorage.getItem(SIGN_EMAIL_KEY);
+    } catch {
+      return null;
+    }
+  });
+  const email = typedEmail ?? defaultEmail;
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const polling = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const apply = useCallback(
+    (st: SessionState) => {
+      setState(st);
+      onActive(st.status === "active" ? hhmm(st.expiresAt) : null);
+    },
+    [onActive]
+  );
+
+  const stopPolling = useCallback(() => {
+    if (polling.current) clearInterval(polling.current);
+    polling.current = null;
+  }, []);
+
+  const startPolling = useCallback(() => {
+    stopPolling();
+    const started = Date.now();
+    polling.current = setInterval(async () => {
+      const res = await fetch("/api/doctor/signing-session").catch(() => null);
+      const st = res && res.ok ? ((await res.json()) as SessionState) : null;
+      if (st) apply(st);
+      if (!st || st.status !== "awaiting_approval" || Date.now() - started > 190_000) {
+        stopPolling();
+        if (st?.status !== "active") setError("A aprovação não chegou a tempo. Tente de novo.");
+      }
+    }, 3000);
+  }, [apply, stopPolling]);
+
+  useEffect(() => {
+    fetch("/api/doctor/signing-session")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((st: SessionState | null) => {
+        if (!st) return;
+        apply(st);
+        if (st.status === "awaiting_approval") startPolling();
+      })
+      .catch(() => {});
+    return stopPolling;
+  }, [apply, startPolling, stopPolling]);
+
+  async function activate(withAccount: boolean) {
+    setError(null);
+    if (withAccount && (!email.trim() || !password)) {
+      setError("Informe o e-mail e a senha da assinatura, ou ative só com o VIDaaS.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch("/api/doctor/signing-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(withAccount ? { email: email.trim(), password } : {}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error ?? "Não foi possível ativar. Tente de novo.");
+        return;
+      }
+      if (withAccount) {
+        onAccountOk();
+        try {
+          localStorage.setItem(SIGN_EMAIL_KEY, email.trim());
+        } catch {
+          // ignora
+        }
+      }
+      setPassword("");
+      apply(data as SessionState);
+      if (data.status === "awaiting_approval") startPolling();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!state) return <p className="text-xs text-zinc-400">Verificando a assinatura...</p>;
+
+  if (state.status === "active") {
+    return (
+      <div className="rounded-lg border border-brand-teal/40 bg-brand-teal/10 px-4 py-3 text-sm text-brand-navy">
+        <p className="font-semibold">Assinatura ativa até {hhmm(state.expiresAt)}.</p>
+        <p className="mt-0.5 text-xs text-zinc-600">Pode prescrever: os documentos saem assinados direto.</p>
+      </div>
+    );
+  }
+
+  if (state.status === "awaiting_approval") {
+    return (
+      <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <span className="mt-1 h-3 w-3 shrink-0 animate-pulse rounded-full bg-amber-400" />
+        <div>
+          <p className="font-semibold">Abra o app VIDaaS no celular e aprove o pedido.</p>
+          <p className="mt-0.5 text-xs">Você tem até 3 minutos. Esta tela atualiza sozinha.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const base = "h-11 w-full rounded-md border border-zinc-300 px-3 text-sm outline-none focus:border-brand-teal-dark";
+  return (
+    <div className="flex flex-col gap-3">
+      {!state.ready && (
+        <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Falta no seu cadastro: {state.missing.join(", ")}. Peça para a administração completar antes de ativar.
+        </p>
+      )}
+      <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
+        <label className="flex min-w-0 flex-col gap-1.5 text-xs">
+          <span className="truncate font-medium text-zinc-600">E-mail da assinatura</span>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={base} />
+        </label>
+        <label className="flex min-w-0 flex-col gap-1.5 text-xs">
+          <span className="truncate font-medium text-zinc-600">Senha da assinatura</span>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+            className={base}
+          />
+        </label>
+      </div>
+      {error && <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        <button
+          type="button"
+          onClick={() => activate(false)}
+          disabled={busy || !state.ready}
+          className="text-xs text-zinc-500 underline disabled:opacity-50"
+        >
+          Ativar só com o VIDaaS (sem CRM)
+        </button>
+        <button
+          type="button"
+          onClick={() => activate(true)}
+          disabled={busy || !state.ready}
+          className="rounded-md bg-brand-teal-dark px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          {busy ? "Enviando..." : "Ativar assinatura do plantão"}
+        </button>
+      </div>
+    </div>
   );
 }
