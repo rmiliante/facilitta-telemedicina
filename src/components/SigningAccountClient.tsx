@@ -101,8 +101,15 @@ export default function SigningAccountClient() {
           ? "Falta o CPF no cadastro"
           : "Não foi possível verificar";
 
-  const field = "w-full rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-brand-teal-dark";
-  const locked = "w-full rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-600";
+  const base = "h-11 w-full rounded-md border px-3 text-sm outline-none";
+  const field = `${base} border-zinc-300 focus:border-brand-teal-dark`;
+  const locked = `${base} border-zinc-200 bg-zinc-50 text-zinc-600`;
+  const box = "flex min-w-0 flex-col gap-1.5 text-xs";
+  const lbl = "truncate font-medium text-zinc-600";
+  const conselho =
+    info.crm && info.crmUf
+      ? [`CRM-${info.crmUf} ${info.crm}`, info.rqe ? `RQE ${info.rqe}` : null, "Médico"].filter(Boolean).join(" · ")
+      : "—";
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1.25fr_1fr]">
@@ -115,40 +122,37 @@ export default function SigningAccountClient() {
             na Facilitta.
           </p>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="text-xs">
-            <span className="mb-1 block font-medium text-zinc-600">Nome completo</span>
+        <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
+          <label className={box}>
+            <span className={lbl}>Nome completo</span>
             <input value={info.name} readOnly className={locked} />
           </label>
-          <label className="text-xs">
-            <span className="mb-1 block font-medium text-zinc-600">CPF (mesmo do certificado VIDaaS)</span>
+          <label className={box}>
+            <span className={lbl}>CPF do certificado</span>
             <input value={formatCpf(info.cpf)} readOnly className={locked} />
           </label>
-          <label className="text-xs">
-            <span className="mb-1 block font-medium text-zinc-600">Conselho</span>
-            <input
-              value={info.crm && info.crmUf ? `CRM-${info.crmUf} ${info.crm}${info.rqe ? ` · RQE ${info.rqe}` : ""} · Médico` : "—"}
-              readOnly
-              className={locked}
-            />
+          <label className={`${box} sm:col-span-2`}>
+            <span className={lbl}>Conselho</span>
+            <input value={conselho} readOnly className={locked} />
           </label>
-          <label className="text-xs">
-            <span className="mb-1 block font-medium text-zinc-600">E-mail (recebe a confirmação)</span>
+          <label className={`${box} sm:col-span-2`}>
+            <span className={lbl}>E-mail (recebe a confirmação)</span>
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className={field} />
           </label>
-          <label className="text-xs">
-            <span className="mb-1 block font-medium text-zinc-600">Crie uma senha para a assinatura</span>
+          <label className={box}>
+            <span className={lbl}>Senha da assinatura</span>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="new-password"
               minLength={8}
+              placeholder="mín. 8 caracteres"
               className={field}
             />
           </label>
-          <label className="text-xs">
-            <span className="mb-1 block font-medium text-zinc-600">Repita a senha</span>
+          <label className={box}>
+            <span className={lbl}>Repita a senha</span>
             <input
               type="password"
               value={confirm}
