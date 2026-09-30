@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 /**
  * Receita digital na tela de consulta: o médico monta a receita / pedido
@@ -33,7 +33,12 @@ interface SigningState {
   expiresAt: string | null;
   message?: string;
   error?: string;
+  accountEmail?: string;
 }
+
+type Credentials = { email: string; password: string };
+type CredChoice = Credentials | null | "cancel";
+const SIGN_EMAIL_KEY = "facilitta_sign_email";
 
 const KIND_LABELS: Record<Kind, string> = {
   receita: "Receita",
@@ -63,7 +68,11 @@ export default function PrescriptionPanel({
   const [kind, setKind] = useState<Kind>("receita");
   const [items, setItems] = useState<Item[]>([{ ...EMPTY_ITEM }]);
   const [notes, setNotes] = useState("");
-  const [phase, setPhase] = useState<"edit" | "authorizing" | "emitting">("edit");
+  const [phase, setPhase] = useState<"edit" | "credentials" | "authorizing" | "emitting">("edit");
+  const [signEmail, setSignEmail] = useState("");
+  const [signPassword, setSignPassword] = useState("");
+  const [credError, setCredError] = useState<string | null>(null);
+  const credResolver = useRef<((choice: CredChoice) => void) | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [issued, setIssued] = useState<IssuedDocument[]>([]);
   const cancelledRef = useRef(false);
@@ -101,6 +110,8 @@ export default function PrescriptionPanel({
 
   function closeModal() {
     cancelledRef.current = true;
+    credResolver.current?.("cancel");
+    credResolver.current = null;
     setOpen(false);
     setPhase("edit");
   }
@@ -114,19 +125,61 @@ export default function PrescriptionPanel({
     const current = await loadSigning();
     if (current?.status === "active") return true;
 
-    setPhase("authorizing");
     let state = current;
     if (!state || state.status !== "awaiting_approval") {
-      const res = await fetch("/api/doctor/signing-session", { method: "POST" }).catch(() => null);
-      const data = res ? await res.json().catch(() => ({})) : {};
-      if (!res?.ok) {
-        setError(data.error ?? "Não foi possível pedir a autorização no VIDaaS.");
-        setPhase("edit");
-        return false;
+      // Passo 1 (tela 7): conta de assinatura (CRM na assinatura) ou só VIDaaS.
+      let savedEmail = "";
+      try {
+        savedEmail = localStorage.getItem(SIGN_EMAIL_KEY) ?? "";
+      } catch {
+        // sem armazenamento local: usa o e-mail do login
       }
-      state = data as SigningState;
-      setSigning(state);
-      if (state.status === "active") return true;
+      setSignEmail(savedEmail || current?.accountEmail || "");
+      setSignPassword("");
+      setCredError(null);
+
+      for (;;) {
+        setPhase("credentials");
+        const choice = await new Promise<CredChoice>((resolve) => {
+          credResolver.current = resolve;
+        });
+        credResolver.current = null;
+        if (choice === "cancel" || cancelledRef.current) {
+          setPhase("edit");
+          return false;
+        }
+
+        setPhase("authorizing");
+        const res = await fetch("/api/doctor/signing-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(choice ?? {}),
+        }).catch(() => null);
+        const data = res ? await res.json().catch(() => ({})) : {};
+        setSignPassword("");
+        if (!res?.ok) {
+          if (choice && res?.status === 401) {
+            setCredError(data.error ?? "E-mail ou senha da conta de assinatura inválidos.");
+            continue; // volta pro passo 1
+          }
+          setError(data.error ?? "Não foi possível pedir a autorização no VIDaaS.");
+          setPhase("edit");
+          return false;
+        }
+        if (choice) {
+          try {
+            localStorage.setItem(SIGN_EMAIL_KEY, choice.email);
+          } catch {
+            // ignora
+          }
+        }
+        state = data as SigningState;
+        setSigning(state);
+        if (state.status === "active") return true;
+        break;
+      }
+    } else {
+      setPhase("authorizing");
     }
 
     const started = Date.now();
@@ -279,7 +332,75 @@ export default function PrescriptionPanel({
               </button>
             </div>
 
-            {phase === "authorizing" ? (
+            {phase === "credentials" ? (
+              <div className="grid gap-0 md:grid-cols-2">
+                <form
+                  className="flex flex-col gap-3 border-b border-zinc-200 px-6 py-6 md:border-b-0 md:border-r"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!signPassword) return;
+                    credResolver.current?.({ email: signEmail.trim(), password: signPassword });
+                  }}
+                >
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-brand-teal-dark">
+                    Autorizar assinatura de hoje · vale até 8 horas
+                  </p>
+                  <p className="text-base font-semibold text-brand-navy">1. Entrar na conta de assinatura</p>
+                  <label className="text-xs">
+                    <span className="mb-1 block font-medium text-zinc-600">E-mail da conta</span>
+                    <input
+                      type="email"
+                      value={signEmail}
+                      onChange={(e) => setSignEmail(e.target.value)}
+                      autoComplete="username"
+                      className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-brand-teal-dark"
+                    />
+                  </label>
+                  <label className="text-xs">
+                    <span className="mb-1 block font-medium text-zinc-600">Senha da conta de assinatura</span>
+                    <input
+                      type="password"
+                      value={signPassword}
+                      onChange={(e) => setSignPassword(e.target.value)}
+                      autoComplete="current-password"
+                      autoFocus
+                      className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-brand-teal-dark"
+                    />
+                  </label>
+                  <p className="text-[11px] text-zinc-500">
+                    Com a conta, o seu CRM vai gravado dentro da assinatura. A senha não fica guardada no sistema.
+                  </p>
+                  {credError && <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{credError}</p>}
+                  <button
+                    type="submit"
+                    disabled={!signPassword || !signEmail.trim()}
+                    className="mt-1 rounded-md bg-brand-navy px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                  >
+                    Continuar
+                  </button>
+                </form>
+                <div className="flex flex-col gap-3 bg-zinc-50 px-6 py-6">
+                  <p className="text-base font-semibold text-zinc-600">2. Aprovar no app VIDaaS</p>
+                  <p className="text-sm text-zinc-600">
+                    Depois do passo 1, chega o pedido no celular. Toque em Autorizar e pronto.
+                  </p>
+                  <div className="mt-auto rounded-md border border-zinc-200 bg-white p-3 text-xs text-zinc-600">
+                    <p className="font-semibold text-brand-navy">Sem conta de assinatura?</p>
+                    <p className="mt-1">
+                      Dá para seguir só com o VIDaaS: a receita continua com validade legal, só sem o CRM gravado
+                      dentro da assinatura. Crie a conta em <strong>Minha assinatura</strong>, no menu.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => credResolver.current?.(null)}
+                      className="mt-2 font-semibold text-brand-teal-dark underline"
+                    >
+                      Pular e usar só o VIDaaS
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : phase === "authorizing" ? (
               <div className="flex flex-col items-center gap-3 px-6 py-12 text-center">
                 <span className="h-10 w-10 animate-spin rounded-full border-4 border-brand-teal/30 border-t-brand-teal-dark" />
                 <p className="text-lg font-semibold text-brand-navy">Confirme a assinatura no seu celular</p>
@@ -337,12 +458,16 @@ export default function PrescriptionPanel({
                               <span className="mb-1 block font-medium text-zinc-600">
                                 {kind === "receita" ? `Medicamento ${i + 1}` : `Exame ${i + 1}`}
                               </span>
-                              <input
-                                value={it.name}
-                                onChange={(e) => updateItem(i, { name: e.target.value })}
-                                placeholder={kind === "receita" ? "Ex: Losartana potássica 50 mg" : "Ex: Hemograma completo"}
-                                className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
-                              />
+                              {kind === "receita" ? (
+                                <MedicationInput value={it.name} onChange={(name) => updateItem(i, { name })} />
+                              ) : (
+                                <input
+                                  value={it.name}
+                                  onChange={(e) => updateItem(i, { name: e.target.value })}
+                                  placeholder="Ex: Hemograma completo"
+                                  className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                                />
+                              )}
                             </label>
                             {kind === "receita" && (
                               <label className="w-40 text-xs">
@@ -425,6 +550,111 @@ export default function PrescriptionPanel({
             )}
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Campo de medicamento com sugestões do catálogo CMED/Anvisa enquanto o
+ * médico digita. Continua aceitando texto livre (remédio fora da lista).
+ */
+function MedicationInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1);
+  const lastPicked = useRef<string | null>(null);
+  const listId = useId();
+
+  useEffect(() => {
+    const q = value.trim();
+    if (q.length < 3 || q === lastPicked.current) {
+      const t0 = setTimeout(() => setSuggestions([]), 0);
+      return () => clearTimeout(t0);
+    }
+    const ctrl = new AbortController();
+    const t = setTimeout(() => {
+      fetch(`/api/doctor/medications?q=${encodeURIComponent(q)}`, { signal: ctrl.signal })
+        .then((r) => (r.ok ? r.json() : { results: [] }))
+        .then((d) => {
+          setSuggestions(d.results ?? []);
+          setActive(-1);
+        })
+        .catch(() => {});
+    }, 250);
+    return () => {
+      clearTimeout(t);
+      ctrl.abort();
+    };
+  }, [value]);
+
+  function pick(name: string) {
+    lastPicked.current = name;
+    onChange(name);
+    setOpen(false);
+    setSuggestions([]);
+  }
+
+  return (
+    <div className="relative">
+      <input
+        value={value}
+        onChange={(e) => {
+          lastPicked.current = null;
+          onChange(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onKeyDown={(e) => {
+          if (!open || suggestions.length === 0) return;
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setActive((a) => Math.min(a + 1, suggestions.length - 1));
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setActive((a) => Math.max(a - 1, 0));
+          } else if (e.key === "Enter" && active >= 0) {
+            e.preventDefault();
+            pick(suggestions[active]);
+          } else if (e.key === "Escape") {
+            setOpen(false);
+          }
+        }}
+        placeholder="Digite o nome ou o princípio ativo (ex: dipirona)"
+        autoComplete="off"
+        role="combobox"
+        aria-controls={listId}
+        aria-expanded={open && suggestions.length > 0}
+        aria-autocomplete="list"
+        className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+      />
+      {open && suggestions.length > 0 && (
+        <ul
+          id={listId}
+          role="listbox"
+          className="absolute left-0 right-0 top-full z-10 mt-1 max-h-64 overflow-y-auto rounded-md border border-zinc-200 bg-white py-1 shadow-lg"
+        >
+          {suggestions.map((sug, idx) => (
+            <li key={sug} role="option" aria-selected={idx === active}>
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  pick(sug);
+                }}
+                className={`block w-full px-3 py-2 text-left text-sm ${
+                  idx === active ? "bg-brand-teal/15" : "hover:bg-zinc-50"
+                }`}
+              >
+                {sug}
+              </button>
+            </li>
+          ))}
+          <li className="border-t border-zinc-100 px-3 py-1.5 text-[10px] text-zinc-400">
+            Lista CMED/Anvisa · se não encontrar, digite o nome livremente
+          </li>
+        </ul>
       )}
     </div>
   );

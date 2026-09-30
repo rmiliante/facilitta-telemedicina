@@ -31,9 +31,19 @@ function IconList() {
   );
 }
 
+function IconPen() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+      <path d="M12 20h9" strokeLinecap="round" />
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 const NAV_ITEMS = [
   { href: "/medico", label: "Fila de hoje", icon: <IconCalendar /> },
   { href: "/medico/atendimentos", label: "Atendimentos", icon: <IconList /> },
+  { href: "/medico/assinatura", label: "Minha assinatura", icon: <IconPen /> },
 ];
 
 /**

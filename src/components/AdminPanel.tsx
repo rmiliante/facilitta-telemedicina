@@ -25,6 +25,8 @@ interface Doctor {
   cpf?: string | null;
   crm?: string | null;
   crm_uf?: string | null;
+  rqe?: string | null;
+  endereco_profissional?: string | null;
   specialties: { name: string } | null;
 }
 
@@ -666,6 +668,8 @@ function SpecialtiesTab() {
         alert(err.error);
         return;
       }
+      const saved = await res.json().catch(() => ({}));
+      if (saved.warning) alert(saved.warning);
       setEditingId(null);
       await load();
     } finally {
@@ -780,13 +784,90 @@ function SpecialtiesTab() {
 // ------------------------------------------------------------
 // Médicos
 // ------------------------------------------------------------
+/** Saldo de assinaturas digitais (créditos do serviço de assinatura). */
+function SigningCreditsCard() {
+  const [credits, setCredits] = useState<number | null | undefined>(undefined);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/admin/signing-credits")
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        setCredits(typeof d.credits === "number" ? d.credits : null);
+        setError(d.error ?? null);
+      })
+      .catch(() => !cancelled && setCredits(null));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const low = typeof credits === "number" && credits < 10;
+  return (
+    <div
+      className={`flex items-center justify-between rounded-lg border px-4 py-3 text-sm ${
+        low ? "border-amber-300 bg-amber-50" : "border-zinc-200 bg-white"
+      }`}
+    >
+      <span className="font-medium text-zinc-700">Assinaturas digitais disponíveis</span>
+      <span className={`text-base font-semibold ${low ? "text-amber-700" : "text-brand-navy"}`}>
+        {credits === undefined
+          ? "…"
+          : typeof credits === "number"
+            ? `${credits}${low ? " · comprar mais créditos" : ""}`
+            : error
+              ? "indisponível"
+              : "—"}
+      </span>
+    </div>
+  );
+}
+
+/** Mostra se o CPF do médico tem certificado em nuvem (VIDaaS/BirdID) pra assinar receitas. */
+function CertificateBadge({ doctorId, cpf }: { doctorId: string; cpf?: string | null }) {
+  const [info, setInfo] = useState<{ status: string; providers?: string[] } | null>(null);
+
+  useEffect(() => {
+    if (!cpf) return;
+    let cancelled = false;
+    fetch(`/api/admin/doctors/${doctorId}/certificate`)
+      .then((r) => r.json())
+      .then((d) => !cancelled && setInfo(d))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [doctorId, cpf]);
+
+  if (!cpf) return null;
+  if (!info) return <span className="text-zinc-400">· verificando certificado…</span>;
+  if (info.status === "ok") {
+    const names = (info.providers ?? []).map((p) => (p === "vidaas" ? "VIDaaS" : p === "birdid" ? "BirdID" : p));
+    return (
+      <span className="rounded-full bg-brand-teal/15 px-2 py-0.5 font-medium text-brand-teal-dark">
+        Certificado {names.join(" + ") || "encontrado"}
+      </span>
+    );
+  }
+  if (info.status === "nenhum") {
+    return (
+      <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800">
+        Nenhum certificado em nuvem nesse CPF
+      </span>
+    );
+  }
+  return <span className="text-zinc-400">· não foi possível verificar o certificado</span>;
+}
+
 function DoctorsTab() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
-  const [form, setForm] = useState({ name: "", email: "", password: "", specialtyId: "", cpf: "", crm: "", crmUf: "" });
+  const [form, setForm] = useState({ name: "", email: "", password: "", specialtyId: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "" });
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", email: "", specialtyId: "", password: "", cpf: "", crm: "", crmUf: "" });
+  const [editForm, setEditForm] = useState({ name: "", email: "", specialtyId: "", password: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "" });
   const [editSaving, setEditSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -817,7 +898,9 @@ function DoctorsTab() {
         alert(err.error);
         return;
       }
-      setForm({ name: "", email: "", password: "", specialtyId: "", cpf: "", crm: "", crmUf: "" });
+      const created = await res.json().catch(() => ({}));
+      if (created.warning) alert(created.warning);
+      setForm({ name: "", email: "", password: "", specialtyId: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "" });
       await load();
     } finally {
       setSaving(false);
@@ -843,6 +926,8 @@ function DoctorsTab() {
       cpf: d.cpf ?? "",
       crm: d.crm ?? "",
       crmUf: d.crm_uf ?? "",
+      rqe: d.rqe ?? "",
+      enderecoProfissional: d.endereco_profissional ?? "",
     });
   }
 
@@ -867,6 +952,8 @@ function DoctorsTab() {
         cpf: editForm.cpf,
         crm: editForm.crm,
         crmUf: editForm.crmUf,
+        rqe: editForm.rqe,
+        enderecoProfissional: editForm.enderecoProfissional,
       };
       if (editForm.password) body.password = editForm.password;
       const res = await fetch(`/api/admin/doctors/${id}`, {
@@ -888,6 +975,7 @@ function DoctorsTab() {
 
   return (
     <div className="space-y-6">
+      <SigningCreditsCard />
       <form onSubmit={handleCreate} className="grid gap-3 rounded-lg border border-zinc-200 bg-white p-4 sm:grid-cols-2">
         <label className="text-xs">
           <span className="mb-1 block font-medium text-zinc-600">Nome</span>
@@ -935,7 +1023,7 @@ function DoctorsTab() {
             ))}
           </select>
         </label>
-        <div className="grid gap-3 sm:col-span-2 sm:grid-cols-3">
+        <div className="grid gap-3 sm:col-span-2 sm:grid-cols-4">
           <label className="text-xs">
             <span className="mb-1 block font-medium text-zinc-600">CPF (receita digital)</span>
             <input
@@ -962,6 +1050,26 @@ function DoctorsTab() {
               onChange={(e) => setForm((f) => ({ ...f, crmUf: e.target.value.toUpperCase() }))}
               maxLength={2}
               placeholder="BA"
+              className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+            />
+          </label>
+          <label className="text-xs">
+            <span className="mb-1 block font-medium text-zinc-600">RQE (especialista)</span>
+            <input
+              value={form.rqe}
+              onChange={(e) => setForm((f) => ({ ...f, rqe: e.target.value }))}
+              placeholder="opcional"
+              inputMode="numeric"
+              className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+            />
+          </label>
+          <label className="text-xs sm:col-span-4">
+            <span className="mb-1 block font-medium text-zinc-600">Endereço profissional (sai na receita)</span>
+            <input
+              value={form.enderecoProfissional}
+              onChange={(e) => setForm((f) => ({ ...f, enderecoProfissional: e.target.value }))}
+              placeholder="Rua, número, bairro, cidade/UF, CEP"
+              maxLength={200}
               className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
             />
           </label>
@@ -1026,7 +1134,7 @@ function DoctorsTab() {
                   placeholder="deixe em branco pra manter"
                 />
               </label>
-              <div className="grid gap-3 sm:col-span-2 sm:grid-cols-3">
+              <div className="grid gap-3 sm:col-span-2 sm:grid-cols-4">
                 <label className="text-xs">
                   <span className="mb-1 block font-medium text-zinc-600">CPF (receita digital)</span>
                   <input
@@ -1053,6 +1161,26 @@ function DoctorsTab() {
                     onChange={(e) => setEditForm((f) => ({ ...f, crmUf: e.target.value.toUpperCase() }))}
                     maxLength={2}
                     placeholder="BA"
+                    className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                  />
+                </label>
+                <label className="text-xs">
+                  <span className="mb-1 block font-medium text-zinc-600">RQE (especialista)</span>
+                  <input
+                    value={editForm.rqe}
+                    onChange={(e) => setEditForm((f) => ({ ...f, rqe: e.target.value }))}
+                    placeholder="opcional"
+                    inputMode="numeric"
+                    className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                  />
+                </label>
+                <label className="text-xs sm:col-span-4">
+                  <span className="mb-1 block font-medium text-zinc-600">Endereço profissional (sai na receita)</span>
+                  <input
+                    value={editForm.enderecoProfissional}
+                    onChange={(e) => setEditForm((f) => ({ ...f, enderecoProfissional: e.target.value }))}
+                    placeholder="Rua, número, bairro, cidade/UF, CEP"
+                    maxLength={200}
                     className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
                   />
                 </label>
@@ -1084,8 +1212,11 @@ function DoctorsTab() {
                   {d.email} {d.specialties?.name ? `· ${d.specialties.name}` : ""}
                 </p>
                 {d.cpf && d.crm && d.crm_uf ? (
-                  <p className="text-[11px] text-brand-teal-dark">
+                  <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-brand-teal-dark">
                     Receita digital: CRM-{d.crm_uf} {d.crm}
+                    {d.rqe ? ` · RQE ${d.rqe}` : ""}
+                    {!d.endereco_profissional && <span className="text-amber-700">· falta endereço profissional</span>}
+                    <CertificateBadge doctorId={d.id} cpf={d.cpf} />
                   </p>
                 ) : (
                   <p className="text-[11px] text-amber-700">

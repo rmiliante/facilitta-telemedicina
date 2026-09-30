@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { getSession, startSession, PrescreveError } from "@/lib/prescreve";
+import { getSession, loginProfessional, startSession, PrescreveError } from "@/lib/prescreve";
 
 /**
  * Sessão de assinatura digital do médico (VIDaaS/BirdID via Prescreve).
@@ -13,6 +13,8 @@ export interface SigningDoctor {
   cpf: string | null;
   crm: string | null;
   crm_uf: string | null;
+  rqe: string | null;
+  endereco_profissional: string | null;
   specialty: string | null;
   prescreve_session_id: string | null;
   prescreve_session_status: string | null;
@@ -30,13 +32,12 @@ export interface SigningState {
 
 export async function getSigningDoctor(doctorId: string): Promise<SigningDoctor | null> {
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("doctors")
-    .select(
-      "id, name, cpf, crm, crm_uf, memed_cpf, memed_crm, memed_uf, prescreve_session_id, prescreve_session_status, prescreve_session_expires_at, specialties(name)"
-    )
-    .eq("id", doctorId)
-    .maybeSingle();
+  const columns =
+    "id, name, cpf, crm, crm_uf, rqe, endereco_profissional, memed_cpf, memed_crm, memed_uf, prescreve_session_id, prescreve_session_status, prescreve_session_expires_at, specialties(name)";
+  const run = (cols: string) => supabase.from("doctors").select(cols).eq("id", doctorId).maybeSingle();
+  let { data, error } = await run(columns);
+  // RQE/endereço: se as colunas ainda não existem no banco, segue sem elas.
+  if (error?.code === "42703") ({ data, error } = await run(columns.replace(" rqe, endereco_profissional,", "")));
 
   if (error) {
     // 42703 = coluna não existe: migração da receita ainda não rodada.
@@ -57,6 +58,8 @@ export async function getSigningDoctor(doctorId: string): Promise<SigningDoctor 
     cpf: ((d.cpf as string | null) || (d.memed_cpf as string | null)) ?? null,
     crm: ((d.crm as string | null) || (d.memed_crm as string | null)) ?? null,
     crm_uf: ((d.crm_uf as string | null) || (d.memed_uf as string | null)) ?? null,
+    rqe: (d.rqe as string | null) ?? null,
+    endereco_profissional: (d.endereco_profissional as string | null) ?? null,
     specialty: d.specialties?.name ?? null,
     prescreve_session_id: (d.prescreve_session_id as string | null) ?? null,
     prescreve_session_status: (d.prescreve_session_status as string | null) ?? null,
@@ -69,6 +72,7 @@ function missingFields(doctor: SigningDoctor): string[] {
   if (!doctor.cpf || doctor.cpf.replace(/\D/g, "").length !== 11) missing.push("CPF");
   if (!doctor.crm) missing.push("CRM");
   if (!doctor.crm_uf) missing.push("UF do CRM");
+  if (!doctor.endereco_profissional?.trim() && !process.env.RECEITA_ENDERECO) missing.push("endereço profissional");
   return missing;
 }
 
@@ -118,13 +122,21 @@ export async function refreshSigningState(doctor: SigningDoctor): Promise<Signin
   return { ...base, status: "none", expiresAt: null };
 }
 
-/** Dispara o pedido de aprovação no app VIDaaS do médico. */
-export async function startSigningSession(doctor: SigningDoctor): Promise<SigningState> {
+/**
+ * Dispara o pedido de aprovação no app VIDaaS do médico. Com e-mail e
+ * senha da conta de assinatura, entra antes (CRM gravado na assinatura);
+ * a senha só é usada aqui e não é guardada.
+ */
+export async function startSigningSession(
+  doctor: SigningDoctor,
+  account?: { email: string; password: string }
+): Promise<SigningState> {
   const missing = missingFields(doctor);
   if (missing.length > 0) {
     return { ready: false, missing, status: "none", expiresAt: null };
   }
-  const info = await startSession(doctor.cpf!);
+  const token = account ? await loginProfessional(account.email, account.password) : undefined;
+  const info = await startSession(doctor.cpf!, token);
   if (info.status === "active") {
     await saveSession(doctor.id, info.session_id, "active", info.expires_in ?? 8 * 60 * 60);
     return {

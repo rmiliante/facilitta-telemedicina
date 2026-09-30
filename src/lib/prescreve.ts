@@ -55,7 +55,7 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
       (typeof data.detail === "string" && data.detail) ||
       `Erro do serviço de assinatura (${res.status})`;
     console.error("Prescreve WL erro", res.status, path, message);
-    throw new PrescreveError(message, res.status === 402 ? 402 : 502);
+    throw new PrescreveError(message, res.status === 402 ? 402 : res.status === 401 || res.status === 400 || res.status === 409 ? res.status : 502);
   }
   return data as T;
 }
@@ -70,12 +70,54 @@ export interface SessionInfo {
   message?: string;
 }
 
-/** Abre sessão de assinatura pelo CPF (VIDaaS tem prioridade: dispara o push no app). */
-export function startSession(cpf: string): Promise<SessionInfo> {
+/**
+ * Abre sessão de assinatura (VIDaaS tem prioridade: dispara o push no app).
+ * Com `accessToken` (login da conta de assinatura do médico), a sessão
+ * sai "com OID": o CRM vai gravado dentro da assinatura de cada PDF.
+ * Sem ele, usa só o CPF (assinatura válida, sem o CRM embutido).
+ */
+export function startSession(cpf: string, accessToken?: string): Promise<SessionInfo> {
   return call<SessionInfo>("/wl/v1/sessions/start", {
     method: "POST",
-    body: JSON.stringify({ cpf: cpf.replace(/\D/g, "") }),
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    body: JSON.stringify(accessToken ? {} : { cpf: cpf.replace(/\D/g, "") }),
   });
+}
+
+export interface RegisterInput {
+  nome: string;
+  cpf: string;
+  email: string;
+  senha: string;
+  tipo_registro: string; // ex: CRM-BA
+  num_registro: string;
+}
+
+/** Cria a conta de assinatura do médico (habilita o CRM na assinatura). A Prescreve envia e-mail de confirmação. */
+export function registerProfessional(input: RegisterInput): Promise<{ message?: string; profissional_uuid?: string; is_upgrade?: boolean }> {
+  return call("/wl/v1/professionals/register", {
+    method: "POST",
+    body: JSON.stringify({
+      nome: input.nome,
+      cpf: input.cpf.replace(/\D/g, ""),
+      email: input.email,
+      senha: input.senha,
+      confirmacao_senha: input.senha,
+      profissao: "Médico",
+      tipo_registro: input.tipo_registro,
+      num_registro: input.num_registro.replace(/\D/g, ""),
+    }),
+  });
+}
+
+/** Login na conta de assinatura; devolve o token usado só pra abrir a sessão (não é guardado). */
+export async function loginProfessional(email: string, senha: string): Promise<string> {
+  const data = await call<{ access_token?: string }>("/wl/v1/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email: email.trim().toLowerCase(), senha }),
+  });
+  if (!data.access_token) throw new PrescreveError("Não foi possível entrar na conta de assinatura.", 401);
+  return data.access_token;
 }
 
 /** Consulta a sessão (usado em polling enquanto o médico não aprova no app). */
@@ -106,4 +148,34 @@ export async function downloadSigned(url: string): Promise<Uint8Array> {
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new PrescreveError("PDF assinado, mas falhou ao baixar o arquivo do serviço de assinatura.");
   return new Uint8Array(await res.arrayBuffer());
+}
+
+export interface CertificateDiscovery {
+  can_sign: boolean;
+  providers: string[];
+  preferred_provider?: string | null;
+  vidaas?: boolean;
+  birdid?: boolean;
+  message?: string | null;
+}
+
+/** Verifica se o CPF tem certificado em nuvem (VIDaaS/BirdID) disponível pra assinar. */
+export function discoverCertificate(cpf: string): Promise<CertificateDiscovery> {
+  return call<CertificateDiscovery>(`/wl/v1/professionals/discover?cpf=${encodeURIComponent(cpf.replace(/\D/g, ""))}`);
+}
+
+/** Saldo de créditos de assinatura (1 crédito = 1 documento assinado). */
+export async function getCreditBalance(): Promise<number | null> {
+  const data = await call<Record<string, unknown>>("/wl/v1/billing/balance");
+  for (const key of ["balance", "credits", "saldo", "credits_remaining", "available", "remaining"]) {
+    const v = data[key];
+    if (typeof v === "number") return v;
+    if (v && typeof v === "object") {
+      for (const inner of ["available", "remaining", "balance", "credits"]) {
+        const iv = (v as Record<string, unknown>)[inner];
+        if (typeof iv === "number") return iv;
+      }
+    }
+  }
+  return null;
 }
