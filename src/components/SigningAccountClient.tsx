@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SIGNING_CHANGED_EVENT } from "./SigningSessionBadge";
+import { SIGNING_CHANGED_EVENT } from "@/lib/signingEvents";
 
 interface AccountInfo {
   name: string;
@@ -398,15 +398,19 @@ function hhmm(iso: string | null) {
  * antes da primeira receita. Com e-mail e senha da conta de assinatura, o
  * CRM vai gravado; sem eles, assina só pelo CPF.
  */
-function ShiftActivation({
+export function ShiftActivation({
   defaultEmail,
   onActive,
   onAccountOk,
+  compact = false,
 }: {
   defaultEmail: string;
   onActive: (until: string | null) => void;
   onAccountOk: () => void;
+  /** Versão enxuta (janelinha do selo do topo). */
+  compact?: boolean;
 }) {
+  const [renewing, setRenewing] = useState(false);
   const [state, setState] = useState<SessionState | null>(null);
   const [typedEmail, setEmail] = useState<string | null>(() => {
     try {
@@ -479,6 +483,7 @@ function ShiftActivation({
         setError(data.error ?? "Não foi possível ativar. Tente de novo.");
         return;
       }
+      setRenewing(false);
       if (withAccount) {
         onAccountOk();
         try {
@@ -497,11 +502,20 @@ function ShiftActivation({
 
   if (!state) return <p className="text-xs text-zinc-400">Verificando a assinatura...</p>;
 
-  if (state.status === "active") {
+  if (state.status === "active" && !renewing) {
     return (
-      <div className="rounded-lg border border-brand-teal/40 bg-brand-teal/10 px-4 py-3 text-sm text-brand-navy">
-        <p className="font-semibold">Assinatura ativa até {hhmm(state.expiresAt)}.</p>
-        <p className="mt-0.5 text-xs text-zinc-600">Pode prescrever: os documentos saem assinados direto.</p>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-brand-teal/40 bg-brand-teal/10 px-4 py-3 text-sm text-brand-navy">
+        <div>
+          <p className="font-semibold">Assinatura ativa até {hhmm(state.expiresAt)}.</p>
+          <p className="mt-0.5 text-xs text-zinc-600">Pode prescrever: os documentos saem assinados direto.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setRenewing(true)}
+          className="rounded-md border border-brand-teal-dark bg-white px-3 py-1.5 text-xs font-semibold text-brand-teal-dark hover:bg-brand-teal/10"
+        >
+          Renovar por mais 8h
+        </button>
       </div>
     );
   }
@@ -518,9 +532,17 @@ function ShiftActivation({
     );
   }
 
-  const base = "h-11 w-full rounded-md border border-zinc-300 px-3 text-sm outline-none focus:border-brand-teal-dark";
+  const base = `${compact ? "h-9" : "h-11"} w-full rounded-md border border-zinc-300 px-3 text-sm outline-none focus:border-brand-teal-dark`;
   return (
     <div className="flex flex-col gap-3">
+      {renewing && (
+        <p className="text-xs text-zinc-600">
+          Uma nova aprovação no app VIDaaS vale por mais 8 horas a partir de agora.{" "}
+          <button type="button" onClick={() => setRenewing(false)} className="underline">
+            Cancelar
+          </button>
+        </p>
+      )}
       {!state.ready && (
         <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
           Falta no seu cadastro: {state.missing.join(", ")}.{" "}
@@ -534,7 +556,7 @@ function ShiftActivation({
           antes de ativar.
         </p>
       )}
-      <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
+      <div className={`grid gap-x-4 gap-y-3 ${compact ? "" : "sm:grid-cols-2"}`}>
         <label className="flex min-w-0 flex-col gap-1.5 text-xs">
           <span className="truncate font-medium text-zinc-600">E-mail da assinatura</span>
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={base} />
@@ -566,7 +588,7 @@ function ShiftActivation({
           disabled={busy || !state.ready}
           className="rounded-md bg-brand-teal-dark px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
         >
-          {busy ? "Enviando..." : "Ativar assinatura do plantão"}
+          {busy ? "Enviando..." : renewing ? "Renovar agora" : "Ativar assinatura do plantão"}
         </button>
       </div>
     </div>

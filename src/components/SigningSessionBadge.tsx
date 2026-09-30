@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ShiftActivation } from "./SigningAccountClient";
+import { SIGNING_CHANGED_EVENT } from "@/lib/signingEvents";
 
 interface SessionState {
   ready: boolean;
@@ -10,8 +12,7 @@ interface SessionState {
   expiresAt: string | null;
 }
 
-/** Evento disparado quando a assinatura é ativada em outra parte da tela. */
-export const SIGNING_CHANGED_EVENT = "facilitta:signing-changed";
+export { SIGNING_CHANGED_EVENT };
 
 function remaining(expiresAt: string, now: number) {
   const ms = new Date(expiresAt).getTime() - now;
@@ -35,6 +36,17 @@ function hhmm(iso: string) {
 export default function SigningSessionBadge() {
   const [state, setState] = useState<SessionState | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/doctor/signing-session").catch(() => null);
@@ -71,44 +83,57 @@ export default function SigningSessionBadge() {
     );
   }
 
-  if (state.status === "awaiting_approval") {
-    return (
-      <Link href="/medico/assinatura" className={`${base} bg-amber-400/20 text-amber-100`}>
-        {dot("animate-pulse bg-amber-300")}
-        Aprove no app VIDaaS
-      </Link>
-    );
-  }
-
   const left = state.status === "active" && state.expiresAt ? remaining(state.expiresAt, now) : null;
-  if (!left) {
-    return (
-      <Link
-        href="/medico/assinatura"
-        title="Ative a assinatura do plantão antes de prescrever"
-        className={`${base} bg-white/10 text-white hover:bg-white/20`}
-      >
-        {dot("bg-zinc-400")}
-        Assinatura inativa · <span className="underline">Ativar</span>
-      </Link>
-    );
-  }
-
-  const tone =
-    left.min <= 15
+  const tone = left
+    ? left.min <= 15
       ? { chip: "bg-red-500/25 text-red-100", dot: "animate-pulse bg-red-400" }
       : left.min <= 60
         ? { chip: "bg-amber-400/20 text-amber-100", dot: "bg-amber-300" }
-        : { chip: "bg-brand-teal/20 text-brand-teal", dot: "bg-brand-teal" };
+        : { chip: "bg-brand-teal/20 text-brand-teal", dot: "bg-brand-teal" }
+    : state.status === "awaiting_approval"
+      ? { chip: "bg-amber-400/20 text-amber-100", dot: "animate-pulse bg-amber-300" }
+      : { chip: "bg-white/10 text-white", dot: "bg-zinc-400" };
+
+  const label = left ? (
+    <>
+      Assinatura · faltam {left.label} · <span className="underline">Renovar</span>
+    </>
+  ) : state.status === "awaiting_approval" ? (
+    "Aprove no app VIDaaS"
+  ) : (
+    <>
+      Assinatura inativa · <span className="underline">Ativar</span>
+    </>
+  );
 
   return (
-    <Link
-      href="/medico/assinatura"
-      title={`A assinatura do plantão vale até ${hhmm(state.expiresAt!)}`}
-      className={`${base} ${tone.chip}`}
-    >
-      {dot(tone.dot)}
-      Assinatura ativa · faltam {left.label}
-    </Link>
+    <div ref={boxRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        title={left ? `Vale até ${hhmm(state.expiresAt!)}. Clique para renovar por mais 8h.` : "Ativar a assinatura do plantão"}
+        className={`${base} ${tone.chip} hover:brightness-125`}
+      >
+        {dot(tone.dot)}
+        {label}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-lg border border-zinc-200 bg-white p-4 text-left shadow-xl">
+          <p className="mb-2 text-sm font-semibold text-brand-navy">Assinatura do plantão</p>
+          <ShiftActivation
+            compact
+            defaultEmail=""
+            onActive={() => load()}
+            onAccountOk={() => {
+              try {
+                localStorage.setItem("facilitta_sign_confirmed", "1");
+              } catch {
+                // ignora
+              }
+            }}
+          />
+        </div>
+      )}
+    </div>
   );
 }

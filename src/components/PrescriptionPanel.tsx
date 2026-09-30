@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { SIGNING_CHANGED_EVENT } from "./SigningSessionBadge";
+import { SIGNING_CHANGED_EVENT } from "@/lib/signingEvents";
 
 /**
  * Receita digital na tela de consulta: o médico monta a receita / pedido
@@ -101,7 +101,18 @@ export default function PrescriptionPanel({
         .then((data) => data && setSigning(data))
         .catch(() => {});
     }, 0);
-    return () => clearTimeout(t);
+    // Renovação feita pelo selo do topo ou por outra tela: recarrega o estado.
+    const onChanged = () => {
+      fetch("/api/doctor/signing-session")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => data && setSigning(data))
+        .catch(() => {});
+    };
+    window.addEventListener(SIGNING_CHANGED_EVENT, onChanged);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener(SIGNING_CHANGED_EVENT, onChanged);
+    };
   }, []);
 
   function openModal(k: Kind) {
@@ -251,17 +262,21 @@ export default function PrescriptionPanel({
 
   const statusLine =
     signing?.status === "active" && signing.expiresAt
-      ? `VIDaaS autorizado até ${formatTime(signing.expiresAt)}`
+      ? `Assinatura ativa até ${formatTime(signing.expiresAt)}`
       : signing && !signing.ready
         ? `Falta no cadastro: ${signing.missing.join(", ")}`
-        : "Assinatura pelo VIDaaS no celular";
+        : "Assinatura inativa · aprova no VIDaaS ao emitir";
+
+  const last = issued[issued.length - 1];
+  const btn =
+    "flex h-8 items-center justify-center gap-1 rounded-md px-2 text-xs font-semibold transition-colors";
 
   return (
-    <div className="border-t border-zinc-200 p-4">
+    <div className="border-b border-zinc-200 px-3 py-2.5">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold text-brand-navy">Receita digital</span>
+        <span className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">Emitir documento</span>
         <span
-          className={`text-[10px] font-medium ${
+          className={`truncate text-[10px] font-medium ${
             signing?.status === "active"
               ? "text-brand-teal-dark"
               : signing && !signing.ready
@@ -272,49 +287,37 @@ export default function PrescriptionPanel({
           {statusLine}
         </span>
       </div>
-      <button
-        type="button"
-        onClick={() => openModal("receita")}
-        className="w-full rounded-md bg-brand-navy px-4 py-2.5 text-sm font-medium text-white hover:opacity-90"
-      >
-        Prescrever
-      </button>
-      <div className="mt-2 grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          onClick={() => openModal("atestado")}
-          className="rounded-md border border-zinc-300 px-3 py-2 text-xs font-medium text-brand-navy hover:bg-zinc-50"
-        >
-          Atestado
+      <div className="grid grid-cols-3 gap-1.5">
+        <button type="button" onClick={() => openModal("receita")} className={`${btn} bg-brand-navy text-white hover:opacity-90`}>
+          Receita
         </button>
         <button
           type="button"
           onClick={() => openModal("exame")}
-          className="rounded-md border border-zinc-300 px-3 py-2 text-xs font-medium text-brand-navy hover:bg-zinc-50"
+          className={`${btn} border border-zinc-300 text-brand-navy hover:bg-zinc-50`}
         >
           Pedido de exame
         </button>
+        <button
+          type="button"
+          onClick={() => openModal("atestado")}
+          className={`${btn} border border-zinc-300 text-brand-navy hover:bg-zinc-50`}
+        >
+          Atestado
+        </button>
       </div>
-
-      {issued.length > 0 && (
-        <ul className="mt-3 space-y-1.5">
-          {issued.map((d) => (
-            <li
-              key={d.path}
-              className="flex items-center justify-between gap-2 rounded-md bg-brand-teal/10 px-2.5 py-1.5 text-[11px]"
-            >
-              <span className="truncate text-brand-navy">
-                <strong>{KIND_LABELS[d.kind ?? "receita"]}</strong> emitido às {formatTime(d.uploaded_at)} · salvo
-                no cadastro pra atendente imprimir
-              </span>
-              {d.url && (
-                <a href={d.url} target="_blank" rel="noreferrer" className="shrink-0 font-medium text-brand-teal-dark underline">
-                  Ver PDF
-                </a>
-              )}
-            </li>
-          ))}
-        </ul>
+      {last && (
+        <p className="mt-2 flex items-center justify-between gap-2 rounded-md bg-brand-teal/10 px-2.5 py-1.5 text-[11px] text-brand-navy">
+          <span className="truncate">
+            <strong>{KIND_LABELS[last.kind ?? "receita"]}</strong> emitido às {formatTime(last.uploaded_at)} · foi pra
+            impressão
+          </span>
+          {last.url && (
+            <a href={last.url} target="_blank" rel="noreferrer" className="shrink-0 font-semibold text-brand-teal-dark underline">
+              Ver PDF
+            </a>
+          )}
+        </p>
       )}
 
       {open && (
