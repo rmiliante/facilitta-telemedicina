@@ -32,6 +32,14 @@ function IconList() {
   );
 }
 
+function IconChart() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+      <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function IconPen() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
@@ -53,6 +61,7 @@ function IconUser() {
 const NAV_ITEMS = [
   { href: "/medico", label: "Fila de hoje", icon: <IconCalendar /> },
   { href: "/medico/atendimentos", label: "Atendimentos", icon: <IconList /> },
+  { href: "/medico/historico", label: "Histórico de atendimentos", icon: <IconChart /> },
   { href: "/medico/assinatura", label: "Minha assinatura", icon: <IconPen /> },
   { href: "/medico/cadastro", label: "Meu cadastro", icon: <IconUser /> },
 ];
@@ -153,7 +162,7 @@ export default function DoctorShell({
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
-          <div className="mx-auto max-w-3xl">{children}</div>
+          <div className={`mx-auto ${pathname === "/medico/historico" ? "max-w-6xl" : "max-w-3xl"}`}>{children}</div>
         </div>
       </div>
     </div>

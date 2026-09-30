@@ -149,11 +149,23 @@ function Kpi({ label, bar, children }: { label: string; bar: string; children: R
 const inputCls =
   "w-full rounded-md border border-zinc-300 bg-white px-2.5 py-2 text-sm text-brand-navy focus:border-brand-teal-dark focus:outline-none";
 
+/**
+ * `endpoint` padrão é o do admin. No painel do médico passa-se
+ * `/api/doctor/historico` e `lockedDoctorName`: o filtro de médico some e
+ * o servidor devolve só as consultas do médico logado.
+ */
 export default function AttendanceHistoryTab({
+  endpoint = "/api/admin/historico",
+  lockedDoctorName,
   renderPatientHistory,
+  rowHref,
 }: {
-  renderPatientHistory: (patientId: string) => React.ReactNode;
+  endpoint?: string;
+  lockedDoctorName?: string;
+  renderPatientHistory?: (patientId: string) => React.ReactNode;
+  rowHref?: (item: Item) => string;
 }) {
+  const locked = !!lockedDoctorName;
   const [from, setFrom] = useState(() => PRESETS[2].range()[0]);
   const [to, setTo] = useState(() => PRESETS[2].range()[1]);
   const [doctorId, setDoctorId] = useState("");
@@ -175,13 +187,14 @@ export default function AttendanceHistoryTab({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (locked) return;
     Promise.all([fetch("/api/admin/doctors"), fetch("/api/admin/specialties")])
       .then(async ([d, s]) => {
         if (d.ok) setDoctors(((await d.json()).doctors ?? []) as Option[]);
         if (s.ok) setSpecialties(((await s.json()).specialties ?? []) as Option[]);
       })
       .catch(() => {});
-  }, []);
+  }, [locked]);
 
   useEffect(() => {
     const t = setTimeout(() => setQDebounced(q.trim()), 400);
@@ -196,7 +209,7 @@ export default function AttendanceHistoryTab({
     if (status) params.set("status", status);
     if (qDebounced) params.set("q", qDebounced);
     try {
-      const res = await fetch(`/api/admin/historico?${params}`);
+      const res = await fetch(`${endpoint}?${params}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(data.error ?? "Falha ao carregar o histórico.");
@@ -213,7 +226,7 @@ export default function AttendanceHistoryTab({
     } finally {
       setLoading(false);
     }
-  }, [from, to, doctorId, specialtyId, tipo, status, qDebounced]);
+  }, [endpoint, from, to, doctorId, specialtyId, tipo, status, qDebounced]);
 
   useEffect(() => {
     const t = setTimeout(load, 0);
@@ -257,7 +270,11 @@ export default function AttendanceHistoryTab({
     <div className="space-y-5">
       <div>
         <h2 className="text-lg font-bold text-brand-navy">Histórico de atendimentos</h2>
-        <p className="text-sm text-zinc-500">Todos os atendimentos com filtros e os totais do período selecionado.</p>
+        <p className="text-sm text-zinc-500">
+          {locked
+            ? `Seus atendimentos, ${lockedDoctorName}, com filtros e os totais do período selecionado.`
+            : "Todos os atendimentos com filtros e os totais do período selecionado."}
+        </p>
       </div>
 
       {/* Filtros */}
@@ -271,6 +288,15 @@ export default function AttendanceHistoryTab({
             Até
             <input type="date" value={to} min={from} onChange={(e) => e.target.value && setTo(e.target.value)} className={`mt-1 ${inputCls}`} />
           </label>
+          {locked ? (
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 sm:col-span-2">
+              Médico
+              <p className="mt-1 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-2 text-sm normal-case tracking-normal text-brand-navy">
+                🔒 {lockedDoctorName}
+              </p>
+            </div>
+          ) : (
+            <>
           <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
             Médico
             <select value={doctorId} onChange={(e) => setDoctorId(e.target.value)} className={`mt-1 ${inputCls}`}>
@@ -293,6 +319,8 @@ export default function AttendanceHistoryTab({
               ))}
             </select>
           </label>
+            </>
+          )}
           <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
             Tipo
             <select value={tipo} onChange={(e) => setTipo(e.target.value)} className={`mt-1 ${inputCls}`}>
@@ -319,7 +347,7 @@ export default function AttendanceHistoryTab({
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="🔍 Buscar paciente por nome ou CPF"
-            className={`${inputCls} max-w-xs flex-1`}
+            className={`${inputCls} min-w-[220px] max-w-xs flex-1`}
           />
           {PRESETS.map((p) => (
             <button
@@ -429,12 +457,12 @@ export default function AttendanceHistoryTab({
         )}
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[820px] text-sm">
+          <table className={`w-full text-sm ${locked ? "min-w-[680px]" : "min-w-[820px]"}`}>
             <thead>
               <tr className="border-b border-zinc-200 text-left text-[11px] uppercase tracking-wide text-zinc-500">
                 <th className="px-2 py-2 font-semibold">Data</th>
                 <th className="px-2 py-2 font-semibold">Paciente</th>
-                <th className="px-2 py-2 font-semibold">Médico</th>
+                {!locked && <th className="px-2 py-2 font-semibold">Médico</th>}
                 <th className="px-2 py-2 font-semibold">Especialidade</th>
                 <th className="px-2 py-2 font-semibold">Tipo</th>
                 <th className="px-2 py-2 font-semibold">Início</th>
@@ -446,7 +474,7 @@ export default function AttendanceHistoryTab({
             <tbody>
               {!loading && pageItems.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-2 py-8 text-center text-sm text-zinc-400">
+                  <td colSpan={locked ? 8 : 9} className="px-2 py-8 text-center text-sm text-zinc-400">
                     Nenhum atendimento com esses filtros.
                   </td>
                 </tr>
@@ -457,7 +485,10 @@ export default function AttendanceHistoryTab({
                 return (
                   <Fragment key={i.id}>
                     <tr
-                      onClick={() => i.patient && setOpenId(open ? null : i.id)}
+                      onClick={() => {
+                        if (rowHref) window.location.href = rowHref(i);
+                        else if (i.patient && renderPatientHistory) setOpenId(open ? null : i.id);
+                      }}
                       className={`cursor-pointer border-b border-zinc-100 text-brand-navy hover:bg-zinc-50 ${open ? "bg-brand-teal/5" : ""}`}
                     >
                       <td className="px-2 py-2.5">{fmtDate(i.scheduled_at)}</td>
@@ -465,7 +496,7 @@ export default function AttendanceHistoryTab({
                         <p className="font-semibold">{i.patient?.full_name ?? "—"}</p>
                         <p className="text-xs text-zinc-400">{maskCpf(i.patient?.cpf ?? null)}</p>
                       </td>
-                      <td className="px-2 py-2.5">{i.doctor ?? "—"}</td>
+                      {!locked && <td className="px-2 py-2.5">{i.doctor ?? "—"}</td>}
                       <td className="px-2 py-2.5">{i.specialty ?? "—"}</td>
                       <td className="px-2 py-2.5">
                         {i.tipo_consulta ? (
@@ -481,9 +512,9 @@ export default function AttendanceHistoryTab({
                         <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.cls}`}>{st.label}</span>
                       </td>
                     </tr>
-                    {open && i.patient && (
+                    {open && i.patient && renderPatientHistory && (
                       <tr className="border-b border-zinc-100 bg-zinc-50/60">
-                        <td colSpan={9} className="px-3 py-3">
+                        <td colSpan={locked ? 8 : 9} className="px-3 py-3">
                           <p className="mb-2 text-xs font-semibold text-zinc-500">Histórico de {i.patient.full_name}</p>
                           {renderPatientHistory(i.patient.id)}
                         </td>
@@ -499,7 +530,7 @@ export default function AttendanceHistoryTab({
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-500">
           <span>
             {items.length > 0 &&
-              `Mostrando ${page * PAGE_SIZE + 1}–${Math.min(items.length, (page + 1) * PAGE_SIZE)} de ${items.length} · clique na linha para abrir o histórico do paciente`}
+              `Mostrando ${page * PAGE_SIZE + 1}–${Math.min(items.length, (page + 1) * PAGE_SIZE)} de ${items.length} · ${rowHref ? "clique na linha para abrir a consulta" : "clique na linha para abrir o histórico do paciente"}`}
           </span>
           <span className="flex gap-2">
             <button
