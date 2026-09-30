@@ -83,12 +83,20 @@ export default function PrescriptionPanel({
     exame: [{ ...EMPTY_ITEM }],
     atestado: [{ ...EMPTY_ITEM }],
   }));
-  const [notesByKind, setNotesByKind] = useState<Record<Kind, string>>({ receita: "", exame: "", atestado: "" });
+  const [notesByKind, setNotesByKind] = useState<Record<Kind, string>>({
+    receita: "",
+    exame: "",
+    atestado: "",
+  });
   const items = itemsByKind[kind];
   const notes = notesByKind[kind];
   const setItems = (next: Item[] | ((prev: Item[]) => Item[])) =>
-    setItemsByKind((all) => ({ ...all, [kind]: typeof next === "function" ? next(all[kind]) : next }));
-  const setNotes = (next: string) => setNotesByKind((all) => ({ ...all, [kind]: next }));
+    setItemsByKind((all) => ({
+      ...all,
+      [kind]: typeof next === "function" ? next(all[kind]) : next,
+    }));
+  const setNotes = (next: string) =>
+    setNotesByKind((all) => ({ ...all, [kind]: next }));
   const [phase, setPhase] = useState<
     "edit" | "credentials" | "authorizing" | "emitting"
   >("edit");
@@ -97,7 +105,9 @@ export default function PrescriptionPanel({
   const [credError, setCredError] = useState<string | null>(null);
   const credResolver = useRef<((choice: CredChoice) => void) | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [issued, setIssued] = useState<IssuedDocument[]>([]);
+  const [progress, setProgress] = useState<string | null>(null);
+  /** Documentos da última emissão (um ou vários), pra confirmação na coluna. */
+  const [lastBatch, setLastBatch] = useState<IssuedDocument[]>([]);
   const cancelledRef = useRef(false);
 
   async function loadSigning(): Promise<SigningState | null> {
@@ -135,7 +145,11 @@ export default function PrescriptionPanel({
 
   function openModal(k: Kind) {
     setKind(k);
-    setItemsByKind({ receita: [{ ...EMPTY_ITEM }], exame: [{ ...EMPTY_ITEM }], atestado: [{ ...EMPTY_ITEM }] });
+    setItemsByKind({
+      receita: [{ ...EMPTY_ITEM }],
+      exame: [{ ...EMPTY_ITEM }],
+      atestado: [{ ...EMPTY_ITEM }],
+    });
     setNotesByKind({ receita: "", exame: "", atestado: "" });
     setError(null);
     setPhase("edit");
@@ -245,59 +259,106 @@ export default function PrescriptionPanel({
     return false;
   }
 
-  async function handleEmit() {
+  /** Abas com conteúdo pra emitir (receita/exame com item, atestado com texto). */
+  const filledKinds = (Object.keys(KIND_LABELS) as Kind[]).filter((k) =>
+    k === "atestado"
+      ? notesByKind[k].trim() !== ""
+      : itemsByKind[k].some((it) => it.name.trim()),
+  );
+
+  /**
+   * Assina e emite um ou mais documentos — cada um vira um PDF separado
+   * (a receita vai pra farmácia, o pedido pro laboratório...). A aprovação
+   * no VIDaaS vale pro plantão, então não pede de novo entre um e outro.
+   */
+  async function emitKinds(kinds: Kind[]) {
     setError(null);
     cancelledRef.current = false;
 
-    const cleanItems = items.filter((it) => it.name.trim());
-    if (kind === "atestado" ? !notes.trim() : cleanItems.length === 0) {
-      setError(
-        kind === "atestado"
-          ? "Escreva o texto do atestado."
-          : kind === "receita"
-            ? "Inclua pelo menos um medicamento."
-            : "Inclua pelo menos um exame.",
-      );
-      return;
-    }
-
-    for (let attempt = 0; attempt < 2; attempt++) {
-      if (!(await ensureAuthorized())) return;
-      if (cancelledRef.current) return;
-
-      setPhase("emitting");
-      const res = await fetch(
-        `/api/doctor/appointments/${appointmentId}/prescription`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            kind,
-            items: kind === "atestado" ? [] : cleanItems,
-            notes,
-          }),
-        },
-      ).catch(() => null);
-      const data = res ? await res.json().catch(() => ({})) : {};
-
-      if (res?.ok) {
-        const doc = data.document as IssuedDocument;
-        setIssued((prev) => [...prev, doc]);
-        onIssued(doc);
-        setOpen(false);
-        setPhase("edit");
+    for (const k of kinds) {
+      const clean = itemsByKind[k].filter((it) => it.name.trim());
+      if (k === "atestado" ? !notesByKind[k].trim() : clean.length === 0) {
+        setKind(k);
+        setError(
+          k === "atestado"
+            ? "Escreva o texto do atestado."
+            : k === "receita"
+              ? "Inclua pelo menos um medicamento."
+              : "Inclua pelo menos um exame.",
+        );
         return;
       }
-      if (res?.status === 409 && data.needsSession && attempt === 0) {
-        setSigning((s) => (s ? { ...s, status: "none" } : s));
-        continue; // pede nova autorização e tenta de novo
-      }
-      setError(
-        data.error ?? "Falha ao emitir. Verifique a conexão e tente de novo.",
-      );
-      setPhase("edit");
-      return;
     }
+
+    const done: Kind[] = [];
+    const batch: IssuedDocument[] = [];
+    for (const [idx, k] of kinds.entries()) {
+      const clean = itemsByKind[k].filter((it) => it.name.trim());
+      let ok = false;
+      for (let attempt = 0; attempt < 2 && !ok; attempt++) {
+        if (!(await ensureAuthorized())) return;
+        if (cancelledRef.current) return;
+
+        setPhase("emitting");
+        setProgress(
+          kinds.length > 1
+            ? `Assinando ${idx + 1} de ${kinds.length} (${KIND_LABELS[k]})...`
+            : null,
+        );
+        const res = await fetch(
+          `/api/doctor/appointments/${appointmentId}/prescription`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              kind: k,
+              items: k === "atestado" ? [] : clean,
+              notes: notesByKind[k],
+            }),
+          },
+        ).catch(() => null);
+        const data = res ? await res.json().catch(() => ({})) : {};
+
+        if (res?.ok) {
+          const doc = data.document as IssuedDocument;
+          onIssued(doc);
+          done.push(k);
+          batch.push(doc);
+          setLastBatch([...batch]);
+          // Limpa a aba emitida: se outra falhar, tentar de novo não duplica esta.
+          setItemsByKind((all) => ({ ...all, [k]: [{ ...EMPTY_ITEM }] }));
+          setNotesByKind((all) => ({ ...all, [k]: "" }));
+          ok = true;
+        } else if (res?.status === 409 && data.needsSession && attempt === 0) {
+          setSigning((st) => (st ? { ...st, status: "none" } : st));
+          // pede nova autorização e tenta de novo
+        } else {
+          setKind(k);
+          setError(
+            `${KIND_LABELS[k]}: ${data.error ?? "falha ao emitir. Verifique a conexão e tente de novo."}` +
+              (done.length
+                ? ` (${done.map((d) => KIND_LABELS[d]).join(" e ")} já emitido${done.length > 1 ? "s" : ""}.)`
+                : ""),
+          );
+          setPhase("edit");
+          setProgress(null);
+          return;
+        }
+      }
+      if (!ok) {
+        setPhase("edit");
+        setProgress(null);
+        return;
+      }
+    }
+
+    setOpen(false);
+    setPhase("edit");
+    setProgress(null);
+  }
+
+  function handleEmit() {
+    return emitKinds([kind]);
   }
 
   /** Adiciona os exames do pacote que ainda não estão no pedido (aproveita linhas vazias). */
@@ -326,7 +387,7 @@ export default function PrescriptionPanel({
         ? `Falta no cadastro: ${signing.missing.join(", ")}`
         : "Assinatura inativa · aprova no VIDaaS ao emitir";
 
-  const last = issued[issued.length - 1];
+  const last = lastBatch[lastBatch.length - 1];
   const btn =
     "flex h-8 items-center justify-center gap-1 rounded-md px-2 text-xs font-semibold transition-colors";
 
@@ -372,22 +433,32 @@ export default function PrescriptionPanel({
         </button>
       </div>
       {last && (
-        <p className="mt-2 flex items-center justify-between gap-2 rounded-md bg-brand-teal/10 px-2.5 py-1.5 text-[11px] text-brand-navy">
-          <span className="truncate">
-            <strong>{KIND_LABELS[last.kind ?? "receita"]}</strong> emitido às{" "}
-            {formatTime(last.uploaded_at)} · foi pra impressão
-          </span>
-          {last.url && (
-            <a
-              href={last.url}
-              target="_blank"
-              rel="noreferrer"
-              className="shrink-0 font-semibold text-brand-teal-dark underline"
-            >
-              Ver PDF
-            </a>
-          )}
-        </p>
+        <div className="mt-2 rounded-md bg-brand-teal/10 px-2.5 py-1.5 text-[11px] text-brand-navy">
+          <p className="mb-0.5">
+            {lastBatch.length > 1
+              ? `${lastBatch.length} documentos emitidos`
+              : "Documento emitido"}{" "}
+            às {formatTime(last.uploaded_at)} ·{" "}
+            {lastBatch.length > 1 ? "foram" : "foi"} pra impressão
+          </p>
+          <ul className="flex flex-wrap gap-x-3 gap-y-0.5">
+            {lastBatch.map((d) => (
+              <li key={d.path}>
+                <strong>{KIND_LABELS[d.kind ?? "receita"]}</strong>
+                {d.url && (
+                  <a
+                    href={d.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="ml-1 font-semibold text-brand-teal-dark underline"
+                  >
+                    Ver PDF
+                  </a>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {open && (
@@ -540,6 +611,12 @@ export default function PrescriptionPanel({
                       }`}
                     >
                       {KIND_LABELS[k]}
+                      {filledKinds.includes(k) && (
+                        <span
+                          className={`ml-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle ${kind === k ? "bg-brand-teal" : "bg-brand-teal-dark"}`}
+                          title="Preenchido"
+                        />
+                      )}
                     </button>
                   ))}
                 </div>
@@ -718,7 +795,7 @@ export default function PrescriptionPanel({
                     Não é enviado nada à paciente — a atendente imprime pelo
                     cadastro.
                   </span>
-                  <div className="flex gap-2">
+                  <div className="flex shrink-0 gap-2">
                     <button
                       type="button"
                       onClick={closeModal}
@@ -726,19 +803,49 @@ export default function PrescriptionPanel({
                     >
                       Cancelar
                     </button>
-                    <button
-                      type="button"
-                      onClick={handleEmit}
-                      disabled={
-                        phase === "emitting" ||
-                        (signing ? !signing.ready : false)
-                      }
-                      className="rounded-md bg-brand-navy px-5 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                    >
-                      {phase === "emitting"
-                        ? "Assinando..."
-                        : "Assinar e emitir"}
-                    </button>
+                    {filledKinds.length > 1 ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handleEmit}
+                          disabled={
+                            phase === "emitting" ||
+                            (signing ? !signing.ready : false)
+                          }
+                          className="whitespace-nowrap rounded-md border border-brand-navy px-3 py-2 text-sm font-semibold text-brand-navy hover:bg-zinc-50 disabled:opacity-50"
+                        >
+                          Emitir só {KIND_LABELS[kind].toLowerCase()}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => emitKinds(filledKinds)}
+                          disabled={
+                            phase === "emitting" ||
+                            (signing ? !signing.ready : false)
+                          }
+                          title={`Gera ${filledKinds.length} PDFs separados: ${filledKinds.map((k) => KIND_LABELS[k]).join(", ")}`}
+                          className="whitespace-nowrap rounded-md bg-brand-navy px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                        >
+                          {phase === "emitting"
+                            ? (progress ?? "Assinando...")
+                            : `Assinar e emitir todos (${filledKinds.length})`}
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleEmit}
+                        disabled={
+                          phase === "emitting" ||
+                          (signing ? !signing.ready : false)
+                        }
+                        className="rounded-md bg-brand-navy px-5 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                      >
+                        {phase === "emitting"
+                          ? "Assinando..."
+                          : "Assinar e emitir"}
+                      </button>
+                    )}
                   </div>
                 </div>
               </>

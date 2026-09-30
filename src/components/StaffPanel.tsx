@@ -5,6 +5,7 @@ import LogoutButton from "./LogoutButton";
 import { uploadPatientDocuments as uploadPatientDocumentsDirect } from "@/lib/uploadPatientDocument";
 import { printFile, printPdf } from "@/lib/printPdf";
 import PatientTimeline from "./PatientTimeline";
+import VitalSignsPanel from "./VitalSigns";
 import type { TimelineAppointment, TimelineDoc } from "@/lib/patientTimeline";
 
 interface Doctor {
@@ -370,6 +371,7 @@ function FilaTab() {
   const [adding, setAdding] = useState(false);
   const [examFilesToUpload, setExamFilesToUpload] = useState<File[]>([]);
   const [expandedDocsPatientId, setExpandedDocsPatientId] = useState<string | null>(null);
+  const [expandedVitalsId, setExpandedVitalsId] = useState<string | null>(null);
   const [patientQuery, setPatientQuery] = useState("");
   const [patientDropdownOpen, setPatientDropdownOpen] = useState(false);
   const [boothCopied, setBoothCopied] = useState(false);
@@ -846,6 +848,19 @@ function FilaTab() {
                   </button>
                   {item.patients?.id && (
                     <button
+                      onClick={() => setExpandedVitalsId((cur) => (cur === item.id ? null : item.id))}
+                      title="Registrar e ver as aferições de sinais vitais"
+                      className={`rounded-md border px-2 py-1 text-[10px] font-medium hover:bg-zinc-50 ${
+                        expandedVitalsId === item.id
+                          ? "border-brand-teal-dark bg-brand-teal/10 text-brand-teal-dark"
+                          : "border-zinc-300 text-zinc-600"
+                      }`}
+                    >
+                      ❤ Sinais vitais
+                    </button>
+                  )}
+                  {item.patients?.id && (
+                    <button
                       onClick={() =>
                         setExpandedDocsPatientId((cur) => (cur === item.patients!.id ? null : item.patients!.id))
                       }
@@ -881,6 +896,15 @@ function FilaTab() {
                     Cancelar
                   </button>
                 </div>
+                {item.patients?.id && expandedVitalsId === item.id && (
+                  <VitalSignsPanel
+                    patientId={item.patients.id}
+                    appointmentId={item.id}
+                    appointmentLabel={`hoje${item.specialties?.name ? ` · ${item.specialties.name}` : ""}${
+                      item.doctors?.name ? ` · ${item.doctors.name}` : ""
+                    }`}
+                  />
+                )}
                 {item.patients?.id && expandedDocsPatientId === item.patients.id && (
                   <DocumentsPanel
                     patientId={item.patients.id}
@@ -1075,6 +1099,7 @@ function PacientesTab() {
   const [saving, setSaving] = useState(false);
   const [newPatientDocs, setNewPatientDocs] = useState<File[]>([]);
   const [expandedDocsPatientId, setExpandedDocsPatientId] = useState<string | null>(null);
+  const [expandedVitalsId, setExpandedVitalsId] = useState<string | null>(null);
 
   const load = useCallback(async (q?: string) => {
     const res = await fetch(`/api/admin/patients${q ? `?q=${encodeURIComponent(q)}` : ""}`);
@@ -1223,6 +1248,18 @@ function PacientesTab() {
                   {p.city ? ` · ${p.city}${p.state ? `/${p.state}` : ""}` : ""}
                 </p>
               </div>
+              <div className="flex shrink-0 gap-1.5">
+              <button
+                onClick={() => setExpandedVitalsId((cur) => (cur === p.id ? null : p.id))}
+                title="Registrar e ver as aferições de sinais vitais"
+                className={`shrink-0 rounded-md border px-2 py-1 text-[10px] font-medium hover:bg-zinc-50 ${
+                  expandedVitalsId === p.id
+                    ? "border-brand-teal-dark bg-brand-teal/10 text-brand-teal-dark"
+                    : "border-zinc-300 text-zinc-600"
+                }`}
+              >
+                ❤ Sinais vitais
+              </button>
               <button
                 onClick={() => setExpandedDocsPatientId((cur) => (cur === p.id ? null : p.id))}
                 className={`shrink-0 rounded-md border px-2 py-1 text-[10px] font-medium hover:bg-zinc-50 ${
@@ -1233,7 +1270,9 @@ function PacientesTab() {
               >
                 📎 Histórico e documentos{p.documents?.length > 0 ? ` (${p.documents.length})` : ""}
               </button>
+              </div>
             </div>
+            {expandedVitalsId === p.id && <VitalSignsPanel patientId={p.id} />}
             {expandedDocsPatientId === p.id && (
               <DocumentsPanel
                 patientId={p.id}

@@ -7,6 +7,7 @@ import VideoRoom from "./VideoRoom";
 import PrescriptionPanel from "./PrescriptionPanel";
 import PatientTimeline from "./PatientTimeline";
 import SigningSessionBadge from "./SigningSessionBadge";
+import { VitalsCompare, VitalHistoryList, useVitalSigns } from "./VitalSigns";
 import { buildTimeline, type TimelineDoc } from "@/lib/patientTimeline";
 
 import type { AppointmentDetail, HistoryItem } from "@/lib/appointments";
@@ -72,19 +73,6 @@ export default function ConsultationClient({
   const [notes, setNotes] = useState(appointment.doctor_notes ?? "");
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesSavedAt, setNotesSavedAt] = useState<Date | null>(null);
-
-  // Sinais vitais desta consulta — sempre começam em branco (são só da
-  // consulta atual); o valor mais recente de uma consulta anterior é
-  // mostrado como referência ao lado de cada campo (ver getLastVital).
-  const [vitals, setVitals] = useState({
-    spo2: appointment.vital_spo2 ?? "",
-    bpm: appointment.vital_bpm ?? "",
-    pa: appointment.vital_pa ?? "",
-    peso: appointment.vital_peso ?? "",
-    hgt: appointment.vital_hgt ?? "",
-  });
-  const [savingVitals, setSavingVitals] = useState(false);
-  const [vitalsSavedAt, setVitalsSavedAt] = useState<Date | null>(null);
 
   const [patientDocuments, setPatientDocuments] = useState(
     appointment.patients?.documents ?? [],
@@ -234,30 +222,6 @@ export default function ConsultationClient({
     }
   }
 
-  async function handleSaveVitals(next: typeof vitals) {
-    setSavingVitals(true);
-    try {
-      const res = await fetch(`/api/doctor/appointments/${appointmentId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          vitalSpo2: next.spo2,
-          vitalBpm: next.bpm,
-          vitalPa: next.pa,
-          vitalPeso: next.peso,
-          vitalHgt: next.hgt,
-        }),
-      });
-      if (res.ok) setVitalsSavedAt(new Date());
-    } finally {
-      setSavingVitals(false);
-    }
-  }
-
-  function updateVital(field: keyof typeof vitals, value: string) {
-    setVitals((v) => ({ ...v, [field]: value }));
-  }
-
   async function handleFinish() {
     if (
       !confirm(
@@ -293,33 +257,6 @@ export default function ConsultationClient({
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notes]);
-
-  // Idem pros sinais vitais desta consulta.
-  useEffect(() => {
-    const initial = {
-      spo2: appointment.vital_spo2 ?? "",
-      bpm: appointment.vital_bpm ?? "",
-      pa: appointment.vital_pa ?? "",
-      peso: appointment.vital_peso ?? "",
-      hgt: appointment.vital_hgt ?? "",
-    };
-    if (JSON.stringify(vitals) === JSON.stringify(initial)) return;
-    const t = setTimeout(() => handleSaveVitals(vitals), 1500);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vitals]);
-
-  /** Valor mais recente de um sinal vital em consultas anteriores desse paciente, com a data. */
-  function getLastVital(
-    field: "vital_spo2" | "vital_bpm" | "vital_pa" | "vital_peso" | "vital_hgt",
-  ) {
-    const found = history.find((h) => h[field]);
-    if (!found) return null;
-    return {
-      value: found[field] as string,
-      date: formatDate(found.scheduled_at.slice(0, 10)),
-    };
-  }
 
   const patient = appointment.patients;
 
@@ -435,59 +372,7 @@ export default function ConsultationClient({
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
             {tab === "consulta" && (
               <div className="space-y-4">
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                      Sinais vitais desta consulta
-                    </p>
-                    {savingVitals ? (
-                      <span className="text-[10px] text-zinc-400">
-                        Salvando...
-                      </span>
-                    ) : (
-                      vitalsSavedAt && (
-                        <span className="text-[10px] text-zinc-400">Salvo</span>
-                      )
-                    )}
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <VitalField
-                      label="SpO2 (%)"
-                      placeholder="Ex: 98"
-                      value={vitals.spo2}
-                      last={getLastVital("vital_spo2")}
-                      onChange={(v) => updateVital("spo2", v)}
-                    />
-                    <VitalField
-                      label="BPM"
-                      placeholder="Ex: 80"
-                      value={vitals.bpm}
-                      last={getLastVital("vital_bpm")}
-                      onChange={(v) => updateVital("bpm", v)}
-                    />
-                    <VitalField
-                      label="HGT (mg/dL)"
-                      placeholder="Ex: 95"
-                      value={vitals.hgt}
-                      last={getLastVital("vital_hgt")}
-                      onChange={(v) => updateVital("hgt", v)}
-                    />
-                    <VitalField
-                      label="PA (mmHg)"
-                      placeholder="Ex: 120/80"
-                      value={vitals.pa}
-                      last={getLastVital("vital_pa")}
-                      onChange={(v) => updateVital("pa", v)}
-                    />
-                    <VitalField
-                      label="Peso (kg)"
-                      placeholder="Ex: 68,0"
-                      value={vitals.peso}
-                      last={getLastVital("vital_peso")}
-                      onChange={(v) => updateVital("peso", v)}
-                    />
-                  </div>
-                </div>
+                <VitalsCompare endpoint={`/api/doctor/appointments/${appointmentId}/vitals`} />
 
                 <div>
                   <div className="mb-1 flex items-center justify-between">
@@ -593,6 +478,8 @@ export default function ConsultationClient({
             )}
 
             {tab === "historico" && (
+              <div className="space-y-4">
+                <HistoryVitals appointmentId={appointmentId} />
               <PatientTimeline
                 appointments={timelineAppointments}
                 documents={patientDocuments as TimelineDoc[]}
@@ -641,6 +528,7 @@ export default function ConsultationClient({
                   );
                 }}
               />
+              </div>
             )}
           </div>
         </aside>
@@ -688,48 +576,17 @@ function InfoRow({
   );
 }
 
-/**
- * Campo de um sinal vital na consulta atual: mostra o último valor
- * registrado (de uma consulta anterior) como referência e um campo
- * sempre em branco pra digitar o valor de hoje.
- */
-function VitalField({
-  label,
-  placeholder,
-  value,
-  last,
-  onChange,
-  full,
-}: {
-  label: string;
-  placeholder: string;
-  value: string;
-  last: { value: string; date: string } | null;
-  onChange: (value: string) => void;
-  full?: boolean;
-}) {
+/** Todas as aferições do paciente, no topo da aba Histórico. */
+function HistoryVitals({ appointmentId }: { appointmentId: string }) {
+  const { items, loading } = useVitalSigns(`/api/doctor/appointments/${appointmentId}/vitals`);
   return (
-    <label className={`flex min-w-0 flex-col gap-0.5 ${full ? "col-span-2" : ""}`}>
-      <span className="truncate text-[11px] font-semibold text-zinc-700">{label}</span>
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="h-8 w-full rounded-md border border-zinc-300 px-2 text-sm outline-none focus:border-brand-teal-dark"
-      />
-      <span
-        className="truncate text-[10px] text-zinc-400"
-        title={last ? `Última: ${last.value} em ${last.date}` : "Sem registro anterior"}
-      >
-        {last ? (
-          <>
-            últ. <span className="font-semibold text-zinc-500">{last.value}</span> · {last.date}
-          </>
-        ) : (
-          "sem registro"
-        )}
-      </span>
-    </label>
+    <div>
+      <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+        Aferições de sinais vitais{items.length > 0 ? ` (${items.length})` : ""}
+      </p>
+      <div className="rounded-lg border border-zinc-200 bg-white p-2.5">
+        {loading ? <p className="text-xs text-zinc-400">Carregando...</p> : <VitalHistoryList items={items} />}
+      </div>
+    </div>
   );
 }

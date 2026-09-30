@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import VitalSignsPanel from "./VitalSigns";
 import PatientTimeline from "./PatientTimeline";
 import { printFile } from "@/lib/printPdf";
 import type { TimelineDoc } from "@/lib/patientTimeline";
@@ -1714,6 +1715,9 @@ function PatientsTab() {
               </div>
               {expandedId === p.id && (
                 <div className="border-t border-zinc-100 px-4 pb-3 pt-2">
+                  <p className="text-xs font-semibold text-brand-navy">❤ Sinais vitais</p>
+                  <VitalSignsPanel patientId={p.id} />
+                  <div className="mt-4" />
                   <PatientHistoryPanel patientId={p.id} />
                 </div>
               )}

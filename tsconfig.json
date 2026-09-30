@@ -38,6 +38,7 @@
   ],
   "exclude": [
     "node_modules",
+    "SUBIR-GITHUB*",
     "*.tsx",
     "route*.ts",
     "doctorFields.ts",
