@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SIGNING_CHANGED_EVENT } from "./SigningSessionBadge";
 
 interface AccountInfo {
   name: string;
@@ -424,6 +425,7 @@ function ShiftActivation({
     (st: SessionState) => {
       setState(st);
       onActive(st.status === "active" ? hhmm(st.expiresAt) : null);
+      window.dispatchEvent(new Event(SIGNING_CHANGED_EVENT));
     },
     [onActive]
   );

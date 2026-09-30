@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import LogoutButton from "./LogoutButton";
+import SigningSessionBadge from "./SigningSessionBadge";
 
 function IconMenu() {
   return (
@@ -146,6 +147,9 @@ export default function DoctorShell({
             <IconMenu />
           </button>
           <h1 className="text-sm font-semibold text-white">{activeLabel}</h1>
+          <div className="ml-auto">
+            <SigningSessionBadge />
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">

@@ -6,6 +6,7 @@ import { uploadPatientDocuments } from "@/lib/uploadPatientDocument";
 import VideoRoom from "./VideoRoom";
 import PrescriptionPanel from "./PrescriptionPanel";
 import PatientTimeline from "./PatientTimeline";
+import SigningSessionBadge from "./SigningSessionBadge";
 import { buildTimeline, type TimelineDoc } from "@/lib/patientTimeline";
 
 import type { AppointmentDetail, HistoryItem } from "@/lib/appointments";
@@ -300,7 +301,8 @@ export default function ConsultationClient({
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <SigningSessionBadge />
           {appointment.status === "concluido" && appointment.called_at && appointment.finished_at && (
             <span className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-medium text-white/70">
               {formatTime(appointment.called_at)}–{formatTime(appointment.finished_at)} ·{" "}

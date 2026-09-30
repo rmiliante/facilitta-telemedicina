@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { SIGNING_CHANGED_EVENT } from "./SigningSessionBadge";
 
 /**
  * Receita digital na tela de consulta: o médico monta a receita / pedido
@@ -64,6 +65,10 @@ export default function PrescriptionPanel({
   onIssued: (doc: IssuedDocument) => void;
 }) {
   const [signing, setSigning] = useState<SigningState | null>(null);
+  // Avisa o selo do topo (tempo restante da assinatura) quando a sessão muda.
+  useEffect(() => {
+    if (signing) window.dispatchEvent(new Event(SIGNING_CHANGED_EVENT));
+  }, [signing?.status, signing?.expiresAt]); // eslint-disable-line react-hooks/exhaustive-deps
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<Kind>("receita");
   const [items, setItems] = useState<Item[]>([{ ...EMPTY_ITEM }]);
