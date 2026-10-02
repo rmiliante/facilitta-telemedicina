@@ -1112,7 +1112,7 @@ function DoctorsTab() {
               inputMode="decimal"
               className="w-full max-w-xs rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
             />
-            <span className="mt-1 block text-[11px] text-zinc-400">Usado no Histórico: atendimentos concluídos × valor.</span>
+            <span className="mt-1 block text-[11px] text-zinc-400">Vale para as próximas consultas concluídas; as já concluídas mantêm o valor da época.</span>
           </label>
         </div>
         <div className="sm:col-span-2">
@@ -1234,7 +1234,7 @@ function DoctorsTab() {
                     inputMode="decimal"
                     className="w-full max-w-xs rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
                   />
-                  <span className="mt-1 block text-[11px] text-zinc-400">Usado no Histórico: atendimentos concluídos × valor.</span>
+                  <span className="mt-1 block text-[11px] text-zinc-400">Vale para as próximas consultas concluídas; as já concluídas mantêm o valor da época.</span>
                 </label>
               </div>
               <div className="flex gap-2 sm:col-span-2">

@@ -29,6 +29,7 @@ interface DoctorTotal {
   name: string;
   realizados: number;
   valorConsulta: number | null;
+  valorVariou?: boolean;
   total: number | null;
 }
 
@@ -286,9 +287,10 @@ export default function AttendanceHistoryTab({
   const classificados = s ? s.rotina + s.retorno : 0;
   const pctRotina = s && classificados ? Math.round((s.rotina / classificados) * 100) : 0;
   const porMedico = s?.porMedico ?? [];
-  const comValor = porMedico.filter((m) => m.valorConsulta !== null);
+  const comValor = porMedico.filter((m) => m.total !== null);
   // Um médico só (ou o painel do próprio médico): mostra "N × R$ 70,00".
   const unicoValor = porMedico.length === 1 ? porMedico[0].valorConsulta : null;
+  const unicoVariou = porMedico.length === 1 && !!porMedico[0].valorVariou;
 
   return (
     <div className="space-y-5">
@@ -469,12 +471,14 @@ export default function AttendanceHistoryTab({
                 ? ""
                 : unicoValor !== null
                   ? `${s.realizados - (s.realizadosSemValor ?? 0)} atendimento${s.realizados - (s.realizadosSemValor ?? 0) === 1 ? "" : "s"} × ${fmtMoney(unicoValor)}`
+                  : unicoVariou
+                    ? `${s.realizados - (s.realizadosSemValor ?? 0)} atendimentos · o valor por consulta mudou no período (cada um no valor da época)`
                   : s.realizados === 0
                     ? "Nenhum atendimento concluído no período"
                     : locked
                       ? "Valor por consulta ainda não cadastrado. Fale com a administração."
                       : `${comValor.length} médico${comValor.length === 1 ? "" : "s"} com valor cadastrado`}
-            {valorDisponivel && s && s.realizadosSemValor && (unicoValor !== null || !locked) ? (
+            {valorDisponivel && s && s.realizadosSemValor && (unicoValor !== null || unicoVariou || !locked) ? (
               <span className="text-amber-700"> · {s.realizadosSemValor} sem valor cadastrado</span>
             ) : null}
           </p>
@@ -501,7 +505,13 @@ export default function AttendanceHistoryTab({
                     <td className="py-1.5 pr-3 text-brand-navy">{m.name}</td>
                     <td className="py-1.5 pr-3 text-right tabular-nums">{m.realizados}</td>
                     <td className="py-1.5 pr-3 text-right tabular-nums">
-                      {m.valorConsulta !== null ? fmtMoney(m.valorConsulta) : <span className="text-amber-700">não cadastrado</span>}
+                      {m.valorConsulta !== null ? (
+                        fmtMoney(m.valorConsulta)
+                      ) : m.valorVariou ? (
+                        <span className="text-zinc-500">variou no período</span>
+                      ) : (
+                        <span className="text-amber-700">não cadastrado</span>
+                      )}
                     </td>
                     <td className="py-1.5 text-right font-semibold tabular-nums text-brand-navy">
                       {m.total !== null ? fmtMoney(m.total) : "—"}

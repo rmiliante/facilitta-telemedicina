@@ -5,7 +5,9 @@ import { getSupabaseAdmin } from "@/lib/supabase";
  * Histórico de atendimentos (admin e médico): filtros e totais do período.
  * Duração = do médico chamar (called_at) até concluir (finished_at); só
  * concluídos com as duas marcações entram em minutos e média.
- * Valor = consultas concluídas × valor por consulta do médico (cadastro).
+ * Valor = soma do valor gravado em cada consulta concluída (doctor_fee,
+ * congelado no ato da conclusão); se a consulta não tiver, vale o valor
+ * atual do cadastro do médico.
  */
 
 interface Row {
@@ -15,13 +17,14 @@ interface Row {
   called_at: string | null;
   finished_at: string | null;
   tipo_consulta?: string | null;
+  doctor_fee?: number | string | null;
   patients: { id: string; full_name: string; cpf: string | null } | null;
   doctors: { id: string; name: string; consult_fee?: number | string | null } | null;
   specialties: { id: string; name: string } | null;
 }
 
 const COLUMNS =
-  "id, scheduled_at, status, called_at, finished_at, tipo_consulta, patients(id, full_name, cpf), doctors(id, name, consult_fee), specialties(id, name)";
+  "id, scheduled_at, status, called_at, finished_at, tipo_consulta, doctor_fee, patients(id, full_name, cpf), doctors(id, name, consult_fee), specialties(id, name)";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_ROWS = 5000;
@@ -41,12 +44,15 @@ function durationMinutes(r: Pick<Row, "status" | "called_at" | "finished_at">): 
   return min >= 0 && min <= 720 ? min : null;
 }
 
-/** Valor por consulta do médico da linha (null = não cadastrado). */
-function doctorFee(r: Row): number | null {
-  const raw = r.doctors?.consult_fee;
+function toMoney(raw: number | string | null | undefined): number | null {
   if (raw === null || raw === undefined || raw === "") return null;
   const fee = Number(raw);
   return Number.isFinite(fee) ? fee : null;
+}
+
+/** Valor da consulta: o gravado nela; senão o atual do médico (null = sem valor). */
+function doctorFee(r: Row): number | null {
+  return toMoney(r.doctor_fee) ?? toMoney(r.doctors?.consult_fee);
 }
 
 /** Soma em centavos pra não acumular erro de arredondamento. */
@@ -63,12 +69,12 @@ function normalize(s: string) {
  * sem valor (médico sem valor cadastrado) e o total de cada médico.
  */
 function feeSummary(done: Row[]) {
-  const byDoctor = new Map<string, { doctorId: string; name: string; realizados: number; valorConsulta: number | null; valores: number[] }>();
+  const byDoctor = new Map<string, { doctorId: string; name: string; realizados: number; valores: number[] }>();
   for (const r of done) {
     const id = r.doctors?.id ?? "";
     let entry = byDoctor.get(id);
     if (!entry) {
-      entry = { doctorId: id, name: r.doctors?.name ?? "Sem médico", realizados: 0, valorConsulta: doctorFee(r), valores: [] };
+      entry = { doctorId: id, name: r.doctors?.name ?? "Sem médico", realizados: 0, valores: [] };
       byDoctor.set(id, entry);
     }
     entry.realizados += 1;
@@ -76,7 +82,17 @@ function feeSummary(done: Row[]) {
     if (fee !== null) entry.valores.push(fee);
   }
   const porMedico = [...byDoctor.values()]
-    .map(({ valores, ...m }) => ({ ...m, total: valores.length ? sumMoney(valores) : null }))
+    .map(({ valores, ...m }) => {
+      const distintos = new Set(valores);
+      return {
+        ...m,
+        // Valor por consulta, se foi o mesmo em todo o período; se o valor
+        // mudou no meio, cada consulta mantém o seu e aqui fica null.
+        valorConsulta: distintos.size === 1 ? valores[0] : null,
+        valorVariou: distintos.size > 1,
+        total: valores.length ? sumMoney(valores) : null,
+      };
+    })
     .sort((a, b) => (b.total ?? -1) - (a.total ?? -1) || a.name.localeCompare(b.name, "pt-BR"));
   const fees = done.map(doctorFee).filter((v): v is number => v !== null);
   return {
@@ -116,7 +132,7 @@ export async function buildAttendanceHistory(sp: URLSearchParams, forcedDoctorId
   const columns = () => {
     let cols = COLUMNS;
     if (!hasTipo) cols = cols.replace(", tipo_consulta", "");
-    if (!hasFee) cols = cols.replace(", consult_fee", "");
+    if (!hasFee) cols = cols.replace(", consult_fee", "").replace(", doctor_fee", "");
     return cols;
   };
 
@@ -136,7 +152,7 @@ export async function buildAttendanceHistory(sp: URLSearchParams, forcedDoctorId
     let { data, error } = await run(columns());
     // Colunas de migrações ainda não rodadas: tira a que faltar e tenta de novo.
     while (error?.code === "42703" && (hasFee || hasTipo)) {
-      if (hasFee && (error.message ?? "").includes("consult_fee")) hasFee = false;
+      if (hasFee && /consult_fee|doctor_fee/.test(error.message ?? "")) hasFee = false;
       else if (hasTipo) hasTipo = false;
       else hasFee = false;
       ({ data, error } = await run(columns()));
