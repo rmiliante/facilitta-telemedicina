@@ -83,6 +83,9 @@ BOOTH_ACCESS_KEY=        # chave da cabine, ex: openssl rand -hex 16
 - Rode também [`supabase/migration_rls.sql`](./supabase/migration_rls.sql)
   no SQL Editor: ele bloqueia o acesso às tabelas pela chave pública do
   Supabase.
+- Rode [`supabase/migration_valor_consulta.sql`](./supabase/migration_valor_consulta.sql)
+  para o campo "Valor por consulta" do médico e o quadro de valor no
+  Histórico de atendimentos (admin e médico).
 
 Configure as mesmas variáveis na Vercel em **Project Settings >
 Environment Variables** antes do deploy.
