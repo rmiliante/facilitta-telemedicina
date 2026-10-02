@@ -68,8 +68,11 @@ export async function getDoctorSession(): Promise<DoctorSession | null> {
  */
 export async function verifyDoctorToken(token: string): Promise<boolean> {
   try {
-    await jwtVerify(token, getSecretKey());
-    return true;
+    // Confere o formato também: o cookie da equipe é assinado com o
+    // mesmo segredo, então só a assinatura válida não basta pra provar
+    // que é uma sessão de médico.
+    const { payload } = await jwtVerify(token, getSecretKey());
+    return typeof payload.doctorId === "string";
   } catch {
     return false;
   }
@@ -155,3 +158,9 @@ export async function verifyStaffToken(token: string): Promise<StaffSession | nu
 }
 
 export const STAFF_SESSION_COOKIE_NAME = STAFF_COOKIE_NAME;
+
+// Hash bcrypt de uma senha aleatória (não pertence a ninguém). Os logins
+// comparam com ele quando o e-mail não existe ou está inativo, pra
+// resposta demorar o mesmo tempo — sem isso, dava pra descobrir pelo
+// tempo de resposta quais e-mails estão cadastrados.
+export const DUMMY_PASSWORD_HASH = "$2b$10$Y.ytcwscVz.suZJEQTCSAe/M6baA4b9ME58AmtTTzQjmFX5QU.lVW";

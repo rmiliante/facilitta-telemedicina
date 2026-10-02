@@ -3,6 +3,11 @@
 import { use, useEffect, useState } from "react";
 import VideoRoom from "@/components/VideoRoom";
 
+/** Só mostra links http(s) — nunca "javascript:" ou parecidos. */
+function isHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value.trim());
+}
+
 interface AppointmentInfo {
   id: string;
   scheduled_at: string;
@@ -113,11 +118,11 @@ export default function PatientAppointmentPage({
             )}
             {joinError && <p className="mt-3 text-sm text-red-600">{joinError}</p>}
 
-            {info.prescription_url && (
+            {info.prescription_url && isHttpUrl(info.prescription_url) && (
               <a
                 href={info.prescription_url}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 className="mt-3 block w-full rounded-md border border-brand-teal-dark px-4 py-2.5 text-sm font-medium text-brand-teal-dark hover:bg-brand-teal/10"
               >
                 Ver receita

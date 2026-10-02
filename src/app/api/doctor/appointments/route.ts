@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDoctorSession } from "@/lib/auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { cpfLikePattern } from "@/lib/format";
+import { cpfLikePattern, isDayKey, utcDayRange } from "@/lib/format";
 
 /**
  * GET /api/doctor/appointments
@@ -28,12 +28,15 @@ export async function GET(req: NextRequest) {
     .limit(200);
 
   if (date) {
-    const dayStart = `${date}T00:00:00.000Z`;
-    const dayEnd = new Date(new Date(dayStart).getTime() + 24 * 60 * 60 * 1000).toISOString();
-    query = query.gte("scheduled_at", dayStart).lt("scheduled_at", dayEnd);
+    // Data inválida derrubava a rota com erro 500.
+    if (!isDayKey(date)) {
+      return NextResponse.json({ error: "Data inválida" }, { status: 400 });
+    }
+    const { start, end } = utcDayRange(date);
+    query = query.gte("scheduled_at", start).lt("scheduled_at", end);
   }
   if (name) {
-    query = query.ilike("patients.full_name", `%${name}%`);
+    query = query.ilike("patients.full_name", `%${name.replace(/[%_\\]/g, " ")}%`);
   }
   const cpfPattern = cpf ? cpfLikePattern(cpf) : null;
   if (cpfPattern) {

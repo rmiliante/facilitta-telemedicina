@@ -58,3 +58,24 @@ export function maskCpf(value: string | null | undefined): string | null {
   if (digits.length !== 11) return null;
   return `***.${digits.slice(3, 6)}.${digits.slice(6, 9)}-**`;
 }
+
+/** true se for uma data válida no formato YYYY-MM-DD (vem do navegador). */
+export function isDayKey(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+/**
+ * Só aceita links http(s) — um link "javascript:..." colado no campo
+ * da receita rodaria código na página do paciente ao ser clicado.
+ */
+export function safeHttpUrl(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
