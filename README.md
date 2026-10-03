@@ -70,7 +70,22 @@ DAILY_API_KEY=
 DAILY_DOMAIN=
 ADMIN_USER=facilitta
 ADMIN_PASSWORD=          # invente uma senha forte pra área /admin
+BOOTH_ACCESS_KEY=        # chave da cabine, ex: openssl rand -hex 16
 ```
+
+- Sem `ADMIN_USER`/`ADMIN_PASSWORD`, o acesso de recuperação ao `/admin`
+  fica desligado — só entra quem fizer login em `/equipe/login` com uma
+  conta de admin.
+- Com `BOOTH_ACCESS_KEY`, a cabine só funciona no computador que abriu
+  uma vez `/atendimento?chave=<BOOTH_ACCESS_KEY>` (a chave fica salva num
+  cookie). Sem ela, qualquer pessoa consegue pegar o link da consulta
+  em andamento.
+- Rode também [`supabase/migration_rls.sql`](./supabase/migration_rls.sql)
+  no SQL Editor: ele bloqueia o acesso às tabelas pela chave pública do
+  Supabase.
+- Rode [`supabase/migration_valor_consulta.sql`](./supabase/migration_valor_consulta.sql)
+  para o campo "Valor por consulta" do médico e o quadro de valor no
+  Histórico de atendimentos (admin e médico).
 
 Configure as mesmas variáveis na Vercel em **Project Settings >
 Environment Variables** antes do deploy.

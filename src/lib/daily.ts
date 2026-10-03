@@ -2,6 +2,7 @@
 // Docs: https://docs.daily.co/reference/rest-api
 
 const DAILY_API_BASE = "https://api.daily.co/v1";
+const MEETING_TOKEN_TTL_SECONDS = 4 * 60 * 60; // 4 horas
 
 function getApiKey() {
   const key = process.env.DAILY_API_KEY;
@@ -25,6 +26,24 @@ export async function ensureDailyRoom(appointmentId: string): Promise<string> {
     headers: { Authorization: `Bearer ${apiKey}` },
   });
   if (getRes.ok) {
+    const room = await getRes.json().catch(() => ({}));
+    // Salas criadas antes desta correção eram públicas (entrava qualquer
+    // um que soubesse o endereço) — fecha elas na hora.
+    if (room?.privacy !== "private") {
+      const updateRes = await fetch(`${DAILY_API_BASE}/rooms/${roomName}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ privacy: "private" }),
+      });
+      if (!updateRes.ok) {
+        const data = await updateRes.json().catch(() => ({}));
+        console.error("Erro ao tornar a sala do Daily.co privada:", data);
+        throw new Error("Falha ao preparar sala de videochamada");
+      }
+    }
     return roomName;
   }
 
@@ -39,6 +58,10 @@ export async function ensureDailyRoom(appointmentId: string): Promise<string> {
     },
     body: JSON.stringify({
       name: roomName,
+      // Privada: só entra quem tem meeting token (gerado pelo nosso
+      // servidor depois de checar a sessão do médico ou o link do
+      // paciente). Pública, bastava saber o endereço da sala.
+      privacy: "private",
       properties: {
         exp,
         enable_chat: true,
@@ -88,6 +111,8 @@ export async function createMeetingToken(
         room_name: roomName,
         user_name: userName,
         is_owner: isOwner,
+        // O token só serve pra entrar nas próximas horas.
+        exp: Math.floor(Date.now() / 1000) + MEETING_TOKEN_TTL_SECONDS,
       },
     }),
   });

@@ -5,6 +5,9 @@ import { getSupabaseAdmin } from "@/lib/supabase";
  * Histórico de atendimentos (admin e médico): filtros e totais do período.
  * Duração = do médico chamar (called_at) até concluir (finished_at); só
  * concluídos com as duas marcações entram em minutos e média.
+ * Valor = soma do valor gravado em cada consulta concluída (doctor_fee,
+ * congelado no ato da conclusão); se a consulta não tiver, vale o valor
+ * atual do cadastro do médico.
  */
 
 interface Row {
@@ -14,13 +17,14 @@ interface Row {
   called_at: string | null;
   finished_at: string | null;
   tipo_consulta?: string | null;
+  doctor_fee?: number | string | null;
   patients: { id: string; full_name: string; cpf: string | null } | null;
-  doctors: { id: string; name: string } | null;
+  doctors: { id: string; name: string; consult_fee?: number | string | null } | null;
   specialties: { id: string; name: string } | null;
 }
 
 const COLUMNS =
-  "id, scheduled_at, status, called_at, finished_at, tipo_consulta, patients(id, full_name, cpf), doctors(id, name), specialties(id, name)";
+  "id, scheduled_at, status, called_at, finished_at, tipo_consulta, doctor_fee, patients(id, full_name, cpf), doctors(id, name, consult_fee), specialties(id, name)";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_ROWS = 5000;
@@ -40,8 +44,62 @@ function durationMinutes(r: Pick<Row, "status" | "called_at" | "finished_at">): 
   return min >= 0 && min <= 720 ? min : null;
 }
 
+function toMoney(raw: number | string | null | undefined): number | null {
+  if (raw === null || raw === undefined || raw === "") return null;
+  const fee = Number(raw);
+  return Number.isFinite(fee) ? fee : null;
+}
+
+/** Valor da consulta: o gravado nela; senão o atual do médico (null = sem valor). */
+function doctorFee(r: Row): number | null {
+  return toMoney(r.doctor_fee) ?? toMoney(r.doctors?.consult_fee);
+}
+
+/** Soma em centavos pra não acumular erro de arredondamento. */
+function sumMoney(values: number[]) {
+  return values.reduce((cents, v) => cents + Math.round(v * 100), 0) / 100;
+}
+
 function normalize(s: string) {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+}
+
+/**
+ * Valor dos atendimentos concluídos: total do período, quantos ficaram
+ * sem valor (médico sem valor cadastrado) e o total de cada médico.
+ */
+function feeSummary(done: Row[]) {
+  const byDoctor = new Map<string, { doctorId: string; name: string; realizados: number; valores: number[] }>();
+  for (const r of done) {
+    const id = r.doctors?.id ?? "";
+    let entry = byDoctor.get(id);
+    if (!entry) {
+      entry = { doctorId: id, name: r.doctors?.name ?? "Sem médico", realizados: 0, valores: [] };
+      byDoctor.set(id, entry);
+    }
+    entry.realizados += 1;
+    const fee = doctorFee(r);
+    if (fee !== null) entry.valores.push(fee);
+  }
+  const porMedico = [...byDoctor.values()]
+    .map(({ valores, ...m }) => {
+      const distintos = new Set(valores);
+      return {
+        ...m,
+        // Valor por consulta, se foi o mesmo em todo o período; se o valor
+        // mudou no meio, cada consulta mantém o seu e aqui fica null.
+        valorConsulta: distintos.size === 1 ? valores[0] : null,
+        valorVariou: distintos.size > 1,
+        total: valores.length ? sumMoney(valores) : null,
+      };
+    })
+    .sort((a, b) => (b.total ?? -1) - (a.total ?? -1) || a.name.localeCompare(b.name, "pt-BR"));
+  const fees = done.map(doctorFee).filter((v): v is number => v !== null);
+  return {
+    valorTotal: sumMoney(fees),
+    realizadosSemValor: done.length - fees.length,
+    porMedico,
+  };
 }
 
 /**
@@ -70,6 +128,13 @@ export async function buildAttendanceHistory(sp: URLSearchParams, forcedDoctorId
 
   const supabase = getSupabaseAdmin();
   let hasTipo = true;
+  let hasFee = true;
+  const columns = () => {
+    let cols = COLUMNS;
+    if (!hasTipo) cols = cols.replace(", tipo_consulta", "");
+    if (!hasFee) cols = cols.replace(", consult_fee", "").replace(", doctor_fee", "");
+    return cols;
+  };
 
   const fetchRange = async (a: Date, b: Date) => {
     const run = (cols: string) => {
@@ -84,10 +149,13 @@ export async function buildAttendanceHistory(sp: URLSearchParams, forcedDoctorId
       if (specialtyId) query = query.eq("specialty_id", specialtyId);
       return query;
     };
-    let { data, error } = await run(hasTipo ? COLUMNS : COLUMNS.replace(", tipo_consulta", ""));
-    if (error?.code === "42703") {
-      hasTipo = false;
-      ({ data, error } = await run(COLUMNS.replace(", tipo_consulta", "")));
+    let { data, error } = await run(columns());
+    // Colunas de migrações ainda não rodadas: tira a que faltar e tenta de novo.
+    while (error?.code === "42703" && (hasFee || hasTipo)) {
+      if (hasFee && /consult_fee|doctor_fee/.test(error.message ?? "")) hasFee = false;
+      else if (hasTipo) hasTipo = false;
+      else hasFee = false;
+      ({ data, error } = await run(columns()));
     }
     if (error) throw error;
     return (data ?? []) as unknown as Row[];
@@ -136,6 +204,7 @@ export async function buildAttendanceHistory(sp: URLSearchParams, forcedDoctorId
       retorno: done.filter((r) => r.tipo_consulta === "retorno").length,
       semTipo: done.filter((r) => !r.tipo_consulta).length,
       periodoDias: days,
+      ...feeSummary(done),
     };
 
     const items = rows.map((r) => ({
@@ -149,6 +218,7 @@ export async function buildAttendanceHistory(sp: URLSearchParams, forcedDoctorId
       patient: r.patients ? { id: r.patients.id, full_name: r.patients.full_name, cpf: r.patients.cpf } : null,
       doctor: r.doctors?.name ?? null,
       specialty: r.specialties?.name ?? null,
+      valor: r.status === "concluido" ? doctorFee(r) : null,
     }));
 
     return NextResponse.json({
@@ -156,6 +226,7 @@ export async function buildAttendanceHistory(sp: URLSearchParams, forcedDoctorId
       summary,
       truncated: current.length >= MAX_ROWS,
       tipoDisponivel: hasTipo,
+      valorDisponivel: hasFee,
     });
   } catch (error) {
     console.error("Erro ao buscar histórico de atendimentos:", error);

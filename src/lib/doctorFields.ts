@@ -20,21 +20,43 @@ export function isMissingColumn(error: { code?: string; message?: string } | nul
 }
 
 export const RQE_MIGRATION_WARNING =
-  "Dados salvos, mas o RQE e o endereço profissional não foram gravados: falta rodar a atualização do banco (migration_rqe.sql).";
+  "Dados salvos, mas o RQE, o endereço profissional ou o valor por consulta não foram gravados: falta rodar a atualização do banco (migration_rqe.sql e migration_valor_consulta.sql).";
 
 /** Colunas novas que podem ainda não existir antes da migração. */
-export const OPTIONAL_DOCTOR_COLUMNS = ["rqe", "endereco_profissional"] as const;
+export const OPTIONAL_DOCTOR_COLUMNS = ["rqe", "endereco_profissional", "consult_fee"] as const;
+
+/**
+ * Valor por consulta digitado no admin ("70", "70,00", "R$ 1.250,50").
+ * Vazio = sem valor (null). Devolve undefined se o texto for inválido.
+ */
+export function parseConsultFee(value: unknown): number | null | undefined {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number") return Number.isFinite(value) && value >= 0 && value < 1e6 ? Math.round(value * 100) / 100 : undefined;
+  if (typeof value !== "string") return undefined;
+  let text = value.replace(/R\$|\s/gi, "");
+  if (!text) return null;
+  if (text.includes(",")) text = text.replace(/\./g, "").replace(",", ".");
+  if (!/^\d+(\.\d{1,2})?$/.test(text)) return undefined;
+  const fee = Number(text);
+  return fee < 1e6 ? Math.round(fee * 100) / 100 : undefined;
+}
 
 export function missingOptionalColumn(error: { code?: string; message?: string } | null) {
   return OPTIONAL_DOCTOR_COLUMNS.some((c) => isMissingColumn(error, c));
 }
 
-/** Tira as colunas novas do registro; diz se alguma tinha valor preenchido. */
-export function stripOptionalColumns(row: Record<string, unknown>) {
-  let hadValue = false;
-  for (const c of OPTIONAL_DOCTOR_COLUMNS) {
-    if (row[c]) hadValue = true;
-    delete row[c];
-  }
-  return hadValue;
+/**
+ * Tira do registro só a coluna nova que o banco ainda não tem (a que o
+ * erro aponta). Devolve se ela tinha valor preenchido, ou null se o erro
+ * não for de coluna opcional. Chame em laço até não sobrar erro.
+ */
+export function stripMissingColumn(
+  row: Record<string, unknown>,
+  error: { code?: string; message?: string } | null
+): { hadValue: boolean } | null {
+  const column = OPTIONAL_DOCTOR_COLUMNS.find((c) => isMissingColumn(error, c));
+  if (!column) return null;
+  const hadValue = row[column] !== null && row[column] !== undefined && row[column] !== "";
+  delete row[column];
+  return { hadValue };
 }

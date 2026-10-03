@@ -37,14 +37,6 @@
     "**/*.mts"
   ],
   "exclude": [
-    "node_modules",
-    "SUBIR-GITHUB*",
-    "*.tsx",
-    "route*.ts",
-    "doctorFields.ts",
-    "doctorSigning.ts",
-    "medications.ts",
-    "prescreve.ts",
-    "prescriptionPdf.ts"
+    "node_modules"
   ]
 }

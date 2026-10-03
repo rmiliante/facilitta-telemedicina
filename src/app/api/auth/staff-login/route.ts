@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { createStaffSession } from "@/lib/auth";
+import { createStaffSession, DUMMY_PASSWORD_HASH } from "@/lib/auth";
 
 /**
  * POST /api/auth/staff-login
@@ -23,6 +23,7 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
 
   if (error || !staff || !staff.active) {
+    await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
     return NextResponse.json({ error: "E-mail ou senha inválidos" }, { status: 401 });
   }
 

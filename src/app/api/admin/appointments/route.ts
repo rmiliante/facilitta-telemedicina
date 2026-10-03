@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { isDayKey } from "@/lib/format";
 
 export async function GET(req: NextRequest) {
   const from = req.nextUrl.searchParams.get("from");
@@ -54,6 +55,13 @@ export async function POST(req: NextRequest) {
       { error: "patientId, specialtyId e scheduledDate são obrigatórios" },
       { status: 400 }
     );
+  }
+
+  if (dateOnly && !isDayKey(dateOnly)) {
+    return NextResponse.json({ error: "Data inválida" }, { status: 400 });
+  }
+  if (!dateOnly && Number.isNaN(new Date(legacyDateTime!).getTime())) {
+    return NextResponse.json({ error: "Data inválida" }, { status: 400 });
   }
 
   // Sempre grava ao meio-dia UTC daquele dia, pra evitar que o fuso

@@ -4,9 +4,9 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import TipoConsultaBadge from "./TipoConsultaBadge";
 
 /**
- * Admin → Histórico de atendimentos: filtros, 4 quadros com os totais do
- * período (realizados, minutos, média, rotina × retorno) e a lista, com
- * exportação em planilha (CSV que abre no Excel).
+ * Admin → Histórico de atendimentos: filtros, quadros com os totais do
+ * período (realizados, minutos, média, rotina × retorno, valor) e a lista,
+ * com exportação em planilha (CSV que abre no Excel).
  */
 
 interface Item {
@@ -20,6 +20,17 @@ interface Item {
   patient: { id: string; full_name: string; cpf: string | null } | null;
   doctor: string | null;
   specialty: string | null;
+  /** Valor por consulta do médico, só em atendimentos concluídos. */
+  valor?: number | null;
+}
+
+interface DoctorTotal {
+  doctorId: string;
+  name: string;
+  realizados: number;
+  valorConsulta: number | null;
+  valorVariou?: boolean;
+  total: number | null;
 }
 
 interface Summary {
@@ -36,6 +47,9 @@ interface Summary {
   retorno: number;
   semTipo: number;
   periodoDias: number;
+  valorTotal?: number;
+  realizadosSemValor?: number;
+  porMedico?: DoctorTotal[];
 }
 
 interface Option {
@@ -94,6 +108,10 @@ function fmtHours(min: number) {
   return h ? `${h}h${m ? ` ${String(m).padStart(2, "0")}min` : ""}` : `${m} min`;
 }
 
+function fmtMoney(value: number) {
+  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
 function maskCpf(cpf: string | null) {
   const d = (cpf ?? "").replace(/\D/g, "");
   return d.length === 11 ? `•••.${d.slice(3, 6)}.•••-${d.slice(9)}` : "";
@@ -105,7 +123,7 @@ function formatCpf(cpf: string | null) {
 }
 
 function exportCsv(items: Item[], from: string, to: string) {
-  const header = ["Data", "Paciente", "CPF", "Médico", "Especialidade", "Tipo", "Início", "Fim", "Duração (min)", "Status"];
+  const header = ["Data", "Paciente", "CPF", "Médico", "Especialidade", "Tipo", "Início", "Fim", "Duração (min)", "Status", "Valor (R$)"];
   const cell = (v: string | number | null) => {
     const s = v === null || v === undefined ? "" : String(v);
     return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -122,6 +140,7 @@ function exportCsv(items: Item[], from: string, to: string) {
       i.finished_at ? fmtTime(i.finished_at) : "",
       i.duration,
       STATUS[i.status]?.label ?? i.status,
+      typeof i.valor === "number" ? i.valor.toFixed(2).replace(".", ",") : "",
     ]
       .map(cell)
       .join(";"),
@@ -183,6 +202,7 @@ export default function AttendanceHistoryTab({
   const [items, setItems] = useState<Item[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [truncated, setTruncated] = useState(false);
+  const [valorDisponivel, setValorDisponivel] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -219,6 +239,7 @@ export default function AttendanceHistoryTab({
       setItems(data.items ?? []);
       setSummary(data.summary ?? null);
       setTruncated(!!data.truncated);
+      setValorDisponivel(data.valorDisponivel !== false);
       setPage(0);
       setOpenId(null);
     } catch {
@@ -265,6 +286,11 @@ export default function AttendanceHistoryTab({
       : null;
   const classificados = s ? s.rotina + s.retorno : 0;
   const pctRotina = s && classificados ? Math.round((s.rotina / classificados) * 100) : 0;
+  const porMedico = s?.porMedico ?? [];
+  const comValor = porMedico.filter((m) => m.total !== null);
+  // Um médico só (ou o painel do próprio médico): mostra "N × R$ 70,00".
+  const unicoValor = porMedico.length === 1 ? porMedico[0].valorConsulta : null;
+  const unicoVariou = porMedico.length === 1 && !!porMedico[0].valorVariou;
 
   return (
     <div className="space-y-5">
@@ -389,7 +415,7 @@ export default function AttendanceHistoryTab({
       {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
       {/* Quadros com os totais do período */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <Kpi label="Atendimentos realizados" bar="#00e2c3">
           <p className="mt-1 text-3xl font-extrabold text-brand-navy">{s ? s.realizados : "—"}</p>
           <p className="mt-0.5 text-xs text-zinc-500">
@@ -434,7 +460,69 @@ export default function AttendanceHistoryTab({
             {s && s.semTipo ? ` · ${s.semTipo} sem tipo` : ""}
           </p>
         </Kpi>
+        <Kpi label={locked ? "Valor a receber" : "Valor dos atendimentos"} bar="#f5b301">
+          <p className="mt-1 text-3xl font-extrabold text-brand-navy">
+            {s && valorDisponivel ? fmtMoney(s.valorTotal ?? 0) : "—"}
+          </p>
+          <p className="mt-0.5 text-xs text-zinc-500">
+            {!valorDisponivel
+              ? "Falta rodar a atualização do banco (migration_valor_consulta.sql)."
+              : !s
+                ? ""
+                : unicoValor !== null
+                  ? `${s.realizados - (s.realizadosSemValor ?? 0)} atendimento${s.realizados - (s.realizadosSemValor ?? 0) === 1 ? "" : "s"} × ${fmtMoney(unicoValor)}`
+                  : unicoVariou
+                    ? `${s.realizados - (s.realizadosSemValor ?? 0)} atendimentos · o valor por consulta mudou no período (cada um no valor da época)`
+                  : s.realizados === 0
+                    ? "Nenhum atendimento concluído no período"
+                    : locked
+                      ? "Valor por consulta ainda não cadastrado. Fale com a administração."
+                      : `${comValor.length} médico${comValor.length === 1 ? "" : "s"} com valor cadastrado`}
+            {valorDisponivel && s && s.realizadosSemValor && (unicoValor !== null || unicoVariou || !locked) ? (
+              <span className="text-amber-700"> · {s.realizadosSemValor} sem valor cadastrado</span>
+            ) : null}
+          </p>
+        </Kpi>
       </div>
+
+      {/* Valor por médico (admin, quando o filtro pega mais de um médico) */}
+      {!locked && valorDisponivel && porMedico.length > 1 && (
+        <div className="rounded-xl border border-zinc-200 bg-white p-4">
+          <p className="mb-2 text-sm font-bold text-brand-navy">Valor por médico no período</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-[11px] uppercase tracking-wide text-zinc-500">
+                  <th className="py-1.5 pr-3 font-semibold">Médico</th>
+                  <th className="py-1.5 pr-3 text-right font-semibold">Atendimentos</th>
+                  <th className="py-1.5 pr-3 text-right font-semibold">Valor/consulta</th>
+                  <th className="py-1.5 text-right font-semibold">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {porMedico.map((m) => (
+                  <tr key={m.doctorId || m.name} className="border-t border-zinc-100">
+                    <td className="py-1.5 pr-3 text-brand-navy">{m.name}</td>
+                    <td className="py-1.5 pr-3 text-right tabular-nums">{m.realizados}</td>
+                    <td className="py-1.5 pr-3 text-right tabular-nums">
+                      {m.valorConsulta !== null ? (
+                        fmtMoney(m.valorConsulta)
+                      ) : m.valorVariou ? (
+                        <span className="text-zinc-500">variou no período</span>
+                      ) : (
+                        <span className="text-amber-700">não cadastrado</span>
+                      )}
+                    </td>
+                    <td className="py-1.5 text-right font-semibold tabular-nums text-brand-navy">
+                      {m.total !== null ? fmtMoney(m.total) : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Lista */}
       <div className="rounded-xl border border-zinc-200 bg-white p-4">

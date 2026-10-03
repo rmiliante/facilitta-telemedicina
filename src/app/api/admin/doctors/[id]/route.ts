@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { missingOptionalColumn, professionalFields, RQE_MIGRATION_WARNING, stripOptionalColumns } from "@/lib/doctorFields";
+import { parseConsultFee, professionalFields, RQE_MIGRATION_WARNING, stripMissingColumn } from "@/lib/doctorFields";
 
 /** PATCH /api/admin/doctors/:id — ativar/desativar ou redefinir senha. */
 export async function PATCH(
@@ -21,6 +21,13 @@ export async function PATCH(
   if (typeof body.email === "string" && body.email.trim()) update.email = body.email.trim().toLowerCase(); // o login compara em minúsculas
   if (typeof body.memedEmail === "string") update.memed_email = body.memedEmail.trim().toLowerCase() || null;
   Object.assign(update, professionalFields(body));
+  if ("consultFee" in body) {
+    const fee = parseConsultFee(body.consultFee);
+    if (fee === undefined) {
+      return NextResponse.json({ error: "Valor por consulta inválido (ex: 70,00)" }, { status: 400 });
+    }
+    update.consult_fee = fee;
+  }
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: "Nada para atualizar" }, { status: 400 });
@@ -29,13 +36,13 @@ export async function PATCH(
   const supabase = getSupabaseAdmin();
   let { error } = await supabase.from("doctors").update(update).eq("id", id);
   let warning: string | undefined;
-  if (missingOptionalColumn(error)) {
-    const hadValue = stripOptionalColumns(update);
+  let stripped;
+  while ((stripped = stripMissingColumn(update, error))) {
+    if (stripped.hadValue) warning = RQE_MIGRATION_WARNING;
     if (Object.keys(update).length === 0) {
       return NextResponse.json({ error: RQE_MIGRATION_WARNING }, { status: 500 });
     }
     ({ error } = await supabase.from("doctors").update(update).eq("id", id));
-    if (!error && hadValue) warning = RQE_MIGRATION_WARNING;
   }
 
   if (error) {

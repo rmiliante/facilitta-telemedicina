@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { isDayKey } from "@/lib/format";
 
 /**
  * PATCH /api/admin/appointments/:id — reagendar (por data), trocar
@@ -15,10 +16,17 @@ export async function PATCH(
   const update: Record<string, unknown> = {};
 
   if (typeof body.scheduledDate === "string" && body.scheduledDate) {
+    if (!isDayKey(body.scheduledDate)) {
+      return NextResponse.json({ error: "Data inválida" }, { status: 400 });
+    }
     update.scheduled_at = `${body.scheduledDate}T12:00:00.000Z`;
   } else if (typeof body.scheduledAt === "string" && body.scheduledAt) {
     // Compatibilidade com o formato antigo (datetime completo).
-    update.scheduled_at = body.scheduledAt;
+    const parsed = new Date(body.scheduledAt);
+    if (Number.isNaN(parsed.getTime())) {
+      return NextResponse.json({ error: "Data inválida" }, { status: 400 });
+    }
+    update.scheduled_at = parsed.toISOString();
   }
 
   let doctorChanged = false;

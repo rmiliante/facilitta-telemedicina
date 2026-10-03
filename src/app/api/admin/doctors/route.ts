@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { missingOptionalColumn, professionalFields, RQE_MIGRATION_WARNING, stripOptionalColumns } from "@/lib/doctorFields";
+import { parseConsultFee, professionalFields, RQE_MIGRATION_WARNING, stripMissingColumn } from "@/lib/doctorFields";
 
 export async function GET() {
   const supabase = getSupabaseAdmin();
   const columns =
-    "id, name, email, specialty_id, active, memed_email, memed_linked_at, created_at, cpf, crm, crm_uf, rqe, endereco_profissional, specialties(name)";
+    "id, name, email, specialty_id, active, memed_email, memed_linked_at, created_at, cpf, crm, crm_uf, rqe, endereco_profissional, consult_fee, specialties(name)";
   const run = (cols: string) => supabase.from("doctors").select(cols).order("name", { ascending: true });
   let { data, error } = await run(columns);
-  // Sem a migração da receita digital, as colunas cpf/crm/crm_uf não existem ainda.
-  if (error?.code === "42703") ({ data, error } = await run(columns.replace(", rqe, endereco_profissional", "")));
-  if (error?.code === "42703") ({ data, error } = await run(columns.replace(", cpf, crm, crm_uf, rqe, endereco_profissional", "")));
+  // Colunas de migrações que podem não ter sido rodadas ainda (valor por
+  // consulta, RQE/endereço, receita digital) — tira da mais nova pra mais antiga.
+  if (error?.code === "42703") ({ data, error } = await run(columns.replace(", consult_fee", "")));
+  if (error?.code === "42703") ({ data, error } = await run(columns.replace(", rqe, endereco_profissional, consult_fee", "")));
+  if (error?.code === "42703") ({ data, error } = await run(columns.replace(", cpf, crm, crm_uf, rqe, endereco_profissional, consult_fee", "")));
 
   if (error) {
     console.error("Erro ao buscar médicos:", error);
@@ -21,7 +23,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const { name, email, password, specialtyId, memedEmail, cpf, crm, crmUf, rqe, enderecoProfissional } = await req.json().catch(() => ({}));
+  const { name, email, password, specialtyId, memedEmail, cpf, crm, crmUf, rqe, enderecoProfissional, consultFee } = await req.json().catch(() => ({}));
 
   if (
     typeof name !== "string" ||
@@ -37,6 +39,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const fee = parseConsultFee(consultFee);
+  if (fee === undefined) {
+    return NextResponse.json({ error: "Valor por consulta inválido (ex: 70,00)" }, { status: 400 });
+  }
+
   const passwordHash = await bcrypt.hash(password, 10);
   const supabase = getSupabaseAdmin();
 
@@ -47,16 +54,17 @@ export async function POST(req: NextRequest) {
     specialty_id: typeof specialtyId === "string" && specialtyId ? specialtyId : null,
     memed_email: typeof memedEmail === "string" && memedEmail.trim() ? memedEmail.trim().toLowerCase() : null,
     ...professionalFields({ cpf, crm, crmUf, rqe, enderecoProfissional }),
+    consult_fee: fee,
   };
   const insert = (r: Record<string, unknown>) =>
     supabase.from("doctors").insert(r).select("id, name, email, specialty_id, active, memed_email, created_at").single();
 
   let { data, error } = await insert(row);
   let warning: string | undefined;
-  if (missingOptionalColumn(error)) {
-    const hadValue = stripOptionalColumns(row);
+  let stripped;
+  while ((stripped = stripMissingColumn(row, error))) {
+    if (stripped.hadValue) warning = RQE_MIGRATION_WARNING;
     ({ data, error } = await insert(row));
-    if (!error && hadValue) warning = RQE_MIGRATION_WARNING;
   }
 
   if (error) {

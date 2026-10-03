@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDoctorSession } from "@/lib/auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getOwnedAppointment, getPatientHistory } from "@/lib/appointments";
+import { safeHttpUrl } from "@/lib/format";
 
 /** GET /api/doctor/appointments/:id — detalhes da consulta + dados do paciente. */
 export async function GET(
@@ -43,7 +44,13 @@ export async function PATCH(
   const update: Record<string, unknown> = {};
 
   if (typeof body.doctorNotes === "string") update.doctor_notes = body.doctorNotes;
-  if (typeof body.prescriptionUrl === "string") update.prescription_url = body.prescriptionUrl.trim() || null;
+  if (typeof body.prescriptionUrl === "string") {
+    const url = body.prescriptionUrl.trim();
+    if (url && !safeHttpUrl(url)) {
+      return NextResponse.json({ error: "Link da receita inválido (use um endereço https://)" }, { status: 400 });
+    }
+    update.prescription_url = url ? safeHttpUrl(url) : null;
+  }
   if (typeof body.vitalSpo2 === "string") update.vital_spo2 = body.vitalSpo2.trim() || null;
   if (typeof body.vitalBpm === "string") update.vital_bpm = body.vitalBpm.trim() || null;
   if (typeof body.vitalPa === "string") update.vital_pa = body.vitalPa.trim() || null;

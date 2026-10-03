@@ -33,6 +33,7 @@ interface Doctor {
   crm_uf?: string | null;
   rqe?: string | null;
   endereco_profissional?: string | null;
+  consult_fee?: number | string | null;
   specialties: { name: string } | null;
 }
 
@@ -881,13 +882,20 @@ function CertificateBadge({ doctorId, cpf }: { doctorId: string; cpf?: string | 
   return <span className="text-zinc-400">· não foi possível verificar o certificado</span>;
 }
 
+/** Valor por consulta como aparece no campo (ex: "70,00"); vazio se não cadastrado. */
+function feeInput(value: number | string | null | undefined): string {
+  if (value === null || value === undefined || value === "") return "";
+  const n = Number(value);
+  return Number.isFinite(n) ? n.toFixed(2).replace(".", ",") : "";
+}
+
 function DoctorsTab() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
-  const [form, setForm] = useState({ name: "", email: "", password: "", specialtyId: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "" });
+  const [form, setForm] = useState({ name: "", email: "", password: "", specialtyId: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "", consultFee: "" });
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", email: "", specialtyId: "", password: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "" });
+  const [editForm, setEditForm] = useState({ name: "", email: "", specialtyId: "", password: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "", consultFee: "" });
   const [editSaving, setEditSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -920,7 +928,7 @@ function DoctorsTab() {
       }
       const created = await res.json().catch(() => ({}));
       if (created.warning) alert(created.warning);
-      setForm({ name: "", email: "", password: "", specialtyId: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "" });
+      setForm({ name: "", email: "", password: "", specialtyId: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "", consultFee: "" });
       await load();
     } finally {
       setSaving(false);
@@ -948,6 +956,7 @@ function DoctorsTab() {
       crmUf: d.crm_uf ?? "",
       rqe: d.rqe ?? "",
       enderecoProfissional: d.endereco_profissional ?? "",
+      consultFee: feeInput(d.consult_fee),
     });
   }
 
@@ -974,6 +983,7 @@ function DoctorsTab() {
         crmUf: editForm.crmUf,
         rqe: editForm.rqe,
         enderecoProfissional: editForm.enderecoProfissional,
+        consultFee: editForm.consultFee,
       };
       if (editForm.password) body.password = editForm.password;
       const res = await fetch(`/api/admin/doctors/${id}`, {
@@ -1093,6 +1103,17 @@ function DoctorsTab() {
               className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
             />
           </label>
+          <label className="text-xs sm:col-span-4">
+            <span className="mb-1 block font-medium text-zinc-600">Valor por consulta (R$)</span>
+            <input
+              value={form.consultFee}
+              onChange={(e) => setForm((f) => ({ ...f, consultFee: e.target.value }))}
+              placeholder="ex: 70,00"
+              inputMode="decimal"
+              className="w-full max-w-xs rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+            />
+            <span className="mt-1 block text-[11px] text-zinc-400">Vale para as próximas consultas concluídas; as já concluídas mantêm o valor da época.</span>
+          </label>
         </div>
         <div className="sm:col-span-2">
           <button
@@ -1204,6 +1225,17 @@ function DoctorsTab() {
                     className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
                   />
                 </label>
+                <label className="text-xs sm:col-span-4">
+                  <span className="mb-1 block font-medium text-zinc-600">Valor por consulta (R$)</span>
+                  <input
+                    value={editForm.consultFee}
+                    onChange={(e) => setEditForm((f) => ({ ...f, consultFee: e.target.value }))}
+                    placeholder="ex: 70,00"
+                    inputMode="decimal"
+                    className="w-full max-w-xs rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                  />
+                  <span className="mt-1 block text-[11px] text-zinc-400">Vale para as próximas consultas concluídas; as já concluídas mantêm o valor da época.</span>
+                </label>
               </div>
               <div className="flex gap-2 sm:col-span-2">
                 <button
@@ -1230,6 +1262,7 @@ function DoctorsTab() {
                 <p className="font-medium text-zinc-800">{d.name}</p>
                 <p className="text-xs text-zinc-500">
                   {d.email} {d.specialties?.name ? `· ${d.specialties.name}` : ""}
+                  {feeInput(d.consult_fee) ? ` · R$ ${feeInput(d.consult_fee)} por consulta` : " · sem valor por consulta"}
                 </p>
                 {d.cpf && d.crm && d.crm_uf ? (
                   <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-brand-teal-dark">
