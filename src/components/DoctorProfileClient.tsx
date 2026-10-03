@@ -10,6 +10,7 @@ interface Profile {
   crmUf: string | null;
   rqe: string | null;
   enderecoProfissional: string | null;
+  pixKey: string | null;
   specialty: string | null;
 }
 
@@ -20,7 +21,8 @@ function formatCpf(cpf: string | null) {
 
 /**
  * Tela "Meu cadastro": dados do médico. Nome, CPF, CRM e especialidade vêm
- * da administração (travados); RQE e endereço profissional o médico completa.
+ * da administração (travados); RQE, endereço profissional e chave PIX
+ * o médico completa.
  */
 export default function DoctorProfileClient() {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -29,6 +31,9 @@ export default function DoctorProfileClient() {
   const [endereco, setEndereco] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [pixKey, setPixKey] = useState("");
+  const [savingPix, setSavingPix] = useState(false);
+  const [pixMessage, setPixMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
     fetch("/api/doctor/profile")
@@ -41,6 +46,7 @@ export default function DoctorProfileClient() {
         setProfile(d);
         setRqe(d.rqe ?? "");
         setEndereco(d.enderecoProfissional ?? "");
+        setPixKey(d.pixKey ?? "");
       })
       .catch((e) => setLoadError(e instanceof Error ? e.message : "Falha ao carregar"));
   }, []);
@@ -64,6 +70,28 @@ export default function DoctorProfileClient() {
       setMessage({ ok: true, text: "Cadastro atualizado." });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleSavePix(e: React.FormEvent) {
+    e.preventDefault();
+    setPixMessage(null);
+    setSavingPix(true);
+    try {
+      const res = await fetch("/api/doctor/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pixKey }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setPixMessage({ ok: false, text: data.error ?? "Não foi possível salvar." });
+        return;
+      }
+      setProfile((p) => (p ? { ...p, pixKey: pixKey.trim() || null } : p));
+      setPixMessage({ ok: !data.warning, text: data.warning ?? "Chave PIX salva." });
+    } finally {
+      setSavingPix(false);
     }
   }
 
@@ -189,6 +217,39 @@ export default function DoctorProfileClient() {
             className="self-end rounded-md bg-brand-navy px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
           >
             {saving ? "Salvando..." : "Salvar"}
+          </button>
+        </div>
+      </form>
+
+      <form onSubmit={handleSavePix} className="rounded-xl border border-zinc-200 bg-white p-6">
+        <h2 className="text-base font-semibold text-brand-navy">Dados para receber o repasse</h2>
+        <p className="mt-1 text-xs text-zinc-500">
+          A administração usa esta chave para pagar os seus fechamentos (veja em Financeiro).
+        </p>
+        <div className="mt-4 flex flex-col gap-3">
+          <label className={box}>
+            <span className={lbl}>Chave PIX</span>
+            <input
+              value={pixKey}
+              onChange={(e) => setPixKey(e.target.value)}
+              maxLength={140}
+              placeholder="CPF/CNPJ, e-mail, celular ou chave aleatória"
+              className={field}
+            />
+          </label>
+          {pixMessage && (
+            <p
+              className={`rounded-md px-3 py-2 text-xs ${pixMessage.ok ? "bg-brand-teal/10 text-brand-teal-dark" : "bg-red-50 text-red-700"}`}
+            >
+              {pixMessage.text}
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={savingPix}
+            className="self-end rounded-md bg-brand-navy px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {savingPix ? "Salvando..." : "Salvar chave PIX"}
           </button>
         </div>
       </form>

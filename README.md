@@ -86,6 +86,9 @@ BOOTH_ACCESS_KEY=        # chave da cabine, ex: openssl rand -hex 16
 - Rode [`supabase/migration_valor_consulta.sql`](./supabase/migration_valor_consulta.sql)
   para o campo "Valor por consulta" do médico e o quadro de valor no
   Histórico de atendimentos (admin e médico).
+- Rode [`supabase/migration_financeiro.sql`](./supabase/migration_financeiro.sql)
+  para o módulo Financeiro (repasse aos médicos com fechamento mensal,
+  no admin e no painel do médico).
 
 Configure as mesmas variáveis na Vercel em **Project Settings >
 Environment Variables** antes do deploy.
