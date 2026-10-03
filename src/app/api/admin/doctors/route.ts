@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { parseConsultFee, professionalFields, RQE_MIGRATION_WARNING, stripMissingColumn } from "@/lib/doctorFields";
+import { parseConsultFee, professionalFields, migrationWarning, stripMissingColumn } from "@/lib/doctorFields";
 
 export async function GET() {
   const supabase = getSupabaseAdmin();
@@ -60,10 +60,10 @@ export async function POST(req: NextRequest) {
     supabase.from("doctors").insert(r).select("id, name, email, specialty_id, active, memed_email, created_at").single();
 
   let { data, error } = await insert(row);
-  let warning: string | undefined;
+  const notSaved: Parameters<typeof migrationWarning>[0] = [];
   let stripped;
   while ((stripped = stripMissingColumn(row, error))) {
-    if (stripped.hadValue) warning = RQE_MIGRATION_WARNING;
+    if (stripped.hadValue) notSaved.push(stripped.column);
     ({ data, error } = await insert(row));
   }
 
@@ -73,5 +73,5 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
-  return NextResponse.json({ doctor: data, warning });
+  return NextResponse.json({ doctor: data, warning: migrationWarning(notSaved) });
 }

@@ -24,6 +24,19 @@ export const RQE_MIGRATION_WARNING =
 
 /** Colunas novas que podem ainda não existir antes da migração. */
 export const OPTIONAL_DOCTOR_COLUMNS = ["rqe", "endereco_profissional", "consult_fee"] as const;
+type OptionalDoctorColumn = (typeof OPTIONAL_DOCTOR_COLUMNS)[number];
+
+/** Aviso dizendo exatamente o que não foi gravado e qual migração rodar. */
+export function migrationWarning(columns: OptionalDoctorColumn[]): string | undefined {
+  const parts: string[] = [];
+  if (columns.includes("consult_fee")) {
+    parts.push("o valor por consulta NÃO foi gravado: rode supabase/migration_valor_consulta.sql no Supabase");
+  }
+  if (columns.includes("rqe") || columns.includes("endereco_profissional")) {
+    parts.push("o RQE e o endereço profissional NÃO foram gravados: rode supabase/migration_rqe.sql no Supabase");
+  }
+  return parts.length ? `Dados salvos, mas ${parts.join("; e ")}.` : undefined;
+}
 
 /**
  * Valor por consulta digitado no admin ("70", "70,00", "R$ 1.250,50").
@@ -53,10 +66,10 @@ export function missingOptionalColumn(error: { code?: string; message?: string }
 export function stripMissingColumn(
   row: Record<string, unknown>,
   error: { code?: string; message?: string } | null
-): { hadValue: boolean } | null {
+): { hadValue: boolean; column: OptionalDoctorColumn } | null {
   const column = OPTIONAL_DOCTOR_COLUMNS.find((c) => isMissingColumn(error, c));
   if (!column) return null;
   const hadValue = row[column] !== null && row[column] !== undefined && row[column] !== "";
   delete row[column];
-  return { hadValue };
+  return { hadValue, column };
 }

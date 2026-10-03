@@ -155,11 +155,16 @@ function exportCsv(items: Item[], from: string, to: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/** Número grande dos quadros: diminui quando o quadro fica estreito, pra caber sempre. */
+const KPI_VALUE = "mt-1 whitespace-nowrap text-2xl font-extrabold text-brand-navy @[14rem]:text-3xl";
+/** Valor em reais é o texto mais longo: um degrau a mais de redução. */
+const KPI_MONEY = "mt-1 whitespace-nowrap text-xl font-extrabold text-brand-navy @[13rem]:text-2xl @[16rem]:text-3xl";
+
 function Kpi({ label, bar, children }: { label: string; bar: string; children: React.ReactNode }) {
   return (
-    <div className="relative overflow-hidden rounded-xl border border-zinc-200 bg-white p-4 pl-5">
+    <div className="@container relative min-w-0 overflow-hidden rounded-xl border border-zinc-200 bg-white p-4 pl-5">
       <span className="absolute inset-y-0 left-0 w-1.5" style={{ background: bar }} />
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">{label}</p>
+      <p className="text-[11px] font-semibold uppercase leading-snug tracking-wide text-zinc-500">{label}</p>
       {children}
     </div>
   );
@@ -305,7 +310,7 @@ export default function AttendanceHistoryTab({
 
       {/* Filtros */}
       <div className="space-y-3 rounded-xl border border-zinc-200 bg-white p-4">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${locked ? "xl:grid-cols-5" : "2xl:grid-cols-6"}`}>
           <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
             De
             <input type="date" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} className={`mt-1 ${inputCls}`} />
@@ -315,7 +320,7 @@ export default function AttendanceHistoryTab({
             <input type="date" value={to} min={from} onChange={(e) => e.target.value && setTo(e.target.value)} className={`mt-1 ${inputCls}`} />
           </label>
           {locked ? (
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 sm:col-span-2">
+            <div className="col-span-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500 sm:col-span-1">
               Médico
               <p className="mt-1 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-2 text-sm normal-case tracking-normal text-brand-navy">
                 🔒 {lockedDoctorName}
@@ -373,7 +378,7 @@ export default function AttendanceHistoryTab({
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="🔍 Buscar paciente por nome ou CPF"
-            className={`${inputCls} min-w-[220px] max-w-xs flex-1`}
+            className={`${inputCls} min-w-[260px] max-w-xs flex-1`}
           />
           {PRESETS.map((p) => (
             <button
@@ -415,9 +420,9 @@ export default function AttendanceHistoryTab({
       {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
       {/* Quadros com os totais do período */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
         <Kpi label="Atendimentos realizados" bar="#00e2c3">
-          <p className="mt-1 text-3xl font-extrabold text-brand-navy">{s ? s.realizados : "—"}</p>
+          <p className={KPI_VALUE}>{s ? s.realizados : "—"}</p>
           <p className="mt-0.5 text-xs text-zinc-500">
             {variation !== null && (
               <span className={`font-semibold ${variation >= 0 ? "text-brand-teal-dark" : "text-red-600"}`}>
@@ -429,7 +434,7 @@ export default function AttendanceHistoryTab({
           </p>
         </Kpi>
         <Kpi label="Total em atendimento" bar="#15004d">
-          <p className="mt-1 text-3xl font-extrabold text-brand-navy">
+          <p className={KPI_VALUE}>
             {s ? s.totalMinutes.toLocaleString("pt-BR") : "—"} <span className="text-base font-bold text-zinc-500">min</span>
           </p>
           <p className="mt-0.5 text-xs text-zinc-500">
@@ -438,7 +443,7 @@ export default function AttendanceHistoryTab({
           </p>
         </Kpi>
         <Kpi label="Média por atendimento" bar="#009594">
-          <p className="mt-1 text-3xl font-extrabold text-brand-navy">
+          <p className={KPI_VALUE}>
             {s?.mediaMinutes ?? "—"} <span className="text-base font-bold text-zinc-500">min</span>
           </p>
           <p className="mt-0.5 text-xs text-zinc-500">
@@ -448,7 +453,7 @@ export default function AttendanceHistoryTab({
           </p>
         </Kpi>
         <Kpi label="Rotina × Retorno" bar="#8a7fd0">
-          <p className="mt-1 text-3xl font-extrabold text-brand-navy">
+          <p className={KPI_VALUE}>
             {s ? s.rotina : "—"} <span className="text-base font-bold text-zinc-500">/ {s ? s.retorno : "—"}</span>
           </p>
           <div className="mt-2 flex h-2 overflow-hidden rounded-full bg-zinc-100">
@@ -461,7 +466,7 @@ export default function AttendanceHistoryTab({
           </p>
         </Kpi>
         <Kpi label={locked ? "Valor a receber" : "Valor dos atendimentos"} bar="#f5b301">
-          <p className="mt-1 text-3xl font-extrabold text-brand-navy">
+          <p className={KPI_MONEY}>
             {s && valorDisponivel ? fmtMoney(s.valorTotal ?? 0) : "—"}
           </p>
           <p className="mt-0.5 text-xs text-zinc-500">
