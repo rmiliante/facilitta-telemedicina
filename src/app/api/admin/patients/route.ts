@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { cpfLikePattern, formatCpf, sanitizeSearch } from "@/lib/format";
 import { findPatientsByCpf } from "@/lib/patientLookup";
 import { faltasPorPaciente } from "@/lib/reports";
-import { audit, patientName } from "@/lib/audit";
+import { audit } from "@/lib/audit";
 
 export async function GET(req: NextRequest) {
   // ?cpf=... → confere se já existe cadastro com esse CPF (aviso no formulário).

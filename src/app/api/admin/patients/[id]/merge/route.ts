@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { audit, patientName } from "@/lib/audit";
+import { audit } from "@/lib/audit";
 
 /**
  * POST /api/admin/patients/:id/merge  { duplicateId }
