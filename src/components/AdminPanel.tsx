@@ -224,6 +224,7 @@ function AdminSidebar({
   open: boolean;
   onClose: () => void;
 }) {
+  const [linksOpen, setLinksOpen] = useState(false);
   return (
     <nav
       className={`fixed inset-y-0 left-0 z-40 flex h-full w-64 shrink-0 -translate-x-full flex-col border-r border-zinc-200 bg-white transition-transform duration-200 md:static md:z-auto md:w-56 md:translate-x-0 ${
@@ -272,15 +273,29 @@ function AdminSidebar({
               </button>
             </li>
           ))}
-        </ul>
-
-        <p className="mb-1 mt-5 px-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-          Links
-        </p>
-        <ul className="space-y-0.5">
-          {QUICK_LINKS.map((link) => (
-            <QuickLink key={link.path} {...link} />
-          ))}
+          {/* Mesmo visual dos outros itens, mas em vez de abrir uma tela
+              mostra os links logo abaixo. */}
+          <li>
+            <button
+              type="button"
+              onClick={() => setLinksOpen((v) => !v)}
+              aria-expanded={linksOpen}
+              className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-medium transition-colors ${
+                linksOpen ? "bg-zinc-50 text-brand-navy" : "text-zinc-600 hover:bg-zinc-50"
+              }`}
+            >
+              <IconLink />
+              Links
+              <span className={`ml-auto text-xs text-zinc-400 transition-transform ${linksOpen ? "rotate-180" : ""}`}>▾</span>
+            </button>
+            {linksOpen && (
+              <ul className="mt-0.5 space-y-0.5 border-l border-zinc-200 pl-2 ml-4">
+                {QUICK_LINKS.map((link) => (
+                  <QuickLink key={link.path} {...link} />
+                ))}
+              </ul>
+            )}
+          </li>
         </ul>
       </div>
     </nav>
@@ -315,9 +330,8 @@ function QuickLink({ label, path, hint }: { label: string; path: string; hint: s
         target="_blank"
         rel="noopener noreferrer"
         title={hint}
-        className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-50"
+        className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-50"
       >
-        <IconLink />
         <span className="truncate">{label}</span>
         <span className="ml-auto text-[10px] text-zinc-400">↗</span>
       </a>
