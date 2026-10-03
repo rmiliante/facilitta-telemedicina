@@ -2,7 +2,7 @@
  * CPF, CRM e UF do médico — saem na receita e identificam o certificado
  * digital (VIDaaS/BirdID) na assinatura. Só inclui o que veio no corpo.
  */
-export function professionalFields(body: { cpf?: unknown; crm?: unknown; crmUf?: unknown; rqe?: unknown; enderecoProfissional?: unknown }) {
+export function professionalFields(body: { cpf?: unknown; crm?: unknown; crmUf?: unknown; rqe?: unknown; enderecoProfissional?: unknown; pixKey?: unknown }) {
   const out: Record<string, string | null> = {};
   if (typeof body.cpf === "string") out.cpf = body.cpf.replace(/\D/g, "") || null;
   if (typeof body.crm === "string") out.crm = body.crm.replace(/\D/g, "") || null;
@@ -10,6 +10,8 @@ export function professionalFields(body: { cpf?: unknown; crm?: unknown; crmUf?:
   if (typeof body.rqe === "string") out.rqe = body.rqe.replace(/\D/g, "") || null;
   if (typeof body.enderecoProfissional === "string")
     out.endereco_profissional = body.enderecoProfissional.trim().replace(/\s+/g, " ").slice(0, 200) || null;
+  // Chave PIX pra receber o repasse: CPF/CNPJ, e-mail, celular ou chave aleatória.
+  if (typeof body.pixKey === "string") out.pix_key = body.pixKey.trim().replace(/\s+/g, " ").slice(0, 140) || null;
   return out;
 }
 
@@ -23,7 +25,7 @@ export const RQE_MIGRATION_WARNING =
   "Dados salvos, mas o RQE, o endereço profissional ou o valor por consulta não foram gravados: falta rodar a atualização do banco (migration_rqe.sql e migration_valor_consulta.sql).";
 
 /** Colunas novas que podem ainda não existir antes da migração. */
-export const OPTIONAL_DOCTOR_COLUMNS = ["rqe", "endereco_profissional", "consult_fee"] as const;
+export const OPTIONAL_DOCTOR_COLUMNS = ["rqe", "endereco_profissional", "consult_fee", "pix_key"] as const;
 type OptionalDoctorColumn = (typeof OPTIONAL_DOCTOR_COLUMNS)[number];
 
 /** Aviso dizendo exatamente o que não foi gravado e qual migração rodar. */
@@ -31,6 +33,9 @@ export function migrationWarning(columns: OptionalDoctorColumn[]): string | unde
   const parts: string[] = [];
   if (columns.includes("consult_fee")) {
     parts.push("o valor por consulta NÃO foi gravado: rode supabase/migration_valor_consulta.sql no Supabase");
+  }
+  if (columns.includes("pix_key")) {
+    parts.push("a chave PIX NÃO foi gravada: rode supabase/migration_financeiro.sql no Supabase");
   }
   if (columns.includes("rqe") || columns.includes("endereco_profissional")) {
     parts.push("o RQE e o endereço profissional NÃO foram gravados: rode supabase/migration_rqe.sql no Supabase");

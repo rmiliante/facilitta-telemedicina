@@ -22,6 +22,11 @@ export interface Payout {
   paid_by: string | null;
   created_at: string;
   receipt_url?: string | null;
+  invoice_path: string | null;
+  invoice_name: string | null;
+  invoice_uploaded_at: string | null;
+  invoice_uploaded_by: string | null;
+  invoice_url?: string | null;
   doctors?: { name: string } | null;
 }
 
@@ -77,6 +82,28 @@ export function Kpi({ label, bar, value, children }: { label: string; bar: strin
       <p className="mt-1 whitespace-nowrap text-xl font-extrabold text-brand-navy @[13rem]:text-2xl @[16rem]:text-3xl">{value}</p>
       {children && <p className="mt-0.5 text-xs text-zinc-500">{children}</p>}
     </div>
+  );
+}
+
+/** Botão de copiar texto (ex.: chave PIX). */
+export function CopyButton({ text, label = "Copiar" }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        } catch {
+          prompt("Copie:", text);
+        }
+      }}
+      className="rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-brand-teal-dark hover:bg-brand-teal/10"
+    >
+      {copied ? "✓ Copiado" : label}
+    </button>
   );
 }
 

@@ -27,6 +27,8 @@ export default function DoctorFinanceClient() {
   const [data, setData] = useState<Statement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [uploading, setUploading] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,7 +43,21 @@ export default function DoctorFinanceClient() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reload]);
+
+  async function uploadInvoice(p: Payout, file: File) {
+    setUploading(p.id);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(`/api/doctor/financeiro/${p.id}/nf`, { method: "POST", body: form });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) alert(json.error ?? "Não foi possível enviar a nota fiscal");
+      setReload((n) => n + 1);
+    } finally {
+      setUploading(null);
+    }
+  }
 
   const year = new Date().getFullYear();
   const t = data?.totals;
@@ -50,7 +66,10 @@ export default function DoctorFinanceClient() {
     <div className="mx-auto max-w-5xl space-y-5">
       <div>
         <h2 className="text-lg font-bold text-brand-navy">Financeiro</h2>
-        <p className="text-sm text-zinc-500">Seu repasse: o que está a receber, o que ainda vai ser fechado e o que já foi pago.</p>
+        <p className="text-sm text-zinc-500">
+          Seu repasse: o que está a receber, o que ainda vai ser fechado e o que já foi pago. Anexe a nota fiscal de cada
+          fechamento e mantenha a chave PIX atualizada em Meu cadastro.
+        </p>
       </div>
 
       {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
@@ -73,7 +92,7 @@ export default function DoctorFinanceClient() {
           <ul className="divide-y divide-zinc-100 text-sm">
             {data.emAberto.map((m) => (
               <li key={m.month} className="flex items-center justify-between py-1.5">
-                <span className="capitalize text-zinc-600">{monthLabel(m.month)}</span>
+                <span className="text-zinc-600">{monthLabel(m.month)}</span>
                 <span className="text-brand-navy">
                   {m.consultas} consulta{m.consultas === 1 ? "" : "s"} · <strong>{fmtMoney(m.total)}</strong>
                 </span>
@@ -102,6 +121,34 @@ export default function DoctorFinanceClient() {
                   <StatusBadge payout={p} />
                   {p.payment_method && <span className="text-xs text-zinc-500">{METHOD_LABEL[p.payment_method]}</span>}
                   <span className="flex-1" />
+                  {p.invoice_url ? (
+                    <a
+                      href={p.invoice_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-full bg-brand-teal/15 px-2 py-0.5 text-[11px] font-semibold text-brand-teal-dark"
+                    >
+                      🧾 NF enviada
+                    </a>
+                  ) : null}
+                  <label
+                    className={`cursor-pointer rounded-md px-2 py-1 text-xs font-semibold ${
+                      p.invoice_path ? "text-zinc-500 hover:bg-zinc-50" : "bg-brand-navy text-white hover:opacity-90"
+                    }`}
+                  >
+                    {uploading === p.id ? "Enviando..." : p.invoice_path ? "Trocar NF" : "Anexar NF"}
+                    <input
+                      type="file"
+                      accept="application/pdf,image/*"
+                      className="hidden"
+                      disabled={uploading !== null}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        e.target.value = "";
+                        if (f) uploadInvoice(p, f);
+                      }}
+                    />
+                  </label>
                   {p.receipt_url && (
                     <a
                       href={p.receipt_url}

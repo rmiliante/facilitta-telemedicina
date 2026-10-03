@@ -11,6 +11,7 @@ import {
   StatusBadge,
   todayKey,
   PayoutAppointments,
+  CopyButton,
   type PaymentMethod,
   type Payout,
 } from "./FinanceShared";
@@ -26,6 +27,7 @@ interface Row {
   name: string;
   active: boolean;
   valorConsulta: number | null;
+  pixKey: string | null;
   aberto: { consultas: number; total: number; semValor: number };
   fechamentos: Payout[];
 }
@@ -153,11 +155,23 @@ export default function FinanceTab() {
     act(`receipt-${p.id}`, () => fetch(`/api/admin/financeiro/fechamentos/${p.id}/comprovante`, { method: "POST", body: form }));
   }
 
-  async function openReceipt(p: Payout) {
+  function uploadInvoice(p: Payout, file: File) {
+    const form = new FormData();
+    form.append("file", file);
+    act(`nf-${p.id}`, () => fetch(`/api/admin/financeiro/fechamentos/${p.id}/nf`, { method: "POST", body: form }));
+  }
+
+  async function openFile(p: Payout, kind: "receipt_url" | "invoice_url") {
+    // Abre a aba antes do fetch: navegador bloqueia pop-up aberto depois de esperar a rede.
+    const win = window.open("", "_blank");
     const res = await fetch(`/api/admin/financeiro/fechamentos/${p.id}`);
     const json = await res.json().catch(() => ({}));
-    if (json.payout?.receipt_url) window.open(json.payout.receipt_url, "_blank", "noopener");
-    else alert("Não foi possível abrir o comprovante.");
+    const url = json.payout?.[kind];
+    if (url && win) win.location.href = url;
+    else {
+      win?.close();
+      alert("Não foi possível abrir o arquivo.");
+    }
   }
 
   const t = data?.totals;
@@ -240,6 +254,16 @@ export default function FinanceTab() {
                           <span className="text-amber-700">Sem valor por consulta — cadastre em Médicos</span>
                         )}
                       </p>
+                      <p className="flex flex-wrap items-center gap-1 text-xs text-zinc-500">
+                        {r.pixKey ? (
+                          <>
+                            PIX: <span className="font-medium text-brand-navy">{r.pixKey}</span>
+                            <CopyButton text={r.pixKey} />
+                          </>
+                        ) : (
+                          <span className="text-amber-700">Sem chave PIX cadastrada</span>
+                        )}
+                      </p>
                     </div>
                     {r.aberto.consultas === 0 && r.fechamentos.length > 0 ? (
                       <span className="rounded-full bg-brand-teal/15 px-2.5 py-1 text-xs font-semibold text-brand-teal-dark">
@@ -293,6 +317,31 @@ export default function FinanceTab() {
                             <StatusBadge payout={p} />
                             {p.payment_method && <span className="text-xs text-zinc-500">{METHOD_LABEL[p.payment_method]}</span>}
                             {p.notes && <span className="truncate text-xs text-zinc-500" title={p.notes}>“{p.notes}”</span>}
+                            {p.invoice_path ? (
+                              <button
+                                type="button"
+                                onClick={() => openFile(p, "invoice_url")}
+                                title={`Enviada por ${p.invoice_uploaded_by ?? "—"}${p.invoice_uploaded_at ? ` em ${fmtDateTime(p.invoice_uploaded_at)}` : ""}`}
+                                className="rounded-full bg-brand-teal/15 px-2 py-0.5 text-[11px] font-semibold text-brand-teal-dark hover:bg-brand-teal/25"
+                              >
+                                🧾 NF recebida
+                              </button>
+                            ) : (
+                              <label className="cursor-pointer rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-semibold text-zinc-500 hover:bg-zinc-200" title="Aguardando o médico enviar a nota fiscal. Clique para anexar você mesmo.">
+                                {busy === `nf-${p.id}` ? "Enviando NF..." : "🧾 NF pendente"}
+                                <input
+                                  type="file"
+                                  accept="application/pdf,image/*"
+                                  className="hidden"
+                                  disabled={busy !== null}
+                                  onChange={(e) => {
+                                    const f = e.target.files?.[0];
+                                    e.target.value = "";
+                                    if (f) uploadInvoice(p, f);
+                                  }}
+                                />
+                              </label>
+                            )}
                             <span className="flex-1" />
                             <button
                               type="button"
@@ -304,7 +353,7 @@ export default function FinanceTab() {
                             {p.receipt_path ? (
                               <button
                                 type="button"
-                                onClick={() => openReceipt(p)}
+                                onClick={() => openFile(p, "receipt_url")}
                                 className="rounded-md px-2 py-1 text-xs font-semibold text-brand-teal-dark hover:bg-white"
                               >
                                 📎 Comprovante
@@ -383,6 +432,7 @@ export default function FinanceTab() {
         <PaymentDialog
           payout={paying}
           doctorName={data?.rows.find((r) => r.doctorId === paying.doctor_id)?.name ?? ""}
+          pixKey={data?.rows.find((r) => r.doctorId === paying.doctor_id)?.pixKey ?? null}
           onClose={() => setPaying(null)}
           onSaved={async () => {
             setPaying(null);
@@ -397,11 +447,13 @@ export default function FinanceTab() {
 function PaymentDialog({
   payout,
   doctorName,
+  pixKey,
   onClose,
   onSaved,
 }: {
   payout: Payout;
   doctorName: string;
+  pixKey: string | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -456,6 +508,20 @@ function PaymentDialog({
           <p className="text-sm text-zinc-500">
             {doctorName} · {monthLabel(payout.period)} · <strong className="text-brand-navy">{fmtMoney(payout.total)}</strong>
           </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-1 rounded-md bg-zinc-50 px-3 py-2 text-xs">
+          {pixKey ? (
+            <>
+              <span className="text-zinc-500">Chave PIX:</span>
+              <span className="font-semibold text-brand-navy">{pixKey}</span>
+              <CopyButton text={pixKey} />
+            </>
+          ) : (
+            <span className="text-amber-700">O médico ainda não cadastrou a chave PIX.</span>
+          )}
+          <span className="w-full text-zinc-500">
+            {payout.invoice_path ? "🧾 Nota fiscal recebida." : "🧾 Nota fiscal ainda não enviada pelo médico."}
+          </span>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-xs">

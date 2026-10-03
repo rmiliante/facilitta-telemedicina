@@ -6,7 +6,7 @@ import {
   markPaid,
   PAYMENT_METHODS,
   payoutAppointments,
-  receiptUrl,
+  withFileUrls,
   reopenPayout,
   unmarkPaid,
   type PaymentMethod,
@@ -21,8 +21,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
   try {
     const payout = await getPayout(id);
     if (!payout) return NextResponse.json({ error: "Fechamento não encontrado" }, { status: 404 });
-    const [appointments, receipt_url] = await Promise.all([payoutAppointments(id), receiptUrl(payout.receipt_path)]);
-    return NextResponse.json({ payout: { ...payout, receipt_url }, appointments });
+    const [appointments, withUrls] = await Promise.all([payoutAppointments(id), withFileUrls(payout)]);
+    return NextResponse.json({ payout: withUrls, appointments });
   } catch (err) {
     return financeErrorResponse(err, "Falha ao carregar o fechamento");
   }

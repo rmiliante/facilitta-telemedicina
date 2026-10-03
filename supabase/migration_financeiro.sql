@@ -28,6 +28,15 @@ create table if not exists doctor_payouts (
   created_at timestamptz not null default now()
 );
 
+-- Nota fiscal do repasse (o médico anexa no painel dele; o admin também pode).
+alter table doctor_payouts add column if not exists invoice_path text;
+alter table doctor_payouts add column if not exists invoice_name text;
+alter table doctor_payouts add column if not exists invoice_uploaded_at timestamptz;
+alter table doctor_payouts add column if not exists invoice_uploaded_by text;
+
+-- Chave PIX do médico pra receber o repasse (ele preenche em "Meu cadastro").
+alter table doctors add column if not exists pix_key text;
+
 create index if not exists doctor_payouts_doctor_idx on doctor_payouts (doctor_id, period desc);
 create index if not exists doctor_payouts_period_idx on doctor_payouts (period);
 
@@ -39,7 +48,7 @@ create index if not exists appointments_payout_idx on appointments (payout_id);
 -- servidor (service role) lê e grava.
 alter table doctor_payouts enable row level security;
 
--- Bucket privado pros comprovantes de pagamento.
+-- Bucket privado pros comprovantes de pagamento e notas fiscais.
 insert into storage.buckets (id, name, public)
 values ('financeiro', 'financeiro', false)
 on conflict (id) do nothing;

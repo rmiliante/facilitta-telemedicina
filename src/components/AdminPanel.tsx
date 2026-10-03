@@ -35,6 +35,7 @@ interface Doctor {
   rqe?: string | null;
   endereco_profissional?: string | null;
   consult_fee?: number | string | null;
+  pix_key?: string | null;
   specialties: { name: string } | null;
 }
 
@@ -984,10 +985,10 @@ function feeInput(value: number | string | null | undefined): string {
 function DoctorsTab() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
-  const [form, setForm] = useState({ name: "", email: "", password: "", specialtyId: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "", consultFee: "" });
+  const [form, setForm] = useState({ name: "", email: "", password: "", specialtyId: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "", consultFee: "", pixKey: "" });
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", email: "", specialtyId: "", password: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "", consultFee: "" });
+  const [editForm, setEditForm] = useState({ name: "", email: "", specialtyId: "", password: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "", consultFee: "", pixKey: "" });
   const [editSaving, setEditSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -1020,7 +1021,7 @@ function DoctorsTab() {
       }
       const created = await res.json().catch(() => ({}));
       if (created.warning) alert(created.warning);
-      setForm({ name: "", email: "", password: "", specialtyId: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "", consultFee: "" });
+      setForm({ name: "", email: "", password: "", specialtyId: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "", consultFee: "", pixKey: "" });
       await load();
     } finally {
       setSaving(false);
@@ -1049,6 +1050,7 @@ function DoctorsTab() {
       rqe: d.rqe ?? "",
       enderecoProfissional: d.endereco_profissional ?? "",
       consultFee: feeInput(d.consult_fee),
+      pixKey: d.pix_key ?? "",
     });
   }
 
@@ -1076,6 +1078,7 @@ function DoctorsTab() {
         rqe: editForm.rqe,
         enderecoProfissional: editForm.enderecoProfissional,
         consultFee: editForm.consultFee,
+        pixKey: editForm.pixKey,
       };
       if (editForm.password) body.password = editForm.password;
       const res = await fetch(`/api/admin/doctors/${id}`, {
@@ -1198,7 +1201,7 @@ function DoctorsTab() {
               className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
             />
           </label>
-          <label className="text-xs sm:col-span-4">
+          <label className="text-xs sm:col-span-2">
             <span className="mb-1 block font-medium text-zinc-600">Valor por consulta (R$)</span>
             <input
               value={form.consultFee}
@@ -1208,6 +1211,17 @@ function DoctorsTab() {
               className="w-full max-w-xs rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
             />
             <span className="mt-1 block text-[11px] text-zinc-400">Vale para as próximas consultas concluídas; as já concluídas mantêm o valor da época.</span>
+          </label>
+          <label className="text-xs sm:col-span-2">
+            <span className="mb-1 block font-medium text-zinc-600">Chave PIX (repasse)</span>
+            <input
+              value={form.pixKey}
+              onChange={(e) => setForm((f) => ({ ...f, pixKey: e.target.value }))}
+              placeholder="CPF/CNPJ, e-mail, celular ou aleatória"
+              maxLength={140}
+              className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+            />
+            <span className="mt-1 block text-[11px] text-zinc-400">O médico também pode preencher em Meu cadastro.</span>
           </label>
         </div>
         <div className="sm:col-span-2">
@@ -1320,7 +1334,7 @@ function DoctorsTab() {
                     className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
                   />
                 </label>
-                <label className="text-xs sm:col-span-4">
+                <label className="text-xs sm:col-span-2">
                   <span className="mb-1 block font-medium text-zinc-600">Valor por consulta (R$)</span>
                   <input
                     value={editForm.consultFee}
@@ -1330,6 +1344,17 @@ function DoctorsTab() {
                     className="w-full max-w-xs rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
                   />
                   <span className="mt-1 block text-[11px] text-zinc-400">Vale para as próximas consultas concluídas; as já concluídas mantêm o valor da época.</span>
+                </label>
+                <label className="text-xs sm:col-span-2">
+                  <span className="mb-1 block font-medium text-zinc-600">Chave PIX (repasse)</span>
+                  <input
+                    value={editForm.pixKey}
+                    onChange={(e) => setEditForm((f) => ({ ...f, pixKey: e.target.value }))}
+                    placeholder="CPF/CNPJ, e-mail, celular ou aleatória"
+                    maxLength={140}
+                    className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                  />
+                  <span className="mt-1 block text-[11px] text-zinc-400">O médico também pode preencher em Meu cadastro.</span>
                 </label>
               </div>
               <div className="flex gap-2 sm:col-span-2">
@@ -1358,6 +1383,7 @@ function DoctorsTab() {
                 <p className="text-xs text-zinc-500">
                   {d.email} {d.specialties?.name ? `· ${d.specialties.name}` : ""}
                   {feeInput(d.consult_fee) ? ` · R$ ${feeInput(d.consult_fee)} por consulta` : " · sem valor por consulta"}
+                  {d.pix_key ? ` · PIX: ${d.pix_key}` : ""}
                 </p>
                 {d.cpf && d.crm && d.crm_uf ? (
                   <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-brand-teal-dark">

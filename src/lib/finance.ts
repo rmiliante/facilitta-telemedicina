@@ -24,7 +24,7 @@ export function isFinanceMissing(error: { code?: string; message?: string } | nu
   return (
     error.code === "42P01" ||
     error.code === "PGRST205" ||
-    ((error.code === "42703" || error.code === "PGRST204") && /payout_id|doctor_payouts/.test(error.message ?? ""))
+    ((error.code === "42703" || error.code === "PGRST204") && /payout_id|doctor_payouts|invoice_|pix_key/.test(error.message ?? ""))
   );
 }
 
@@ -91,11 +91,15 @@ export interface Payout {
   closed_by: string | null;
   paid_by: string | null;
   created_at: string;
+  invoice_path: string | null;
+  invoice_name: string | null;
+  invoice_uploaded_at: string | null;
+  invoice_uploaded_by: string | null;
   doctors?: { name: string } | null;
 }
 
 const PAYOUT_COLUMNS =
-  "id, doctor_id, period, consultas, total, status, paid_at, payment_method, notes, receipt_path, receipt_name, closed_by, paid_by, created_at, doctors(name)";
+  "id, doctor_id, period, consultas, total, status, paid_at, payment_method, notes, receipt_path, receipt_name, closed_by, paid_by, created_at, invoice_path, invoice_name, invoice_uploaded_at, invoice_uploaded_by, doctors(name)";
 
 function normalizePayout(p: Record<string, unknown>): Payout {
   return { ...(p as unknown as Payout), total: toMoney(p.total) ?? 0 };
@@ -119,7 +123,7 @@ export async function monthOverview(month: string) {
       .gte("scheduled_at", start)
       .lt("scheduled_at", end),
     supabase.from("doctor_payouts").select(PAYOUT_COLUMNS).eq("period", period).order("created_at", { ascending: true }),
-    supabase.from("doctors").select("id, name, consult_fee, active").order("name", { ascending: true }),
+    supabase.from("doctors").select("id, name, consult_fee, pix_key, active").order("name", { ascending: true }),
   ]);
   for (const r of [openRes, payoutsRes, doctorsRes]) {
     if (isFinanceMissing(r.error)) throw new FinanceError(FINANCE_MIGRATION_WARNING, 503);
@@ -137,7 +141,7 @@ export async function monthOverview(month: string) {
   }
 
   const payouts = ((payoutsRes.data ?? []) as Record<string, unknown>[]).map(normalizePayout);
-  const doctors = (doctorsRes.data ?? []) as { id: string; name: string; consult_fee: number | string | null; active: boolean }[];
+  const doctors = (doctorsRes.data ?? []) as { id: string; name: string; consult_fee: number | string | null; pix_key: string | null; active: boolean }[];
 
   const rows = doctors
     .map((d) => {
@@ -148,6 +152,7 @@ export async function monthOverview(month: string) {
         name: d.name,
         active: d.active,
         valorConsulta: toMoney(d.consult_fee),
+        pixKey: d.pix_key ?? null,
         aberto: { consultas: o?.consultas ?? 0, total: o ? sumMoney(o.valores) : 0, semValor: o?.semValor ?? 0 },
         fechamentos: ps,
       };
@@ -317,32 +322,51 @@ function sanitizeFileName(name: string) {
   return name.replace(/[^\w.\-]+/g, "_").slice(-120);
 }
 
-/** Anexa (ou troca) o comprovante do pagamento. */
-export async function attachReceipt(id: string, file: File): Promise<Payout> {
+export type PayoutFileKind = "comprovante" | "nf";
+
+const FILE_COLUMNS: Record<PayoutFileKind, { path: string; name: string; folder: string; label: string }> = {
+  comprovante: { path: "receipt_path", name: "receipt_name", folder: "repasses", label: "o comprovante" },
+  nf: { path: "invoice_path", name: "invoice_name", folder: "notas-fiscais", label: "a nota fiscal" },
+};
+
+/**
+ * Anexa (ou troca) um arquivo do fechamento: o comprovante do pagamento
+ * (admin) ou a nota fiscal do repasse (médico ou admin).
+ */
+export async function attachPayoutFile(id: string, kind: PayoutFileKind, file: File, uploadedBy: string | null): Promise<Payout> {
+  const cfg = FILE_COLUMNS[kind];
   if (file.size === 0) throw new FinanceError("Arquivo vazio");
-  if (file.size > MAX_RECEIPT_BYTES) throw new FinanceError("O comprovante deve ter no máximo 4 MB");
-  if (!RECEIPT_TYPES.test(file.type)) throw new FinanceError("Envie o comprovante em PDF ou imagem (PNG/JPG)");
+  if (file.size > MAX_RECEIPT_BYTES) throw new FinanceError(`Envie ${cfg.label} com no máximo 4 MB`);
+  if (!RECEIPT_TYPES.test(file.type)) throw new FinanceError(`Envie ${cfg.label} em PDF ou imagem (PNG/JPG)`);
 
   const payout = await getPayout(id);
   if (!payout) throw new FinanceError("Fechamento não encontrado", 404);
 
   const supabase = getSupabaseAdmin();
-  const path = `repasses/${id}/${Date.now()}-${crypto.randomUUID()}-${sanitizeFileName(file.name)}`;
+  const path = `${cfg.folder}/${id}/${Date.now()}-${crypto.randomUUID()}-${sanitizeFileName(file.name)}`;
   const { error: upErr } = await supabase.storage.from(FINANCE_BUCKET).upload(path, file, { contentType: file.type });
-  if (upErr) throw new FinanceError(`Falha ao enviar o comprovante: ${upErr.message}`, 500);
+  if (upErr) throw new FinanceError(`Falha ao enviar ${cfg.label}: ${upErr.message}`, 500);
 
-  const { data, error } = await supabase
-    .from("doctor_payouts")
-    .update({ receipt_path: path, receipt_name: file.name.slice(0, 200) })
-    .eq("id", id)
-    .select(PAYOUT_COLUMNS)
-    .single();
+  const update: Record<string, unknown> = { [cfg.path]: path, [cfg.name]: file.name.slice(0, 200) };
+  if (kind === "nf") {
+    update.invoice_uploaded_at = new Date().toISOString();
+    update.invoice_uploaded_by = uploadedBy;
+  }
+  const { data, error } = await supabase.from("doctor_payouts").update(update).eq("id", id).select(PAYOUT_COLUMNS).single();
+  if (isFinanceMissing(error)) throw new FinanceError(FINANCE_MIGRATION_WARNING, 503);
   if (error) throw error;
-  if (payout.receipt_path) await supabase.storage.from(FINANCE_BUCKET).remove([payout.receipt_path]);
+  const previous = kind === "nf" ? payout.invoice_path : payout.receipt_path;
+  if (previous) await supabase.storage.from(FINANCE_BUCKET).remove([previous]);
   return normalizePayout(data as Record<string, unknown>);
 }
 
-/** Link temporário (1h) pra abrir o comprovante. */
+/** Fechamento com os links temporários do comprovante e da NF. */
+export async function withFileUrls(payout: Payout) {
+  const [receipt_url, invoice_url] = await Promise.all([receiptUrl(payout.receipt_path), receiptUrl(payout.invoice_path)]);
+  return { ...payout, receipt_url, invoice_url };
+}
+
+/** Link temporário (1h) pra abrir um arquivo do financeiro (comprovante ou NF). */
 export async function receiptUrl(path: string | null): Promise<string | null> {
   if (!path) return null;
   const { data } = await getSupabaseAdmin().storage.from(FINANCE_BUCKET).createSignedUrl(path, 60 * 60);
@@ -385,8 +409,7 @@ export async function doctorStatement(doctorId: string) {
 
   const payouts = await Promise.all(
     ((payoutsRes.data ?? []) as Record<string, unknown>[]).map(async (p) => {
-      const payout = normalizePayout(p);
-      return { ...payout, receipt_url: await receiptUrl(payout.receipt_path) };
+      return withFileUrls(normalizePayout(p));
     })
   );
 

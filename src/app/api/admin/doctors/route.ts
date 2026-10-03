@@ -6,14 +6,15 @@ import { parseConsultFee, professionalFields, migrationWarning, stripMissingColu
 export async function GET() {
   const supabase = getSupabaseAdmin();
   const columns =
-    "id, name, email, specialty_id, active, memed_email, memed_linked_at, created_at, cpf, crm, crm_uf, rqe, endereco_profissional, consult_fee, specialties(name)";
+    "id, name, email, specialty_id, active, memed_email, memed_linked_at, created_at, cpf, crm, crm_uf, rqe, endereco_profissional, consult_fee, pix_key, specialties(name)";
   const run = (cols: string) => supabase.from("doctors").select(cols).order("name", { ascending: true });
   let { data, error } = await run(columns);
   // Colunas de migrações que podem não ter sido rodadas ainda (valor por
   // consulta, RQE/endereço, receita digital) — tira da mais nova pra mais antiga.
-  if (error?.code === "42703") ({ data, error } = await run(columns.replace(", consult_fee", "")));
-  if (error?.code === "42703") ({ data, error } = await run(columns.replace(", rqe, endereco_profissional, consult_fee", "")));
-  if (error?.code === "42703") ({ data, error } = await run(columns.replace(", cpf, crm, crm_uf, rqe, endereco_profissional, consult_fee", "")));
+  if (error?.code === "42703") ({ data, error } = await run(columns.replace(", pix_key", "")));
+  if (error?.code === "42703") ({ data, error } = await run(columns.replace(", consult_fee, pix_key", "")));
+  if (error?.code === "42703") ({ data, error } = await run(columns.replace(", rqe, endereco_profissional, consult_fee, pix_key", "")));
+  if (error?.code === "42703") ({ data, error } = await run(columns.replace(", cpf, crm, crm_uf, rqe, endereco_profissional, consult_fee, pix_key", "")));
 
   if (error) {
     console.error("Erro ao buscar médicos:", error);
@@ -23,7 +24,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const { name, email, password, specialtyId, memedEmail, cpf, crm, crmUf, rqe, enderecoProfissional, consultFee } = await req.json().catch(() => ({}));
+  const { name, email, password, specialtyId, memedEmail, cpf, crm, crmUf, rqe, enderecoProfissional, consultFee, pixKey } = await req.json().catch(() => ({}));
 
   if (
     typeof name !== "string" ||
@@ -53,7 +54,7 @@ export async function POST(req: NextRequest) {
     password_hash: passwordHash,
     specialty_id: typeof specialtyId === "string" && specialtyId ? specialtyId : null,
     memed_email: typeof memedEmail === "string" && memedEmail.trim() ? memedEmail.trim().toLowerCase() : null,
-    ...professionalFields({ cpf, crm, crmUf, rqe, enderecoProfissional }),
+    ...professionalFields({ cpf, crm, crmUf, rqe, enderecoProfissional, pixKey }),
     consult_fee: fee,
   };
   const insert = (r: Record<string, unknown>) =>
