@@ -40,6 +40,16 @@ function IconChart() {
   );
 }
 
+function IconMoney() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+      <rect x="2.5" y="6" width="19" height="12" rx="2" />
+      <circle cx="12" cy="12" r="2.5" />
+      <path d="M6 9.5v5M18 9.5v5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function IconPen() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
@@ -62,6 +72,7 @@ const NAV_ITEMS = [
   { href: "/medico", label: "Fila de hoje", icon: <IconCalendar /> },
   { href: "/medico/atendimentos", label: "Atendimentos", icon: <IconList /> },
   { href: "/medico/historico", label: "Histórico de atendimentos", icon: <IconChart /> },
+  { href: "/medico/financeiro", label: "Financeiro", icon: <IconMoney /> },
   { href: "/medico/assinatura", label: "Minha assinatura", icon: <IconPen /> },
   { href: "/medico/cadastro", label: "Meu cadastro", icon: <IconUser /> },
 ];
@@ -162,7 +173,7 @@ export default function DoctorShell({
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
-          <div className={`mx-auto ${pathname === "/medico/historico" ? "max-w-6xl" : "max-w-3xl"}`}>{children}</div>
+          <div className={`mx-auto ${pathname === "/medico/historico" || pathname === "/medico/financeiro" ? "max-w-6xl" : "max-w-3xl"}`}>{children}</div>
         </div>
       </div>
     </div>

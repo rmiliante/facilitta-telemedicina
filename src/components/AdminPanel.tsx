@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import VitalSignsPanel from "./VitalSigns";
 import TipoConsultaBadge, { TipoConsultaChoice, tipoSuffix } from "./TipoConsultaBadge";
 import PatientTimeline from "./PatientTimeline";
+import FinanceTab from "./FinanceTab";
 import AttendanceHistoryTab from "./AttendanceHistoryTab";
 import { printFile } from "@/lib/printPdf";
 import type { TimelineDoc } from "@/lib/patientTimeline";
@@ -71,6 +72,7 @@ type Tab =
   | "dashboard"
   | "agenda"
   | "historico"
+  | "financeiro"
   | "pacientes"
   | "medicos"
   | "captacao"
@@ -194,6 +196,16 @@ function IconChart() {
   );
 }
 
+function IconMoney() {
+  return (
+    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+      <rect x="2.5" y="6" width="19" height="12" rx="2" />
+      <circle cx="12" cy="12" r="2.5" />
+      <path strokeLinecap="round" d="M6 9.5v5M18 9.5v5" />
+    </svg>
+  );
+}
+
 function IconHistory() {
   return (
     <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -206,6 +218,7 @@ const NAV_ITEMS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: "dashboard", label: "Dashboard", icon: <IconChart /> },
   { key: "agenda", label: "Agenda", icon: <IconCalendar /> },
   { key: "historico", label: "Histórico de atendimentos", icon: <IconHistory /> },
+  { key: "financeiro", label: "Financeiro", icon: <IconMoney /> },
   { key: "pacientes", label: "Pacientes", icon: <IconUsers /> },
   { key: "medicos", label: "Médicos", icon: <IconStethoscope /> },
   { key: "captacao", label: "Captação", icon: <IconClipboard /> },
@@ -387,7 +400,7 @@ export default function AdminPanel() {
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
-          <div className={tab === "historico" ? "mx-auto max-w-6xl" : tab === "dashboard" ? "mx-auto max-w-5xl" : "mx-auto max-w-4xl"}>
+          <div className={tab === "historico" || tab === "financeiro" ? "mx-auto max-w-6xl" : tab === "dashboard" ? "mx-auto max-w-5xl" : "mx-auto max-w-4xl"}>
             {tab === "dashboard" && <DashboardTab />}
             {tab === "especialidades" && <SpecialtiesTab />}
             {tab === "medicos" && <DoctorsTab />}
@@ -397,6 +410,7 @@ export default function AdminPanel() {
             {tab === "historico" && (
               <AttendanceHistoryTab renderPatientHistory={(id) => <PatientHistoryPanel patientId={id} />} />
             )}
+            {tab === "financeiro" && <FinanceTab />}
             {tab === "equipe" && <StaffTab />}
           </div>
         </div>
