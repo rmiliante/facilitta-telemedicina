@@ -273,8 +273,72 @@ function AdminSidebar({
             </li>
           ))}
         </ul>
+
+        <p className="mb-1 mt-5 px-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+          Links
+        </p>
+        <ul className="space-y-0.5">
+          {QUICK_LINKS.map((link) => (
+            <QuickLink key={link.path} {...link} />
+          ))}
+        </ul>
       </div>
     </nav>
+  );
+}
+
+/** Endereços de cada área do sistema, pra abrir ou copiar e mandar pra quem usa. */
+const QUICK_LINKS: { label: string; path: string; hint: string }[] = [
+  { label: "Admin", path: "/admin", hint: "Painel da administração" },
+  { label: "Médico", path: "/medico", hint: "Área do médico (pede login)" },
+  { label: "Cabine", path: "/atendimento", hint: "Tela da cabine de atendimento presencial" },
+  { label: "Atendimento", path: "/atendente", hint: "Painel da atendente (pede login da equipe)" },
+];
+
+function QuickLink({ label, path, hint }: { label: string; path: string; hint: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}${path}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      prompt("Copie o link:", `${window.location.origin}${path}`);
+    }
+  }
+
+  return (
+    <li className="flex items-center gap-1">
+      <a
+        href={path}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={hint}
+        className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-50"
+      >
+        <IconLink />
+        <span className="truncate">{label}</span>
+        <span className="ml-auto text-[10px] text-zinc-400">↗</span>
+      </a>
+      <button
+        type="button"
+        onClick={copy}
+        title={`Copiar o link de ${label}`}
+        aria-label={`Copiar o link de ${label}`}
+        className="shrink-0 rounded-md px-1.5 py-1 text-[11px] font-semibold text-brand-teal-dark hover:bg-brand-teal/10"
+      >
+        {copied ? "✓" : "Copiar"}
+      </button>
+    </li>
+  );
+}
+
+function IconLink() {
+  return (
+    <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1m-2 6a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" />
+    </svg>
   );
 }
 
