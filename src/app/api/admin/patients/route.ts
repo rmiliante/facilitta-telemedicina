@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { cpfLikePattern, formatCpf, sanitizeSearch } from "@/lib/format";
 import { findPatientsByCpf } from "@/lib/patientLookup";
+import { faltasPorPaciente } from "@/lib/reports";
+import { audit, patientName } from "@/lib/audit";
 
 export async function GET(req: NextRequest) {
   // ?cpf=... → confere se já existe cadastro com esse CPF (aviso no formulário).
@@ -26,7 +28,9 @@ export async function GET(req: NextRequest) {
   if (error) {
     return NextResponse.json({ error: "Falha ao buscar pacientes" }, { status: 500 });
   }
-  return NextResponse.json({ patients: data });
+  // Faltas por paciente (lista do admin marca quem falta com frequência).
+  const faltas = await faltasPorPaciente((data ?? []).map((p) => p.id));
+  return NextResponse.json({ patients: (data ?? []).map((p) => ({ ...p, faltas: faltas[p.id] ?? 0 })) });
 }
 
 export async function POST(req: NextRequest) {
@@ -66,5 +70,6 @@ export async function POST(req: NextRequest) {
     console.error("Erro ao criar paciente:", error);
     return NextResponse.json({ error: "Falha ao criar paciente" }, { status: 500 });
   }
+  await audit("staff", { action: "criar_paciente", entity: "paciente", entityId: data.id, patientId: data.id, patientName: data.full_name });
   return NextResponse.json({ patient: data });
 }

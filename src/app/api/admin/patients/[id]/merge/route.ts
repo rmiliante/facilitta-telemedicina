@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { audit, patientName } from "@/lib/audit";
 
 /**
  * POST /api/admin/patients/:id/merge  { duplicateId }
@@ -64,5 +65,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Tudo foi movido, mas não foi possível apagar o cadastro repetido." }, { status: 500 });
   }
 
+  await audit("staff", {
+    action: "unificar_paciente",
+    entity: "paciente",
+    entityId: id,
+    patientId: id,
+    patientName: original.full_name,
+    details: { repetido: duplicateId },
+  });
   return NextResponse.json({ ok: true, moved: { documents: (duplicate.documents ?? []).length } });
 }

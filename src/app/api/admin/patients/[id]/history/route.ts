@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { isMissingColumnError, withoutTipo, withoutVitals } from "@/lib/appointments";
+import { selectOptional } from "@/lib/appointments";
 import { getStaffSession } from "@/lib/auth";
+import { audit, patientName } from "@/lib/audit";
 
 /**
  * GET /api/admin/patients/:id/history
@@ -15,15 +16,15 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const supabase = getSupabaseAdmin();
 
   const columns =
-    "id, scheduled_at, status, called_at, finished_at, doctor_notes, prescription_url, memed_prescription_at, memed_prescription_summary, vital_spo2, vital_bpm, vital_pa, vital_peso, vital_hgt, tipo_consulta, doctors(name), specialties(name)";
+    "id, scheduled_at, status, called_at, finished_at, doctor_notes, chief_complaint, conduct, prescription_url, memed_prescription_at, memed_prescription_summary, vital_spo2, vital_bpm, vital_pa, vital_peso, vital_hgt, tipo_consulta, doctors(name), specialties(name)";
   const run = (cols: string) =>
     supabase.from("appointments").select(cols).eq("patient_id", id).order("scheduled_at", { ascending: false });
 
-  let { data, error } = await run(columns);
-  if (isMissingColumnError(error)) ({ data, error } = await run(withoutTipo(columns)));
-  // Sem a migração de sinais vitais, as colunas vital_* não existem e o
-  // histórico inteiro falhava ("Falha ao carregar o histórico médico").
-  if (isMissingColumnError(error)) ({ data, error } = await run(withoutVitals(columns)));
+  // Colunas de migrações ainda não rodadas saem do select (antes, faltar a
+  // de sinais vitais derrubava o histórico inteiro).
+  const res = await selectOptional(run, columns);
+  const data = res.data as Record<string, unknown>[] | null;
+  const error = res.error;
 
   if (error) {
     console.error("Erro ao buscar histórico do paciente:", error);
@@ -47,8 +48,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         specialties: r.specialties,
       };
     });
+    await audit("staff", { action: "ver_historico", entity: "paciente", entityId: id, patientId: id, patientName: await patientName(id) });
     return NextResponse.json({ history: safe });
   }
 
+  await audit("staff", { action: "ver_historico", entity: "paciente", entityId: id, patientId: id, patientName: await patientName(id) });
   return NextResponse.json({ history: data });
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { attachPayoutFile, FinanceError, withFileUrls, type PayoutFileKind } from "@/lib/finance";
+import { audit } from "@/lib/audit";
 
 /** Resposta de erro padrão das rotas do financeiro. */
 export function financeErrorResponse(err: unknown, fallback: string) {
@@ -11,12 +12,24 @@ export function financeErrorResponse(err: unknown, fallback: string) {
 }
 
 /** Recebe o arquivo (multipart, campo "file") e anexa ao fechamento. */
-export async function handlePayoutUpload(req: NextRequest, id: string, kind: PayoutFileKind, uploadedBy: string | null) {
+export async function handlePayoutUpload(
+  req: NextRequest,
+  id: string,
+  kind: PayoutFileKind,
+  uploadedBy: string | null,
+  scope: "staff" | "doctor" = "staff"
+) {
   const formData = await req.formData().catch(() => null);
   const file = formData?.get("file");
   if (!(file instanceof File)) return NextResponse.json({ error: "Envie o arquivo" }, { status: 400 });
   try {
     const payout = await attachPayoutFile(id, kind, file, uploadedBy);
+    await audit(scope, {
+      action: kind === "nf" ? "anexar_nf" : "anexar_comprovante",
+      entity: "repasse",
+      entityId: id,
+      details: { arquivo: file.name, medico: payout.doctors?.name },
+    });
     return NextResponse.json({ payout: await withFileUrls(payout) });
   } catch (err) {
     return financeErrorResponse(err, kind === "nf" ? "Falha ao enviar a nota fiscal" : "Falha ao enviar o comprovante");

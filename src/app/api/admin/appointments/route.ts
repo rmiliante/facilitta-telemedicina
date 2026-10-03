@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { isDayKey } from "@/lib/format";
+import { audit, patientName } from "@/lib/audit";
 
 export async function GET(req: NextRequest) {
   const from = req.nextUrl.searchParams.get("from");
@@ -156,5 +157,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Falha ao agendar consulta" }, { status: 500 });
   }
 
+  await audit("staff", {
+    action: "agendar_consulta",
+    entity: "consulta",
+    entityId: appointment?.id ?? null,
+    patientId: patientId,
+    patientName: await patientName(patientId),
+    details: { data: scheduledAtIso.slice(0, 10), especialidade: specialty.name },
+  });
   return NextResponse.json({ appointment });
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatCpf } from "@/lib/format";
 import { findPatientsByCpf } from "@/lib/patientLookup";
+import { audit, patientName } from "@/lib/audit";
 
 const EDITABLE_FIELDS: Record<string, string> = {
   fullName: "full_name",
@@ -37,6 +38,7 @@ export async function GET(
     .eq("patient_id", id)
     .order("scheduled_at", { ascending: false });
 
+  await audit("staff", { action: "ver_paciente", entity: "paciente", entityId: id, patientId: id, patientName: patient.full_name });
   return NextResponse.json({ patient, appointments: appointments ?? [] });
 }
 
@@ -71,6 +73,14 @@ export async function PATCH(
   if (error) {
     return NextResponse.json({ error: "Falha ao atualizar paciente" }, { status: 500 });
   }
+  await audit("staff", {
+    action: "editar_paciente",
+    entity: "paciente",
+    entityId: id,
+    patientId: id,
+    patientName: await patientName(id),
+    details: { campos: Object.keys(update) },
+  });
   return NextResponse.json({ ok: true });
 }
 
@@ -81,10 +91,12 @@ export async function DELETE(
 ) {
   const { id } = await params;
   const supabase = getSupabaseAdmin();
+  const name = await patientName(id);
   const { error } = await supabase.from("patients").delete().eq("id", id);
 
   if (error) {
     return NextResponse.json({ error: "Falha ao excluir paciente" }, { status: 500 });
   }
+  await audit("staff", { action: "excluir_paciente", entity: "paciente", entityId: id, patientId: id, patientName: name });
   return NextResponse.json({ ok: true });
 }

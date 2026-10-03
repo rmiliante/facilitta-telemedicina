@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { audit } from "@/lib/audit";
 
 export async function GET() {
   const supabase = getSupabaseAdmin();
@@ -46,6 +47,9 @@ export async function POST(req: NextRequest) {
     })
     .select("id, name, email, role, active, created_at")
     .single();
+  if (!error && data) {
+    await audit("staff", { action: "cadastrar_equipe", entity: "equipe", entityId: data.id, details: { nome: data.name, perfil: data.role } });
+  }
 
   if (error) {
     return NextResponse.json(

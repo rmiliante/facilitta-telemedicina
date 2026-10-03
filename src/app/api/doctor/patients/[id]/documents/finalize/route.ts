@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDoctorSession } from "@/lib/auth";
 import { doctorCanAccessPatient } from "@/lib/appointments";
 import { cleanAppointmentId, finalizePatientDocument, signPatientDocuments } from "@/lib/patientDocuments";
+import { audit, patientName } from "@/lib/audit";
 
 /**
  * POST /api/doctor/patients/:id/documents/finalize
@@ -30,6 +31,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       appointment_id: cleanAppointmentId(body?.appointmentId),
     });
     const signed = await signPatientDocuments(updated);
+    await audit("doctor", { action: "anexar_documento", entity: "documento", entityId: path, patientId: id, patientName: await patientName(id), details: { arquivo: name } });
     return NextResponse.json({ files: signed });
   } catch (err) {
     return NextResponse.json(

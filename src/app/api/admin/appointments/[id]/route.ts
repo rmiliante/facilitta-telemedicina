@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { isDayKey } from "@/lib/format";
+import { audit, appointmentPatient } from "@/lib/audit";
 
 /**
  * PATCH /api/admin/appointments/:id — reagendar (por data), trocar
@@ -109,6 +110,15 @@ export async function PATCH(
   if (error) {
     return NextResponse.json({ error: "Falha ao atualizar consulta" }, { status: 500 });
   }
+  const patient = await appointmentPatient(id);
+  await audit("staff", {
+    action: "alterar_consulta",
+    entity: "consulta",
+    entityId: id,
+    patientId: patient.id,
+    patientName: patient.name,
+    details: { campos: Object.keys(update), ...(typeof update.status === "string" ? { status: update.status } : {}) },
+  });
   return NextResponse.json({ ok: true });
 }
 
@@ -119,10 +129,12 @@ export async function DELETE(
 ) {
   const { id } = await params;
   const supabase = getSupabaseAdmin();
+  const patient = await appointmentPatient(id);
   const { error } = await supabase.from("appointments").delete().eq("id", id);
 
   if (error) {
     return NextResponse.json({ error: "Falha ao excluir consulta" }, { status: 500 });
   }
+  await audit("staff", { action: "excluir_consulta", entity: "consulta", entityId: id, patientId: patient.id, patientName: patient.name });
   return NextResponse.json({ ok: true });
 }

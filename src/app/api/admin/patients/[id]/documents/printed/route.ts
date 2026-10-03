@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { markPatientDocumentPrinted, signPatientDocuments } from "@/lib/patientDocuments";
+import { audit, patientName } from "@/lib/audit";
 
 /** POST /api/admin/patients/:id/documents/printed — marca o documento como impresso. Body: { path }. */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -10,6 +11,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
   try {
     const updated = await markPatientDocumentPrinted(id, body.path);
+    await audit("staff", { action: "imprimir_documento", entity: "documento", entityId: body.path, patientId: id, patientName: await patientName(id) });
     return NextResponse.json({ files: await signPatientDocuments(updated) });
   } catch (err) {
     return NextResponse.json(

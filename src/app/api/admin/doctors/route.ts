@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { parseConsultFee, professionalFields, migrationWarning, stripMissingColumn } from "@/lib/doctorFields";
+import { audit } from "@/lib/audit";
 
 export async function GET() {
   const supabase = getSupabaseAdmin();
@@ -74,5 +75,6 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
+  await audit("staff", { action: "cadastrar_medico", entity: "medico", entityId: (data as { id?: string } | null)?.id ?? null, details: { nome: name.trim() } });
   return NextResponse.json({ doctor: data, warning: migrationWarning(notSaved) });
 }

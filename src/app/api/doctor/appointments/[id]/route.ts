@@ -3,6 +3,7 @@ import { getDoctorSession } from "@/lib/auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getOwnedAppointment, getPatientHistory } from "@/lib/appointments";
 import { safeHttpUrl } from "@/lib/format";
+import { audit } from "@/lib/audit";
 
 /** GET /api/doctor/appointments/:id — detalhes da consulta + dados do paciente. */
 export async function GET(
@@ -19,6 +20,13 @@ export async function GET(
   }
 
   const history = await getPatientHistory(appointment.patient_id, id);
+  await audit("doctor", {
+    action: "ver_consulta",
+    entity: "consulta",
+    entityId: id,
+    patientId: appointment.patient_id,
+    patientName: appointment.patients?.full_name ?? null,
+  });
 
   return NextResponse.json({ appointment, history });
 }
@@ -44,6 +52,9 @@ export async function PATCH(
   const update: Record<string, unknown> = {};
 
   if (typeof body.doctorNotes === "string") update.doctor_notes = body.doctorNotes;
+  // Resumo da consulta: aparece no histórico do paciente nas próximas consultas.
+  if (typeof body.chiefComplaint === "string") update.chief_complaint = body.chiefComplaint.trim().slice(0, 500) || null;
+  if (typeof body.conduct === "string") update.conduct = body.conduct.trim().slice(0, 3000) || null;
   if (typeof body.prescriptionUrl === "string") {
     const url = body.prescriptionUrl.trim();
     if (url && !safeHttpUrl(url)) {
@@ -83,12 +94,32 @@ export async function PATCH(
   }
 
   const supabase = getSupabaseAdmin();
-  const { error } = await supabase.from("appointments").update(update).eq("id", id);
+  let { error } = await supabase.from("appointments").update(update).eq("id", id);
+  // Sem a migração do resumo, salva o resto (anotações, status) e avisa.
+  let warning: string | undefined;
+  if (error && (error.code === "42703" || error.code === "PGRST204") && /chief_complaint|conduct/.test(error.message ?? "")) {
+    delete update.chief_complaint;
+    delete update.conduct;
+    warning = "Queixa principal e conduta não foram salvas: falta rodar supabase/migration_auditoria_relatorios.sql.";
+    ({ error } = Object.keys(update).length ? await supabase.from("appointments").update(update).eq("id", id) : { error: null });
+  }
 
   if (error) {
     console.error("Erro ao atualizar consulta:", error);
     return NextResponse.json({ error: "Falha ao salvar" }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true });
+  // Autosave de anotação chama isso a cada pausa na digitação: registra só
+  // mudanças de status (o que importa pra auditoria), não cada tecla.
+  if (typeof update.status === "string") {
+    await audit("doctor", {
+      action: "salvar_consulta",
+      entity: "consulta",
+      entityId: id,
+      patientId: appointment.patient_id,
+      patientName: appointment.patients?.full_name ?? null,
+      details: { status: update.status },
+    });
+  }
+  return NextResponse.json({ ok: true, warning });
 }

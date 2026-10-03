@@ -21,6 +21,8 @@ export interface AppointmentDetail {
   status: string;
   scheduled_at: string;
   doctor_notes: string | null;
+  chief_complaint?: string | null;
+  conduct?: string | null;
   called_at: string | null;
   finished_at: string | null;
   prescription_url: string | null;
@@ -43,6 +45,8 @@ export interface HistoryItem {
   scheduled_at: string;
   status: string;
   doctor_notes: string | null;
+  chief_complaint?: string | null;
+  conduct?: string | null;
   called_at: string | null;
   finished_at: string | null;
   prescription_url: string | null;
@@ -74,6 +78,31 @@ export function withoutTipo(columns: string): string {
   return columns.replace(", tipo_consulta", "");
 }
 
+/** Tira queixa principal / conduta (migration_auditoria_relatorios.sql não rodada). */
+export function withoutSummary(columns: string): string {
+  return columns.replace(", chief_complaint, conduct", "");
+}
+
+type SelectResult = { data: unknown; error: { code?: string; message?: string } | null };
+
+/**
+ * Faz o select tirando, uma a uma, as colunas de migrações ainda não
+ * rodadas (resumo da consulta, tipo, sinais vitais) — sem isso, faltar
+ * uma migração derrubava a tela de consulta e o histórico.
+ */
+export async function selectOptional(run: (cols: string) => PromiseLike<SelectResult>, columns: string): Promise<SelectResult> {
+  let cols = columns;
+  let res = await run(cols);
+  for (let i = 0; i < 3 && isMissingColumnError(res.error); i++) {
+    const msg = res.error?.message ?? "";
+    if (/chief_complaint|conduct/.test(msg) && cols.includes("chief_complaint")) cols = withoutSummary(cols);
+    else if (/tipo_consulta/.test(msg) && cols.includes("tipo_consulta")) cols = withoutTipo(cols);
+    else cols = withoutVitals(withoutSummary(cols));
+    res = await run(cols);
+  }
+  return res;
+}
+
 /** Erro do Postgres "coluna não existe". */
 export function isMissingColumnError(error: { code?: string } | null): boolean {
   return error?.code === "42703";
@@ -86,16 +115,10 @@ export async function getOwnedAppointment(
 ): Promise<AppointmentDetail | null> {
   const supabase = getSupabaseAdmin();
   const columns =
-    "id, doctor_id, status, scheduled_at, doctor_notes, called_at, finished_at, prescription_url, memed_prescription_at, memed_prescription_summary, vital_spo2, vital_bpm, vital_pa, vital_peso, vital_hgt, tipo_consulta, patient_id, patients(*), specialties(name), doctors(name, memed_email, memed_linked_at)";
-  let { data, error } = await supabase.from("appointments").select(columns).eq("id", id).maybeSingle();
-  if (isMissingColumnError(error)) {
-    ({ data, error } = await supabase.from("appointments").select(withoutTipo(columns)).eq("id", id).maybeSingle());
-  }
-  if (isMissingColumnError(error)) {
-    ({ data, error } = await supabase.from("appointments").select(withoutVitals(columns)).eq("id", id).maybeSingle());
-  }
-
-  if (error || !data || data.doctor_id !== doctorId) return null;
+    "id, doctor_id, status, scheduled_at, doctor_notes, chief_complaint, conduct, called_at, finished_at, prescription_url, memed_prescription_at, memed_prescription_summary, vital_spo2, vital_bpm, vital_pa, vital_peso, vital_hgt, tipo_consulta, patient_id, patients(*), specialties(name), doctors(name, memed_email, memed_linked_at)";
+  const res = await selectOptional((cols) => supabase.from("appointments").select(cols).eq("id", id).maybeSingle(), columns);
+  const data = res.data as (Record<string, unknown> & { doctor_id?: string; patients?: unknown }) | null;
+  if (res.error || !data || data.doctor_id !== doctorId) return null;
 
   const rawPatient = data.patients as unknown as (PatientRecord & { documents: PatientDocument[] }) | null;
   const signedDocuments = await signPatientDocuments(rawPatient?.documents ?? []);
@@ -111,7 +134,7 @@ export async function getPatientHistory(
 ): Promise<HistoryItem[]> {
   const supabase = getSupabaseAdmin();
   const columns =
-    "id, scheduled_at, status, doctor_notes, called_at, finished_at, prescription_url, memed_prescription_at, memed_prescription_summary, vital_spo2, vital_bpm, vital_pa, vital_peso, vital_hgt, tipo_consulta, specialties(name), doctors(name)";
+    "id, scheduled_at, status, doctor_notes, chief_complaint, conduct, called_at, finished_at, prescription_url, memed_prescription_at, memed_prescription_summary, vital_spo2, vital_bpm, vital_pa, vital_peso, vital_hgt, tipo_consulta, specialties(name), doctors(name)";
   const run = (cols: string) =>
     supabase
       .from("appointments")
@@ -120,10 +143,7 @@ export async function getPatientHistory(
       .neq("id", excludeAppointmentId)
       .order("scheduled_at", { ascending: false })
       .limit(30);
-  let { data, error } = await run(columns);
-  if (isMissingColumnError(error)) ({ data, error } = await run(withoutTipo(columns)));
-  if (isMissingColumnError(error)) ({ data, error } = await run(withoutVitals(columns)));
-
+  const { data } = await selectOptional(run, columns);
   return (data ?? []) as unknown as HistoryItem[];
 }
 
