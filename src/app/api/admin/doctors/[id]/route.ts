@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { parseConsultFee, professionalFields, RQE_MIGRATION_WARNING, stripMissingColumn } from "@/lib/doctorFields";
+import { parseConsultFee, professionalFields, migrationWarning, RQE_MIGRATION_WARNING, stripMissingColumn } from "@/lib/doctorFields";
 
 /** PATCH /api/admin/doctors/:id — ativar/desativar ou redefinir senha. */
 export async function PATCH(
@@ -35,10 +35,10 @@ export async function PATCH(
 
   const supabase = getSupabaseAdmin();
   let { error } = await supabase.from("doctors").update(update).eq("id", id);
-  let warning: string | undefined;
+  const notSaved: Parameters<typeof migrationWarning>[0] = [];
   let stripped;
   while ((stripped = stripMissingColumn(update, error))) {
-    if (stripped.hadValue) warning = RQE_MIGRATION_WARNING;
+    if (stripped.hadValue) notSaved.push(stripped.column);
     if (Object.keys(update).length === 0) {
       return NextResponse.json({ error: RQE_MIGRATION_WARNING }, { status: 500 });
     }
@@ -48,7 +48,7 @@ export async function PATCH(
   if (error) {
     return NextResponse.json({ error: "Falha ao atualizar médico" }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, warning });
+  return NextResponse.json({ ok: true, warning: migrationWarning(notSaved) });
 }
 
 /** DELETE /api/admin/doctors/:id */

@@ -996,6 +996,9 @@ function DoctorsTab() {
         alert(err.error);
         return;
       }
+      // Ex.: valor por consulta não gravado porque falta a migração no banco.
+      const saved = await res.json().catch(() => ({}));
+      if (saved.warning) alert(saved.warning);
       setEditingId(null);
       await load();
     } finally {
