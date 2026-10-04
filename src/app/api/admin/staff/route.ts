@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { audit } from "@/lib/audit";
+import { STAFF_ROLES } from "@/lib/permissions";
 
 export async function GET() {
   const supabase = getSupabaseAdmin();
@@ -26,10 +27,10 @@ export async function POST(req: NextRequest) {
     !email.trim() ||
     typeof password !== "string" ||
     password.length < 6 ||
-    (role !== "admin" && role !== "atendente")
+    !STAFF_ROLES.includes(role)
   ) {
     return NextResponse.json(
-      { error: "name, email, password (mín. 6 caracteres) e role (admin/atendente) são obrigatórios" },
+      { error: "Nome, e-mail, senha (mín. 6 caracteres) e nível de acesso são obrigatórios" },
       { status: 400 }
     );
   }

@@ -55,7 +55,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     measuredAt,
     values,
     recordedByName: staff?.name ?? "Admin",
-    recordedByRole: staff?.role ?? "admin",
+    recordedByRole: staff?.role === "atendente" ? "atendente" : "admin",
   });
   if (result.missingTable) return NextResponse.json({ error: VITALS_MIGRATION_WARNING }, { status: 503 });
   if (result.error) return NextResponse.json({ error: result.error }, { status: 500 });

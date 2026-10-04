@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { getDoctorSession, getStaffSession } from "@/lib/auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import type { StaffRole } from "@/lib/permissions";
 
 /**
  * Registro de auditoria (LGPD): quem viu ou alterou dados de pacientes,
@@ -47,7 +48,7 @@ export const AUDIT_ACTIONS = {
 export type AuditAction = keyof typeof AUDIT_ACTIONS;
 
 export interface AuditActor {
-  type: "admin" | "atendente" | "admin_recuperacao" | "medico" | "anonimo";
+  type: StaffRole | "admin" | "admin_recuperacao" | "medico" | "anonimo";
   id: string | null;
   name: string;
 }

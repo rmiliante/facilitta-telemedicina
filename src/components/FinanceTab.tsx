@@ -77,7 +77,8 @@ function exportCsv(data: Overview) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export default function FinanceTab() {
+/** readOnly: nível Gestor — vê tudo, mas não fecha, não paga e não anexa. */
+export default function FinanceTab({ readOnly = false }: { readOnly?: boolean }) {
   const [month, setMonth] = useState(() => shiftMonth(currentMonth(), -1));
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -265,7 +266,14 @@ export default function FinanceTab() {
                         )}
                       </p>
                     </div>
-                    {r.aberto.consultas === 0 && r.fechamentos.length > 0 ? (
+                    {readOnly ? (
+                      <div className="text-right">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-400">Em aberto</p>
+                        <p className="text-sm font-semibold text-brand-navy">
+                          {r.aberto.consultas} consulta{r.aberto.consultas === 1 ? "" : "s"} · {fmtMoney(r.aberto.total)}
+                        </p>
+                      </div>
+                    ) : r.aberto.consultas === 0 && r.fechamentos.length > 0 ? (
                       <span className="rounded-full bg-brand-teal/15 px-2.5 py-1 text-xs font-semibold text-brand-teal-dark">
                         ✓ Tudo fechado
                       </span>
@@ -326,6 +334,8 @@ export default function FinanceTab() {
                               >
                                 🧾 NF recebida
                               </button>
+                            ) : readOnly ? (
+                              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-semibold text-zinc-500">🧾 NF pendente</span>
                             ) : (
                               <label className="cursor-pointer rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-semibold text-zinc-500 hover:bg-zinc-200" title="Aguardando o médico enviar a nota fiscal. Clique para anexar você mesmo.">
                                 {busy === `nf-${p.id}` ? "Enviando NF..." : "🧾 NF pendente"}
@@ -359,6 +369,7 @@ export default function FinanceTab() {
                                 📎 Comprovante
                               </button>
                             ) : null}
+                            {!readOnly && (
                             <label className="cursor-pointer rounded-md px-2 py-1 text-xs font-semibold text-brand-teal-dark hover:bg-white">
                               {busy === `receipt-${p.id}` ? "Enviando..." : p.receipt_path ? "Trocar" : "Anexar comprovante"}
                               <input
@@ -373,7 +384,8 @@ export default function FinanceTab() {
                                 }}
                               />
                             </label>
-                            {p.status === "a_pagar" ? (
+                            )}
+                            {readOnly ? null : p.status === "a_pagar" ? (
                               <>
                                 <button
                                   type="button"
