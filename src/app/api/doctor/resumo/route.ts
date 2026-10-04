@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 import { getDoctorSession } from "@/lib/auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { todayKeySaoPaulo, utcDayRange } from "@/lib/format";
-import { currentMonthSaoPaulo, doctorStatement, monthRange } from "@/lib/finance";
+import { currentMonthSaoPaulo, monthRange } from "@/lib/finance";
 
 /**
  * GET /api/doctor/resumo — números da tela inicial do médico: fila e
- * atendidos de hoje, atendimentos do mês e repasse a receber.
+ * atendidos de hoje e atendimentos do mês. (O valor a receber fica só
+ * no Financeiro.)
  */
 export async function GET() {
   const session = await getDoctorSession();
@@ -36,19 +37,9 @@ export async function GET() {
   }
   const todayRows = (todayRes.data ?? []) as { status: string }[];
 
-  // Repasse: se o financeiro ainda não estiver no banco, só não mostra.
-  let repasse: { aReceber: number; emAberto: number } | null = null;
-  try {
-    const st = await doctorStatement(session.doctorId);
-    repasse = { aReceber: st.totals.aReceber, emAberto: st.totals.emAberto };
-  } catch {
-    repasse = null;
-  }
-
   return NextResponse.json({
     filaHoje: todayRows.filter((r) => r.status === "agendado" || r.status === "em_andamento").length,
     atendidosHoje: todayRows.filter((r) => r.status === "concluido").length,
     atendidosMes: monthRes.count ?? 0,
-    repasse,
   });
 }
