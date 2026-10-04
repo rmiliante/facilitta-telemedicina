@@ -7,6 +7,7 @@ import {
   STAFF_SESSION_COOKIE_NAME,
   type StaffSession,
 } from "@/lib/auth";
+import { apiAllowed, canUseAdmin, STAFF_ROLE_HEADER, type StaffRole } from "@/lib/permissions";
 
 // Nota: no Next.js 16, o antigo "middleware.ts" foi renomeado para
 // "proxy.ts" (a função também se chama `proxy`, não `middleware`).
@@ -21,11 +22,11 @@ import {
 //    (cookie JWT, criado no login).
 //  - /equipe/login                          → público (login da
 //    equipe: admin e atendente).
-//  - /admin/**     e  /api/admin/**         → exige sessão de admin
-//    (cookie da equipe com role=admin) OU usuário/senha via HTTP
-//    Basic Auth (superusuário de recuperação, variáveis de ambiente).
-//  - /atendente/** e o SUBCONJUNTO de /api/admin/** relacionado a
-//    pacientes/consultas → também aceita sessão com role=atendente.
+//  - /admin/**     e  /api/admin/**         → exige sessão da equipe
+//    OU usuário/senha via HTTP Basic Auth (recuperação = Master). Cada
+//    nível (Master, Gestor, Financeiro, Prefeitura, Atendente) só chama
+//    as rotas liberadas em lib/permissions.ts.
+//  - /atendente/**                          → Atendente ou Master.
 
 function unauthorizedBasic() {
   return new NextResponse("Autenticação necessária", {
@@ -110,23 +111,20 @@ function handleBooth(request: NextRequest): NextResponse {
   );
 }
 
+/**
+ * Repassa o nível de acesso para a página/rota (cabeçalho gravado aqui;
+ * o que vier do navegador com o mesmo nome é descartado).
+ */
+function withRole(request: NextRequest, role: StaffRole): NextResponse {
+  const headers = new Headers(request.headers);
+  headers.set(STAFF_ROLE_HEADER, role);
+  return NextResponse.next({ request: { headers } });
+}
+
 async function getStaffFromCookie(request: NextRequest): Promise<StaffSession | null> {
   const token = request.cookies.get(STAFF_SESSION_COOKIE_NAME)?.value;
   if (!token) return null;
   return verifyStaffToken(token);
-}
-
-/**
- * Endpoints de /api/admin/** que um atendente também pode usar —
- * doctors/specialties só em modo leitura (pra popular os selects do
- * formulário de agendamento e da fila), pacientes/consultas livre.
- */
-function atendenteCanAccess(pathname: string, method: string): boolean {
-  if (pathname.startsWith("/api/admin/patients")) return true;
-  if (pathname.startsWith("/api/admin/appointments")) return true;
-  if (pathname.startsWith("/api/admin/doctors")) return method === "GET";
-  if (pathname.startsWith("/api/admin/specialties")) return method === "GET";
-  return false;
 }
 
 export async function proxy(request: NextRequest) {
@@ -147,23 +145,30 @@ export async function proxy(request: NextRequest) {
 
   if (pathname.startsWith("/admin") || pathname.startsWith("/api/admin")) {
     const staff = await getStaffFromCookie(request);
-    if (staff?.role === "admin") return NextResponse.next();
-    if (checkStaffBasicAuth(request)) return NextResponse.next();
+    // Usuário/senha de recuperação (variáveis de ambiente) = Master.
+    const role = staff?.role ?? (checkStaffBasicAuth(request) ? "master" : null);
 
-    if (staff?.role === "atendente" && pathname.startsWith("/api/admin")) {
-      if (atendenteCanAccess(pathname, method)) return NextResponse.next();
-      return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+    if (!role) {
+      if (pathname.startsWith("/api/admin")) {
+        return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+      }
+      return unauthorizedBasic();
     }
 
     if (pathname.startsWith("/api/admin")) {
-      return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+      if (!apiAllowed(role, pathname, method)) {
+        return NextResponse.json({ error: "Sem permissão para este nível de acesso" }, { status: 403 });
+      }
+    } else if (!canUseAdmin(role)) {
+      return NextResponse.redirect(new URL("/atendente", request.url));
     }
-    return unauthorizedBasic();
+    return withRole(request, role);
   }
 
   if (pathname.startsWith("/atendente")) {
     const staff = await getStaffFromCookie(request);
-    if (staff?.role === "atendente" || staff?.role === "admin") return NextResponse.next();
+    if (staff?.role === "atendente" || staff?.role === "master") return NextResponse.next();
+    if (staff) return NextResponse.redirect(new URL("/admin", request.url));
 
     const loginUrl = new URL("/equipe/login", request.url);
     return NextResponse.redirect(loginUrl);

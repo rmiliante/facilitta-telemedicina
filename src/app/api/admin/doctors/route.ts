@@ -3,9 +3,20 @@ import bcrypt from "bcryptjs";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { parseConsultFee, professionalFields, migrationWarning, stripMissingColumn } from "@/lib/doctorFields";
 import { audit } from "@/lib/audit";
+import { currentStaffRole } from "@/lib/auth";
 
 export async function GET() {
   const supabase = getSupabaseAdmin();
+  // Só o Master vê o cadastro completo (valores, PIX, CPF/CRM). Os outros
+  // níveis usam a lista só para filtros e agendamento: nome e especialidade.
+  if ((await currentStaffRole()) !== "master") {
+    const { data, error } = await supabase
+      .from("doctors")
+      .select("id, name, specialty_id, active, specialties(name)")
+      .order("name", { ascending: true });
+    if (error) return NextResponse.json({ error: "Falha ao buscar médicos" }, { status: 500 });
+    return NextResponse.json({ doctors: data });
+  }
   // Colunas de migrações que podem não ter sido rodadas ainda — tira da
   // mais nova pra mais antiga até a consulta passar.
   const base = "id, name, email, specialty_id, active, memed_email, memed_linked_at, created_at";

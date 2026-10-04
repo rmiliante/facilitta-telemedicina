@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
+import { normalizeRole, STAFF_ROLE_HEADER, type StaffRole } from "@/lib/permissions";
 
 const COOKIE_NAME = "facilitta_doctor_session";
 const SESSION_DURATION_SECONDS = 60 * 60 * 12; // 12 horas
@@ -81,7 +82,7 @@ export async function verifyDoctorToken(token: string): Promise<boolean> {
 export const DOCTOR_COOKIE_NAME = COOKIE_NAME;
 
 // ------------------------------------------------------------
-// Sessão da equipe (admin / atendente)
+// Sessão da equipe (níveis em lib/permissions.ts)
 // ------------------------------------------------------------
 const STAFF_COOKIE_NAME = "facilitta_staff_session";
 
@@ -89,7 +90,7 @@ export interface StaffSession {
   staffId: string;
   name: string;
   email: string;
-  role: "admin" | "atendente";
+  role: StaffRole;
 }
 
 /** Cria o cookie de sessão assinado (JWT) pra equipe (admin/atendente). */
@@ -124,18 +125,10 @@ export async function getStaffSession(): Promise<StaffSession | null> {
 }
 
 function parseStaffPayload(payload: Record<string, unknown>): StaffSession | null {
-  if (
-    typeof payload.staffId === "string" &&
-    typeof payload.name === "string" &&
-    typeof payload.email === "string" &&
-    (payload.role === "admin" || payload.role === "atendente")
-  ) {
-    return {
-      staffId: payload.staffId,
-      name: payload.name,
-      email: payload.email,
-      role: payload.role,
-    };
+  // Sessões antigas com role "admin" valem como Master.
+  const role = normalizeRole(payload.role);
+  if (typeof payload.staffId === "string" && typeof payload.name === "string" && typeof payload.email === "string" && role) {
+    return { staffId: payload.staffId, name: payload.name, email: payload.email, role };
   }
   return null;
 }
@@ -158,6 +151,15 @@ export async function verifyStaffToken(token: string): Promise<StaffSession | nu
 }
 
 export const STAFF_SESSION_COOKIE_NAME = STAFF_COOKIE_NAME;
+
+/**
+ * Nível de quem chamou uma rota /api/admin/** ou a página /admin, gravado
+ * pelo proxy (inclui o acesso de recuperação = Master). Sem o cabeçalho,
+ * assume o nível mais restrito.
+ */
+export async function currentStaffRole(): Promise<StaffRole> {
+  return normalizeRole((await headers()).get(STAFF_ROLE_HEADER)) ?? "prefeitura";
+}
 
 // Hash bcrypt de uma senha aleatória (não pertence a ninguém). Os logins
 // comparam com ele quando o e-mail não existe ou está inativo, pra

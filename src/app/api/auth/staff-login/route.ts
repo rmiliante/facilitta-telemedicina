@@ -3,10 +3,11 @@ import bcrypt from "bcryptjs";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { createStaffSession, DUMMY_PASSWORD_HASH } from "@/lib/auth";
 import { audit, LOGIN_LOCKED_MESSAGE, loginLocked } from "@/lib/audit";
+import { normalizeRole } from "@/lib/permissions";
 
 /**
  * POST /api/auth/staff-login
- * Login da equipe (admin ou atendente), cadastrados no /admin > Equipe.
+ * Login da equipe (todos os níveis), cadastrados no /admin > Equipe.
  * Depois de várias senhas erradas seguidas, bloqueia por alguns minutos.
  */
 export async function POST(req: NextRequest) {
@@ -43,18 +44,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "E-mail ou senha inválidos" }, { status: 401 });
   }
 
+  const role = normalizeRole(staff.role);
+  if (!role) {
+    return NextResponse.json({ error: "Nível de acesso inválido. Fale com o administrador." }, { status: 403 });
+  }
   await createStaffSession({
     staffId: staff.id,
     name: staff.name,
     email: staff.email,
-    role: staff.role,
+    role,
   });
   await audit("staff", {
     action: "login_ok",
     entity: "equipe",
     entityId: normalized,
-    actor: { type: staff.role, id: staff.id, name: staff.name },
+    actor: { type: role, id: staff.id, name: staff.name },
   });
 
-  return NextResponse.json({ ok: true, role: staff.role });
+  return NextResponse.json({ ok: true, role });
 }

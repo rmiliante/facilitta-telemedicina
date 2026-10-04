@@ -165,5 +165,9 @@ export async function POST(req: NextRequest) {
     patientName: await patientName(patientId),
     details: { data: scheduledAtIso.slice(0, 10), especialidade: specialty.name },
   });
-  return NextResponse.json({ appointment });
+  // Valores (pago ao médico / recebido da prefeitura) não saem para a agenda.
+  const safe: Record<string, unknown> = { ...(appointment ?? {}) };
+  delete safe.doctor_fee;
+  delete safe.contract_fee;
+  return NextResponse.json({ appointment: safe });
 }

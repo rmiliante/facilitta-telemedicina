@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getStaffSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
+import { STAFF_ROLES } from "@/lib/permissions";
 
 /** PATCH /api/admin/staff/:id — editar dados, papel, senha ou ativo/inativo. */
 export async function PATCH(
@@ -17,12 +18,22 @@ export async function PATCH(
   if (typeof body.password === "string" && body.password.length >= 6) {
     update.password_hash = await bcrypt.hash(body.password, 10);
   }
-  if (body.role === "admin" || body.role === "atendente") update.role = body.role;
+  if (STAFF_ROLES.includes(body.role)) update.role = body.role;
   if (typeof body.name === "string" && body.name.trim()) update.name = body.name.trim();
   if (typeof body.email === "string" && body.email.trim()) update.email = body.email.trim().toLowerCase();
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: "Nada para atualizar" }, { status: 400 });
+  }
+
+  // Não deixa o Master tirar o próprio acesso total (ficaria sem ninguém
+  // para desfazer).
+  const session = await getStaffSession();
+  if (session?.staffId === id && ((update.role && update.role !== "master") || update.active === false)) {
+    return NextResponse.json(
+      { error: "Você não pode rebaixar nem desativar a própria conta. Peça a outro Master." },
+      { status: 400 }
+    );
   }
 
   const supabase = getSupabaseAdmin();
@@ -38,7 +49,10 @@ export async function PATCH(
     action: "alterar_equipe",
     entity: "equipe",
     entityId: id,
-    details: { campos: Object.keys(update).map((c) => (c === "password_hash" ? "senha" : c)) },
+    details: {
+      campos: Object.keys(update).map((c) => (c === "password_hash" ? "senha" : c)),
+      ...(update.role ? { nivel: update.role } : {}),
+    },
   });
   return NextResponse.json({ ok: true });
 }

@@ -43,7 +43,8 @@ interface Report {
     regraLabel?: string;
   }[];
   medicos: { id: string; name: string; realizados: number; faltas: number; taxaFaltas: number | null; duracaoMedia: number | null }[];
-  faltososRecorrentes: { id: string; name: string; phone: string | null; faltas: number; ultima: string }[];
+  /** null quando o nível de acesso não pode ver pacientes. */
+  faltososRecorrentes: { id: string; name: string; phone: string | null; faltas: number; ultima: string }[] | null;
 }
 
 function currentMonth() {
@@ -352,6 +353,7 @@ export default function ReportsTab() {
             )}
           </section>
 
+          {data.faltososRecorrentes && (
           <section className="rounded-xl border border-zinc-200 bg-white p-4 print:hidden">
             <p className="text-sm font-bold text-brand-navy">Pacientes com faltas recorrentes</p>
             <p className="mb-3 text-xs text-zinc-500">2 ou mais faltas nos últimos 90 dias (até o fim do mês). Vale confirmar antes de agendar de novo.</p>
@@ -382,6 +384,7 @@ export default function ReportsTab() {
               </table>
             )}
           </section>
+          )}
         </div>
       )}
     </div>

@@ -10,6 +10,7 @@ import AuditTab from "./AuditTab";
 import AttendanceHistoryTab from "./AttendanceHistoryTab";
 import { printFile } from "@/lib/printPdf";
 import type { TimelineDoc } from "@/lib/patientTimeline";
+import { canSeePatients, financeReadOnly, ROLE_DESCRIPTION, ROLE_LABEL, ROLE_TABS, STAFF_ROLES, type AdminTab, type StaffRole } from "@/lib/permissions";
 import {
   APPLICATION_STATUSES,
   SHIFTS,
@@ -70,22 +71,11 @@ interface StaffMember {
   id: string;
   name: string;
   email: string;
-  role: "admin" | "atendente";
+  role: string;
   active: boolean;
 }
 
-type Tab =
-  | "dashboard"
-  | "agenda"
-  | "historico"
-  | "financeiro"
-  | "relatorios"
-  | "pacientes"
-  | "medicos"
-  | "captacao"
-  | "especialidades"
-  | "equipe"
-  | "auditoria";
+type Tab = AdminTab;
 
 interface DoctorApplication {
   id: string;
@@ -253,11 +243,13 @@ const NAV_ITEMS: { key: Tab; label: string; icon: React.ReactNode }[] = [
 ];
 
 function AdminSidebar({
+  role,
   tab,
   onSelect,
   open,
   onClose,
 }: {
+  role: StaffRole;
   tab: Tab;
   onSelect: (t: Tab) => void;
   open: boolean;
@@ -293,7 +285,7 @@ function AdminSidebar({
           Administração
         </p>
         <ul className="space-y-0.5">
-          {NAV_ITEMS.map((item) => (
+          {NAV_ITEMS.filter((item) => ROLE_TABS[role].includes(item.key)).map((item) => (
             <li key={item.key}>
               <button
                 type="button"
@@ -313,7 +305,8 @@ function AdminSidebar({
             </li>
           ))}
           {/* Mesmo visual dos outros itens, mas em vez de abrir uma tela
-              mostra os links logo abaixo. */}
+              mostra os links logo abaixo. Só para o Master. */}
+          {role === "master" && (
           <li>
             <button
               type="button"
@@ -335,8 +328,12 @@ function AdminSidebar({
               </ul>
             )}
           </li>
+          )}
         </ul>
       </div>
+      <p className="border-t border-zinc-100 px-4 py-3 text-[11px] text-zinc-400">
+        Nível de acesso: <span className="font-semibold text-zinc-600">{ROLE_LABEL[role]}</span>
+      </p>
     </nav>
   );
 }
@@ -395,13 +392,13 @@ function IconLink() {
   );
 }
 
-export default function AdminPanel() {
-  const [tab, setTab] = useState<Tab>("dashboard");
+export default function AdminPanel({ role }: { role: StaffRole }) {
+  const [tab, setTab] = useState<Tab>(ROLE_TABS[role][0] ?? "dashboard");
   const [navOpen, setNavOpen] = useState(false);
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-brand-bg print:block print:h-auto print:overflow-visible print:bg-white">
-      <AdminSidebar tab={tab} onSelect={setTab} open={navOpen} onClose={() => setNavOpen(false)} />
+      <AdminSidebar role={role} tab={tab} onSelect={setTab} open={navOpen} onClose={() => setNavOpen(false)} />
 
       {navOpen && (
         <div
@@ -434,9 +431,11 @@ export default function AdminPanel() {
             {tab === "pacientes" && <PatientsTab />}
             {tab === "agenda" && <AgendaTab />}
             {tab === "historico" && (
-              <AttendanceHistoryTab renderPatientHistory={(id) => <PatientHistoryPanel patientId={id} />} />
+              <AttendanceHistoryTab
+                renderPatientHistory={canSeePatients(role) ? (id) => <PatientHistoryPanel patientId={id} /> : undefined}
+              />
             )}
-            {tab === "financeiro" && <FinanceTab />}
+            {tab === "financeiro" && <FinanceTab readOnly={financeReadOnly(role)} />}
             {tab === "relatorios" && <ReportsTab />}
             {tab === "auditoria" && <AuditTab />}
             {tab === "equipe" && <StaffTab />}
@@ -2448,12 +2447,26 @@ function AgendaTab() {
 }
 
 // ------------------------------------------------------------
-// Equipe (admin / atendente)
+// Equipe (níveis de acesso em lib/permissions.ts)
 // ------------------------------------------------------------
-const ROLE_LABELS: Record<string, string> = {
-  admin: "Administrador",
-  atendente: "Atendente",
-};
+const ROLE_LABELS: Record<string, string> = { ...ROLE_LABEL, admin: "Master" };
+
+function RoleOptions() {
+  return (
+    <>
+      {STAFF_ROLES.map((r) => (
+        <option key={r} value={r}>
+          {ROLE_LABEL[r]}
+        </option>
+      ))}
+    </>
+  );
+}
+
+function RoleHint({ role }: { role: string }) {
+  const r = (role === "admin" ? "master" : role) as StaffRole;
+  return ROLE_DESCRIPTION[r] ? <span className="mt-1 block text-[11px] text-zinc-400">{ROLE_DESCRIPTION[r]}</span> : null;
+}
 
 function StaffTab() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
@@ -2505,7 +2518,7 @@ function StaffTab() {
 
   function startEdit(m: StaffMember) {
     setEditingId(m.id);
-    setEditForm({ name: m.name, email: m.email, role: m.role, password: "" });
+    setEditForm({ name: m.name, email: m.email, role: m.role === "admin" ? "master" : m.role, password: "" });
   }
 
   async function handleDelete(m: StaffMember) {
@@ -2580,15 +2593,15 @@ function StaffTab() {
           />
         </label>
         <label className="text-xs">
-          <span className="mb-1 block font-medium text-zinc-600">Papel</span>
+          <span className="mb-1 block font-medium text-zinc-600">Nível de acesso</span>
           <select
             value={form.role}
             onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
             className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
           >
-            <option value="atendente">Atendente</option>
-            <option value="admin">Administrador</option>
+            <RoleOptions />
           </select>
+          <RoleHint role={form.role} />
         </label>
         <div className="sm:col-span-2">
           <button
@@ -2625,15 +2638,15 @@ function StaffTab() {
                 />
               </label>
               <label className="text-xs">
-                <span className="mb-1 block font-medium text-zinc-600">Papel</span>
+                <span className="mb-1 block font-medium text-zinc-600">Nível de acesso</span>
                 <select
                   value={editForm.role}
                   onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value }))}
                   className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
                 >
-                  <option value="atendente">Atendente</option>
-                  <option value="admin">Administrador</option>
+                  <RoleOptions />
                 </select>
+                <RoleHint role={editForm.role} />
               </label>
               <label className="text-xs">
                 <span className="mb-1 block font-medium text-zinc-600">Nova senha (opcional)</span>

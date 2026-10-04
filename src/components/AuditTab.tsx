@@ -22,9 +22,13 @@ interface AuditItem {
 }
 
 const ACTOR_LABEL: Record<string, string> = {
-  admin: "Admin",
+  admin: "Master",
+  master: "Master",
+  gestor: "Gestor",
+  financeiro: "Financeiro",
+  prefeitura: "Prefeitura",
   atendente: "Atendente",
-  admin_recuperacao: "Admin (recuperação)",
+  admin_recuperacao: "Master (recuperação)",
   medico: "Médico",
   anonimo: "Não identificado",
 };
