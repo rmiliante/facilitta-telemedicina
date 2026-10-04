@@ -18,6 +18,7 @@ interface Row {
   doctor_id: string | null;
   called_at: string | null;
   finished_at: string | null;
+  contract_fee?: number | string | null;
   specialties: { name: string } | null;
   doctors: { name: string } | null;
 }
@@ -46,35 +47,36 @@ export async function monthlyReport(month: string) {
   const { start, end } = monthRange(month);
   const since90 = new Date(new Date(end).getTime() - 90 * 86400000).toISOString();
 
-  const [apptRes, specRes, faltasRes] = await Promise.all([
-    supabase
-      .from("appointments")
-      .select("id, status, patient_id, specialty_id, doctor_id, called_at, finished_at, specialties(name), doctors(name)")
-      .gte("scheduled_at", start)
-      .lt("scheduled_at", end),
-    supabase.from("specialties").select("id, name, monthly_quota, contract_fee").order("name", { ascending: true }),
+  const apptCols = "id, status, patient_id, specialty_id, doctor_id, called_at, finished_at, specialties(name), doctors(name)";
+  const appts = (cols: string) => supabase.from("appointments").select(cols).gte("scheduled_at", start).lt("scheduled_at", end);
+  const [apptFirst, specRes, faltasRes, docRes] = await Promise.all([
+    appts(`${apptCols}, contract_fee`),
+    supabase.from("specialties").select("id, name, monthly_quota").order("name", { ascending: true }),
     supabase
       .from("appointments")
       .select("patient_id, scheduled_at, patients(full_name, phone)")
       .eq("status", "faltou")
       .gte("scheduled_at", since90)
       .lt("scheduled_at", end),
+    supabase.from("doctors").select("specialty_id, contract_fee").eq("active", true),
   ]);
-  // Sem a migração do valor por especialidade: relatório sai sem faturamento.
-  let specData = specRes.data as unknown[] | null;
-  let valorDisponivel = true;
-  if (specRes.error && /contract_fee/.test(specRes.error.message ?? "")) {
-    valorDisponivel = false;
-    const retry = await supabase.from("specialties").select("id, name, monthly_quota").order("name", { ascending: true });
-    if (retry.error) throw retry.error;
-    specData = retry.data;
-  } else if (specRes.error) {
-    throw specRes.error;
+  // Sem a migração do valor recebido por consulta: relatório sai sem faturamento.
+  let apptRes = apptFirst;
+  const valorDisponivel = !(apptRes.error && /contract_fee/.test(apptRes.error.message ?? ""));
+  if (!valorDisponivel) apptRes = await appts(apptCols);
+  for (const r of [apptRes, specRes, faltasRes]) if (r.error) throw r.error;
+
+  const toFee = (v: number | string | null | undefined) => (v === null || v === undefined || v === "" ? null : Number(v));
+  // Valor atual dos médicos ativos de cada especialidade (completa a cota quando não houve consulta com valor).
+  const refFees = new Map<string, number[]>();
+  for (const d of (docRes.error ? [] : docRes.data ?? []) as { specialty_id: string | null; contract_fee: number | string | null }[]) {
+    const fee = toFee(d.contract_fee);
+    if (!d.specialty_id || fee === null) continue;
+    refFees.set(d.specialty_id, [...(refFees.get(d.specialty_id) ?? []), fee]);
   }
-  for (const r of [apptRes, faltasRes]) if (r.error) throw r.error;
 
   const rows = (apptRes.data ?? []) as unknown as Row[];
-  const specs = (specData ?? []) as { id: string; name: string; monthly_quota: number; contract_fee?: number | string | null }[];
+  const specs = (specRes.data ?? []) as { id: string; name: string; monthly_quota: number }[];
   const count = (list: Row[], status: string) => list.filter((r) => r.status === status).length;
 
   const especialidades = specs
@@ -83,13 +85,19 @@ export async function monthlyReport(month: string) {
       const naoCancelados = list.filter((r) => r.status !== "cancelado").length;
       const realizados = count(list, "concluido");
       const faltas = count(list, "faltou");
-      const fee = s.contract_fee === null || s.contract_fee === undefined || s.contract_fee === "" ? null : Number(s.contract_fee);
-      const fat = billing(month, realizados, s.monthly_quota, fee);
+      const ref = refFees.get(s.id);
+      const fat = billing(
+        month,
+        list.filter((r) => r.status === "concluido").map((r) => toFee(r.contract_fee)),
+        s.monthly_quota,
+        ref?.length ? ref.reduce((a, b) => a + b, 0) / ref.length : null
+      );
       return {
         id: s.id,
         name: s.name,
         cota: s.monthly_quota,
-        valorConsulta: fee,
+        valorConsulta: fat.valorMedio,
+        semValor: fat.semValor,
         faturadas: fat.faturadas,
         valorReceber: fat.valor,
         regra: fat.rule,

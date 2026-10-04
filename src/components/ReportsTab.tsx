@@ -36,6 +36,7 @@ interface Report {
     taxaFaltas: number | null;
     duracaoMedia: number | null;
     valorConsulta?: number | null;
+    semValor?: number;
     faturadas?: number;
     valorReceber?: number | null;
     regra?: string;
@@ -106,7 +107,7 @@ function exportCsv(r: Report) {
     line(["Especialidade", "Cota", "Agendados", "Uso da cota (%)", "Realizados", "Faltas", "Taxa de faltas (%)", "Cancelados", "Duração média (min)"]),
     ...r.especialidades.map((s) => line([s.name, s.cota, s.agendados, s.usoCota, s.realizados, s.faltas, s.taxaFaltas, s.cancelados, s.duracaoMedia])),
     "",
-    line(["Faturamento — especialidade", "Realizadas", "Cota", "Consultas cobradas", "Valor por consulta (R$)", "Valor a receber (R$)", "Regra"]),
+    line(["Faturamento — especialidade", "Realizadas", "Cota", "Consultas cobradas", "Valor médio por consulta (R$)", "Valor a receber (R$)", "Regra"]),
     ...r.especialidades.map((s) =>
       line([
         s.name,
@@ -212,16 +213,16 @@ export default function ReportsTab() {
 
           <section className="rounded-xl border-2 border-brand-teal-dark bg-white p-4 print:break-inside-avoid">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
+              <div className="min-w-[16rem] flex-1">
                 <p className="text-sm font-bold text-brand-navy">Faturamento do mês (prefeitura)</p>
                 <p className="text-xs text-zinc-500">
                   {!data.faturamento?.disponivel
-                    ? "Falta rodar a atualização do banco (migration_valor_especialidade.sql)."
+                    ? "Falta rodar a atualização do banco (migration_valor_contrato_medico.sql)."
                     : data.faturamento.antesDoContrato
                       ? "Mês anterior ao início do contrato: sem faturamento."
                       : data.faturamento.primeiroMes
-                        ? "Primeiro mês do contrato: cobrado pelas consultas realizadas."
-                        : "Mínimo da cota contratada por especialidade; acima da cota, cobra-se cada consulta realizada."}
+                        ? "Primeiro mês do contrato: cobrado pelas consultas realizadas, cada uma pelo valor do médico que atendeu."
+                        : "Mínimo da cota contratada por especialidade; acima da cota, cobra-se cada consulta realizada. Cada consulta vale o combinado com o médico que atendeu; as que completam a cota valem a média do mês."}
                 </p>
               </div>
               <div className="text-right">
@@ -231,7 +232,7 @@ export default function ReportsTab() {
                 </p>
                 {!data.faturamento?.antesDoContrato && (t.especialidadesSemValor ?? 0) > 0 && (
                   <p className="text-[11px] text-amber-700">
-                    {t.especialidadesSemValor} especialidade(s) sem valor cadastrado — não entram no total
+                    {t.especialidadesSemValor} especialidade(s) sem valor no cadastro do médico — não entram no total
                   </p>
                 )}
               </div>
@@ -245,7 +246,7 @@ export default function ReportsTab() {
                       <th className="py-1.5 pr-3 text-right font-semibold">Realizadas</th>
                       <th className="py-1.5 pr-3 text-right font-semibold">Cota</th>
                       <th className="py-1.5 pr-3 text-right font-semibold">Cobradas</th>
-                      <th className="py-1.5 pr-3 text-right font-semibold">Valor/consulta</th>
+                      <th className="py-1.5 pr-3 text-right font-semibold">Valor médio/consulta</th>
                       <th className="py-1.5 pr-3 text-right font-semibold">A receber</th>
                       <th className="py-1.5 font-semibold">Regra</th>
                     </tr>
@@ -258,7 +259,8 @@ export default function ReportsTab() {
                         <td className="py-2 pr-3 text-right tabular-nums">{s.cota}</td>
                         <td className="py-2 pr-3 text-right font-semibold tabular-nums">{s.faturadas ?? "—"}</td>
                         <td className="py-2 pr-3 text-right tabular-nums">
-                          {s.valorConsulta != null ? money(s.valorConsulta) : <span className="text-amber-700">não cadastrado</span>}
+                          {s.valorConsulta != null ? money(s.valorConsulta) : <span className="text-amber-700">sem valor</span>}
+                          {(s.semValor ?? 0) > 0 && <span className="block text-[11px] text-amber-700">{s.semValor} consulta(s) sem valor</span>}
                         </td>
                         <td className="py-2 pr-3 text-right font-semibold tabular-nums text-brand-navy">
                           {s.valorReceber != null ? money(s.valorReceber) : "—"}

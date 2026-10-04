@@ -25,7 +25,7 @@ export const RQE_MIGRATION_WARNING =
   "Dados salvos, mas o RQE, o endereço profissional ou o valor por consulta não foram gravados: falta rodar a atualização do banco (migration_rqe.sql e migration_valor_consulta.sql).";
 
 /** Colunas novas que podem ainda não existir antes da migração. */
-export const OPTIONAL_DOCTOR_COLUMNS = ["rqe", "endereco_profissional", "consult_fee", "pix_key"] as const;
+export const OPTIONAL_DOCTOR_COLUMNS = ["rqe", "endereco_profissional", "consult_fee", "pix_key", "contract_fee"] as const;
 type OptionalDoctorColumn = (typeof OPTIONAL_DOCTOR_COLUMNS)[number];
 
 /** Aviso dizendo exatamente o que não foi gravado e qual migração rodar. */
@@ -33,6 +33,9 @@ export function migrationWarning(columns: OptionalDoctorColumn[]): string | unde
   const parts: string[] = [];
   if (columns.includes("consult_fee")) {
     parts.push("o valor por consulta NÃO foi gravado: rode supabase/migration_valor_consulta.sql no Supabase");
+  }
+  if (columns.includes("contract_fee")) {
+    parts.push("o valor que recebemos por consulta NÃO foi gravado: rode supabase/migration_valor_contrato_medico.sql no Supabase");
   }
   if (columns.includes("pix_key")) {
     parts.push("a chave PIX NÃO foi gravada: rode supabase/migration_financeiro.sql no Supabase");
