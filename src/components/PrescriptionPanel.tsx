@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { SIGNING_CHANGED_EVENT } from "@/lib/signingEvents";
 import { searchExams, findExam, type ExamHit } from "@/lib/examSearch";
 import { EXAM_PACKAGES } from "@/data/exames";
+import { CATEGORY_LABEL, checkPrescription } from "@/lib/controlledMeds";
 
 /**
  * Receita digital na tela de consulta: o médico monta a receita / pedido
@@ -50,6 +51,14 @@ const KIND_LABELS: Record<Kind, string> = {
 };
 
 const EMPTY_ITEM: Item = { name: "", quantity: "", instructions: "" };
+
+interface Template {
+  id: string;
+  kind: Kind;
+  name: string;
+  items: Item[];
+  notes: string | null;
+}
 const POLL_MS = 3000;
 const APPROVAL_TIMEOUT_MS = 3 * 60 * 1000;
 
@@ -90,6 +99,9 @@ export default function PrescriptionPanel({
   });
   const items = itemsByKind[kind];
   const notes = notesByKind[kind];
+  // Medicamentos controlados / antimicrobianos na receita (aviso ou bloqueio).
+  const controlled = checkPrescription(itemsByKind.receita.map((it) => it.name).filter((n) => n.trim()));
+  const controlledBlocked = controlled.some((c) => c.blocked);
   const setItems = (next: Item[] | ((prev: Item[]) => Item[])) =>
     setItemsByKind((all) => ({
       ...all,
@@ -109,6 +121,55 @@ export default function PrescriptionPanel({
   /** Documentos da última emissão (um ou vários), pra confirmação na coluna. */
   const [lastBatch, setLastBatch] = useState<IssuedDocument[]>([]);
   const cancelledRef = useRef(false);
+  /** Modelos salvos pelo médico (ex.: "Hipertensão padrão"). */
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [templateMsg, setTemplateMsg] = useState<string | null>(null);
+
+  async function loadTemplates() {
+    const res = await fetch("/api/doctor/modelos").catch(() => null);
+    const data = res ? await res.json().catch(() => ({})) : {};
+    if (res?.ok) setTemplates(data.templates ?? []);
+  }
+
+  function applyTemplate(t: Template) {
+    const hasContent =
+      t.kind === "atestado" ? notesByKind.atestado.trim() : itemsByKind[t.kind].some((it) => it.name.trim());
+    if (hasContent && !confirm(`Substituir o que já está preenchido pelo modelo "${t.name}"?`)) return;
+    setItemsByKind((all) => ({
+      ...all,
+      [t.kind]: t.items.length ? t.items.map((it) => ({ ...EMPTY_ITEM, ...it })) : [{ ...EMPTY_ITEM }],
+    }));
+    setNotesByKind((all) => ({ ...all, [t.kind]: t.notes ?? "" }));
+    setTemplateMsg(null);
+  }
+
+  async function saveTemplate() {
+    const clean = items.filter((it) => it.name.trim());
+    if (kind === "atestado" ? !notes.trim() : clean.length === 0) {
+      setTemplateMsg("Preencha antes de salvar como modelo.");
+      return;
+    }
+    const name = prompt(`Nome do modelo de ${KIND_LABELS[kind].toLowerCase()} (ex.: Hipertensão padrão):`)?.trim();
+    if (!name) return;
+    const res = await fetch("/api/doctor/modelos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind, name, items: kind === "atestado" ? [] : clean, notes }),
+    }).catch(() => null);
+    const data = res ? await res.json().catch(() => ({})) : {};
+    if (!res?.ok) {
+      setTemplateMsg(data.error ?? "Não foi possível salvar o modelo.");
+      return;
+    }
+    setTemplates((all) => [...all, data.template].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")));
+    setTemplateMsg(`Modelo "${name}" salvo.`);
+  }
+
+  async function deleteTemplate(t: Template) {
+    if (!confirm(`Excluir o modelo "${t.name}"?`)) return;
+    const res = await fetch(`/api/doctor/modelos/${t.id}`, { method: "DELETE" }).catch(() => null);
+    if (res?.ok) setTemplates((all) => all.filter((x) => x.id !== t.id));
+  }
 
   async function loadSigning(): Promise<SigningState | null> {
     const res = await fetch("/api/doctor/signing-session").catch(() => null);
@@ -152,8 +213,10 @@ export default function PrescriptionPanel({
     });
     setNotesByKind({ receita: "", exame: "", atestado: "" });
     setError(null);
+    setTemplateMsg(null);
     setPhase("edit");
     setOpen(true);
+    loadTemplates();
   }
 
   function closeModal() {
@@ -275,6 +338,11 @@ export default function PrescriptionPanel({
     setError(null);
     cancelledRef.current = false;
 
+    if (kinds.includes("receita") && controlledBlocked) {
+      setKind("receita");
+      setError("A receita tem medicamento que não pode sair em receita digital comum. Veja o aviso acima da lista.");
+      return;
+    }
     for (const k of kinds) {
       const clean = itemsByKind[k].filter((it) => it.name.trim());
       if (k === "atestado" ? !notesByKind[k].trim() : clean.length === 0) {
@@ -622,6 +690,28 @@ export default function PrescriptionPanel({
                 </div>
 
                 <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] font-semibold text-zinc-500">Meus modelos:</span>
+                    {templates.filter((t) => t.kind === kind).length === 0 && (
+                      <span className="text-[11px] text-zinc-400">nenhum ainda</span>
+                    )}
+                    {templates
+                      .filter((t) => t.kind === kind)
+                      .map((t) => (
+                        <span key={t.id} className="inline-flex items-center rounded-full border border-brand-navy/30 bg-white text-[11px] font-medium text-brand-navy">
+                          <button type="button" onClick={() => applyTemplate(t)} className="rounded-l-full py-0.5 pl-2.5 pr-1 hover:bg-brand-teal/10" title="Usar este modelo">
+                            {t.name}
+                          </button>
+                          <button type="button" onClick={() => deleteTemplate(t)} className="rounded-r-full px-1.5 py-0.5 text-zinc-400 hover:text-red-600" title="Excluir modelo" aria-label={`Excluir modelo ${t.name}`}>
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    <button type="button" onClick={saveTemplate} className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-brand-teal-dark hover:bg-brand-teal/10">
+                      + Salvar como modelo
+                    </button>
+                    {templateMsg && <span className="text-[11px] text-zinc-500">{templateMsg}</span>}
+                  </div>
                   {kind === "atestado" ? (
                     <label className="block text-xs">
                       <span className="mb-1 block font-medium text-zinc-600">
@@ -760,6 +850,35 @@ export default function PrescriptionPanel({
                           )}
                         </div>
                       ))}
+                      {kind === "receita" && controlled.length > 0 && (
+                        <div
+                          className={`rounded-lg border px-3 py-2 text-xs ${
+                            controlledBlocked
+                              ? "border-red-200 bg-red-50 text-red-800"
+                              : "border-amber-200 bg-amber-50 text-amber-900"
+                          }`}
+                        >
+                          <p className="font-semibold">
+                            {controlledBlocked
+                              ? "Esta receita não pode ser emitida aqui"
+                              : "Atenção: medicamento com receita especial"}
+                          </p>
+                          <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                            {controlled.map((c) => (
+                              <li key={c.name}>
+                                <span className="font-medium">{CATEGORY_LABEL[c.category]}.</span>{" "}
+                                {c.message}
+                              </li>
+                            ))}
+                          </ul>
+                          {controlledBlocked && (
+                            <p className="mt-1">
+                              Retire o item desta receita e emita-o no receituário adequado. Os demais
+                              medicamentos podem seguir normalmente.
+                            </p>
+                          )}
+                        </div>
+                      )}
                       <button
                         type="button"
                         onClick={() =>

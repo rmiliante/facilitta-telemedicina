@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { parseConsultFee, professionalFields, migrationWarning, RQE_MIGRATION_WARNING, stripMissingColumn } from "@/lib/doctorFields";
+import { audit } from "@/lib/audit";
 
 /** PATCH /api/admin/doctors/:id — ativar/desativar ou redefinir senha. */
 export async function PATCH(
@@ -48,6 +49,12 @@ export async function PATCH(
   if (error) {
     return NextResponse.json({ error: "Falha ao atualizar médico" }, { status: 500 });
   }
+  await audit("staff", {
+    action: "alterar_medico",
+    entity: "medico",
+    entityId: id,
+    details: { campos: Object.keys(update).map((c) => (c === "password_hash" ? "senha" : c)) },
+  });
   return NextResponse.json({ ok: true, warning: migrationWarning(notSaved) });
 }
 
@@ -59,6 +66,7 @@ export async function DELETE(
   const { id } = await params;
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("doctors").delete().eq("id", id);
+  if (!error) await audit("staff", { action: "excluir_medico", entity: "medico", entityId: id });
 
   if (error) {
     return NextResponse.json(

@@ -5,6 +5,8 @@ import VitalSignsPanel from "./VitalSigns";
 import TipoConsultaBadge, { TipoConsultaChoice, tipoSuffix } from "./TipoConsultaBadge";
 import PatientTimeline from "./PatientTimeline";
 import FinanceTab from "./FinanceTab";
+import ReportsTab, { QuotaBar } from "./ReportsTab";
+import AuditTab from "./AuditTab";
 import AttendanceHistoryTab from "./AttendanceHistoryTab";
 import { printFile } from "@/lib/printPdf";
 import type { TimelineDoc } from "@/lib/patientTimeline";
@@ -47,6 +49,8 @@ interface Patient {
   email: string | null;
   city: string | null;
   state: string | null;
+  /** Quantas vezes faltou (vem da lista de pacientes). */
+  faltas?: number;
 }
 
 interface Appointment {
@@ -74,11 +78,13 @@ type Tab =
   | "agenda"
   | "historico"
   | "financeiro"
+  | "relatorios"
   | "pacientes"
   | "medicos"
   | "captacao"
   | "especialidades"
-  | "equipe";
+  | "equipe"
+  | "auditoria";
 
 interface DoctorApplication {
   id: string;
@@ -197,6 +203,22 @@ function IconChart() {
   );
 }
 
+function IconReport() {
+  return (
+    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7 3h7l5 5v13H7zM14 3v5h5M10 17v-3M13 17v-5M16 17v-2" />
+    </svg>
+  );
+}
+
+function IconShield() {
+  return (
+    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3 5 6v6c0 4 3 7.5 7 9 4-1.5 7-5 7-9V6zM9 12l2 2 4-4" />
+    </svg>
+  );
+}
+
 function IconMoney() {
   return (
     <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -220,11 +242,13 @@ const NAV_ITEMS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: "agenda", label: "Agenda", icon: <IconCalendar /> },
   { key: "historico", label: "Histórico de atendimentos", icon: <IconHistory /> },
   { key: "financeiro", label: "Financeiro", icon: <IconMoney /> },
+  { key: "relatorios", label: "Relatórios", icon: <IconReport /> },
   { key: "pacientes", label: "Pacientes", icon: <IconUsers /> },
   { key: "medicos", label: "Médicos", icon: <IconStethoscope /> },
   { key: "captacao", label: "Captação", icon: <IconClipboard /> },
   { key: "especialidades", label: "Especialidades", icon: <IconTag /> },
   { key: "equipe", label: "Equipe", icon: <IconTeam /> },
+  { key: "auditoria", label: "Auditoria", icon: <IconShield /> },
 ];
 
 function AdminSidebar({
@@ -241,7 +265,7 @@ function AdminSidebar({
   const [linksOpen, setLinksOpen] = useState(false);
   return (
     <nav
-      className={`fixed inset-y-0 left-0 z-40 flex h-full w-64 shrink-0 -translate-x-full flex-col border-r border-zinc-200 bg-white transition-transform duration-200 md:static md:z-auto md:w-56 md:translate-x-0 ${
+      className={`fixed inset-y-0 left-0 z-40 flex h-full w-64 shrink-0 -translate-x-full flex-col border-r border-zinc-200 bg-white transition-transform duration-200 md:static md:z-auto md:w-56 md:translate-x-0 print:hidden ${
         open ? "translate-x-0" : ""
       }`}
     >
@@ -375,7 +399,7 @@ export default function AdminPanel() {
   const [navOpen, setNavOpen] = useState(false);
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-brand-bg">
+    <div className="flex h-screen w-full overflow-hidden bg-brand-bg print:block print:h-auto print:overflow-visible print:bg-white">
       <AdminSidebar tab={tab} onSelect={setTab} open={navOpen} onClose={() => setNavOpen(false)} />
 
       {navOpen && (
@@ -385,8 +409,8 @@ export default function AdminPanel() {
         />
       )}
 
-      <div className="flex h-full flex-1 flex-col overflow-hidden">
-        <div className="flex shrink-0 items-center gap-3 border-b border-brand-navy bg-brand-navy px-4 py-3 sm:px-6">
+      <div className="flex h-full flex-1 flex-col overflow-hidden print:block print:h-auto print:overflow-visible">
+        <div className="flex shrink-0 items-center gap-3 border-b border-brand-navy bg-brand-navy px-4 py-3 sm:px-6 print:hidden">
           <button
             type="button"
             onClick={() => setNavOpen(true)}
@@ -400,8 +424,8 @@ export default function AdminPanel() {
           </h1>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
-          <div className={tab === "historico" || tab === "financeiro" ? "mx-auto max-w-6xl" : tab === "dashboard" ? "mx-auto max-w-5xl" : "mx-auto max-w-4xl"}>
+        <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 print:overflow-visible print:p-0">
+          <div className={tab === "historico" || tab === "financeiro" || tab === "relatorios" || tab === "auditoria" ? "mx-auto max-w-6xl" : tab === "dashboard" ? "mx-auto max-w-5xl" : "mx-auto max-w-4xl"}>
             {tab === "dashboard" && <DashboardTab />}
             {tab === "especialidades" && <SpecialtiesTab />}
             {tab === "medicos" && <DoctorsTab />}
@@ -412,6 +436,8 @@ export default function AdminPanel() {
               <AttendanceHistoryTab renderPatientHistory={(id) => <PatientHistoryPanel patientId={id} />} />
             )}
             {tab === "financeiro" && <FinanceTab />}
+            {tab === "relatorios" && <ReportsTab />}
+            {tab === "auditoria" && <AuditTab />}
             {tab === "equipe" && <StaffTab />}
           </div>
         </div>
@@ -616,6 +642,54 @@ function RankedBarChart({ data, emptyLabel }: { data: { name: string; count: num
   );
 }
 
+/** Dashboard: uso da cota do mês atual por especialidade, com alerta a partir de 80%. */
+function QuotaAlertCard() {
+  const [rows, setRows] = useState<{ id: string; name: string; cota: number; agendados: number; usoCota: number | null }[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const month = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit" }).format(new Date());
+    fetch(`/api/admin/relatorios?month=${month}`)
+      .then(async (r) => {
+        const json = await r.json().catch(() => ({}));
+        if (!cancelled && r.ok) setRows(json.especialidades ?? []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!rows || rows.length === 0) return null;
+  const alertas = rows.filter((r) => (r.usoCota ?? 0) >= 80);
+
+  return (
+    <div className="rounded-lg border border-zinc-200 bg-white p-4">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Cota do mês por especialidade</p>
+        {alertas.length > 0 ? (
+          <p className="rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800">
+            ⚠ {alertas.map((a) => `${a.name} em ${a.usoCota}%`).join(" · ")}
+          </p>
+        ) : (
+          <p className="text-[11px] text-zinc-400">Todas abaixo de 80%</p>
+        )}
+      </div>
+      <ul className="space-y-2">
+        {rows.map((r) => (
+          <li key={r.id} className="grid grid-cols-[minmax(0,10rem)_1fr_auto] items-center gap-3 text-sm">
+            <span className="truncate text-brand-navy">{r.name}</span>
+            <QuotaBar uso={r.usoCota} />
+            <span className="whitespace-nowrap text-xs tabular-nums" style={{ color: (r.usoCota ?? 0) >= 100 ? "#dc2626" : (r.usoCota ?? 0) >= 80 ? "#b45309" : "#71717a" }}>
+              {r.agendados} / {r.cota}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function DashboardTab() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -666,6 +740,8 @@ function DashboardTab() {
 
   return (
     <div className="space-y-6">
+      <QuotaAlertCard />
+
       <p className="text-xs text-zinc-400">Últimos {data.rangeDays} dias</p>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -1442,6 +1518,8 @@ interface PatientHistoryItem {
   called_at: string | null;
   finished_at: string | null;
   doctor_notes: string | null;
+  chief_complaint?: string | null;
+  conduct?: string | null;
   prescription_url: string | null;
   memed_prescription_at: string | null;
   memed_prescription_summary: string | null;
@@ -1535,6 +1613,16 @@ function PatientHistoryPanel({ patientId }: { patientId: string }) {
               </span>
             ))}
           </div>
+        )}
+        {h.chief_complaint && (
+          <p className="text-zinc-700">
+            <span className="font-semibold">Queixa:</span> {h.chief_complaint}
+          </p>
+        )}
+        {h.conduct && (
+          <p className="whitespace-pre-wrap text-zinc-700">
+            <span className="font-semibold">Conduta:</span> {h.conduct}
+          </p>
         )}
         {h.doctor_notes && <p className="whitespace-pre-wrap text-zinc-700">{h.doctor_notes}</p>}
         {h.prescription_url && (
@@ -1852,7 +1940,17 @@ function PatientsTab() {
             >
               <div className="flex items-center justify-between gap-2 px-4 py-2.5">
                 <div className="min-w-0">
-                  <p className="font-medium text-zinc-800">{p.full_name}</p>
+                  <p className="flex flex-wrap items-center gap-1.5 font-medium text-zinc-800">
+                    {p.full_name}
+                    {(p.faltas ?? 0) >= 2 && (
+                      <span
+                        className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700"
+                        title="Faltou várias vezes: vale confirmar antes de agendar"
+                      >
+                        {p.faltas} faltas
+                      </span>
+                    )}
+                  </p>
                   <p className="text-xs text-zinc-500">
                     {p.cpf ? `CPF ${p.cpf} · ` : ""}
                     {p.phone ?? p.email ?? ""}

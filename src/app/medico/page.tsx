@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getDoctorSession } from "@/lib/auth";
 import DoctorShell from "@/components/DoctorShell";
 import DoctorQueueClient from "@/components/DoctorQueueClient";
+import DoctorSummaryCards from "@/components/DoctorSummaryCards";
 
 /**
  * Tela inicial do médico: fila de atendimento por ordem de chegada
@@ -14,6 +15,7 @@ export default async function DoctorAgendaPage() {
 
   return (
     <DoctorShell doctorName={session.name}>
+      <DoctorSummaryCards />
       <DoctorQueueClient />
     </DoctorShell>
   );

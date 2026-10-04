@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getStaffSession } from "@/lib/auth";
+import { audit } from "@/lib/audit";
 
 /** PATCH /api/admin/staff/:id — editar dados, papel, senha ou ativo/inativo. */
 export async function PATCH(
@@ -33,6 +34,12 @@ export async function PATCH(
       { status: 500 }
     );
   }
+  await audit("staff", {
+    action: "alterar_equipe",
+    entity: "equipe",
+    entityId: id,
+    details: { campos: Object.keys(update).map((c) => (c === "password_hash" ? "senha" : c)) },
+  });
   return NextResponse.json({ ok: true });
 }
 
@@ -53,6 +60,7 @@ export async function DELETE(
 
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("staff").delete().eq("id", id);
+  if (!error) await audit("staff", { action: "excluir_equipe", entity: "equipe", entityId: id });
 
   if (error) {
     return NextResponse.json({ error: "Não foi possível excluir esse membro da equipe." }, { status: 400 });

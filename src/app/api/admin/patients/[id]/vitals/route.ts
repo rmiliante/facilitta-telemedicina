@@ -10,6 +10,7 @@ import {
   parseMeasuredAt,
 } from "@/lib/vitalSigns";
 import { VITALS_MIGRATION_WARNING } from "@/lib/vitals";
+import { audit, patientName } from "@/lib/audit";
 
 /**
  * Aferições de sinais vitais do paciente (atendente e admin).
@@ -58,6 +59,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   });
   if (result.missingTable) return NextResponse.json({ error: VITALS_MIGRATION_WARNING }, { status: 503 });
   if (result.error) return NextResponse.json({ error: result.error }, { status: 500 });
+  await audit("staff", { action: "registrar_afericao", entity: "afericao", patientId: id, patientName: await patientName(id) });
   return NextResponse.json({ item: result.item });
 }
 
@@ -68,5 +70,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     return NextResponse.json({ error: "Aferição inválida" }, { status: 400 });
   }
   const ok = await deleteVitalSign(id, vitalId);
+  if (ok) await audit("staff", { action: "excluir_afericao", entity: "afericao", entityId: vitalId, patientId: id, patientName: await patientName(id) });
   return ok ? NextResponse.json({ ok: true }) : NextResponse.json({ error: "Falha ao remover" }, { status: 500 });
 }

@@ -72,6 +72,8 @@ export default function ConsultationClient({
     "consulta" | "paciente" | "documentos" | "historico"
   >("consulta");
   const [notes, setNotes] = useState(appointment.doctor_notes ?? "");
+  const [complaint, setComplaint] = useState(appointment.chief_complaint ?? "");
+  const [conduct, setConduct] = useState(appointment.conduct ?? "");
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesSavedAt, setNotesSavedAt] = useState<Date | null>(null);
 
@@ -215,7 +217,7 @@ export default function ConsultationClient({
       const res = await fetch(`/api/doctor/appointments/${appointmentId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ doctorNotes: notes }),
+        body: JSON.stringify({ doctorNotes: notes, chiefComplaint: complaint, conduct }),
       });
       if (res.ok) setNotesSavedAt(new Date());
     } finally {
@@ -235,7 +237,7 @@ export default function ConsultationClient({
     const res = await fetch(`/api/doctor/appointments/${appointmentId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "concluido", doctorNotes: notes }),
+      body: JSON.stringify({ status: "concluido", doctorNotes: notes, chiefComplaint: complaint, conduct }),
     }).catch(() => null);
     if (!res?.ok) {
       // Antes a tela mostrava "concluído" mesmo quando não salvava.
@@ -253,11 +255,17 @@ export default function ConsultationClient({
 
   // Salva as anotações automaticamente a cada alguns segundos se mudou algo.
   useEffect(() => {
-    if (notes === (appointment.doctor_notes ?? "")) return;
+    if (
+      notes === (appointment.doctor_notes ?? "") &&
+      complaint === (appointment.chief_complaint ?? "") &&
+      conduct === (appointment.conduct ?? "")
+    ) {
+      return;
+    }
     const t = setTimeout(handleSaveNotes, 4000);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [notes]);
+  }, [notes, complaint, conduct]);
 
   const patient = appointment.patients;
 
@@ -379,6 +387,37 @@ export default function ConsultationClient({
             {tab === "consulta" && (
               <div className="space-y-4">
                 <VitalsCompare endpoint={`/api/doctor/appointments/${appointmentId}/vitals`} />
+
+                <div className="space-y-2">
+                  <label className="block">
+                    <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                      Queixa principal
+                    </span>
+                    <input
+                      value={complaint}
+                      onChange={(e) => setComplaint(e.target.value)}
+                      onBlur={handleSaveNotes}
+                      maxLength={500}
+                      placeholder="Ex.: dor de cabeça há 3 dias"
+                      className="w-full rounded-md border border-zinc-300 px-2.5 py-2 text-sm outline-none focus:border-brand-teal-dark"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                      Conduta
+                    </span>
+                    <textarea
+                      value={conduct}
+                      onChange={(e) => setConduct(e.target.value)}
+                      onBlur={handleSaveNotes}
+                      rows={3}
+                      maxLength={3000}
+                      placeholder="Ex.: prescrito analgésico, solicitado hemograma, retorno em 15 dias"
+                      className="w-full rounded-md border border-zinc-300 p-2.5 text-sm outline-none focus:border-brand-teal-dark"
+                    />
+                  </label>
+                  <p className="text-[10px] text-zinc-400">Aparecem no histórico do paciente nas próximas consultas.</p>
+                </div>
 
                 <div>
                   <div className="mb-1 flex items-center justify-between">
@@ -502,6 +541,16 @@ export default function ConsultationClient({
                           atendimento
                         </p>
                       )}
+                      {h.chief_complaint && (
+                        <p className="text-zinc-700">
+                          <span className="font-semibold">Queixa:</span> {h.chief_complaint}
+                        </p>
+                      )}
+                      {h.conduct && (
+                        <p className="whitespace-pre-wrap text-zinc-700">
+                          <span className="font-semibold">Conduta:</span> {h.conduct}
+                        </p>
+                      )}
                       {h.doctor_notes && (
                         <p className="whitespace-pre-wrap text-zinc-700">
                           {h.doctor_notes}
@@ -523,6 +572,8 @@ export default function ConsultationClient({
                         </p>
                       )}
                       {!h.doctor_notes &&
+                        !h.chief_complaint &&
+                        !h.conduct &&
                         !h.prescription_url &&
                         !h.memed_prescription_summary &&
                         !(h.called_at && h.finished_at) && (

@@ -89,6 +89,9 @@ BOOTH_ACCESS_KEY=        # chave da cabine, ex: openssl rand -hex 16
 - Rode [`supabase/migration_financeiro.sql`](./supabase/migration_financeiro.sql)
   para o módulo Financeiro (repasse aos médicos com fechamento mensal,
   no admin e no painel do médico).
+- Rode [`supabase/migration_auditoria_relatorios.sql`](./supabase/migration_auditoria_relatorios.sql)
+  para a Auditoria (LGPD), o limite de tentativas de login, os modelos de
+  receita e o resumo da consulta (queixa principal e conduta).
 
 Configure as mesmas variáveis na Vercel em **Project Settings >
 Environment Variables** antes do deploy.

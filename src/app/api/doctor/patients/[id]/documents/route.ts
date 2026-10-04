@@ -8,6 +8,7 @@ import {
   type PatientDocument,
 } from "@/lib/patientDocuments";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { audit, patientName } from "@/lib/audit";
 
 /**
  * Documentos do paciente vistos/anexados pelo médico — mesmo repositório
@@ -36,6 +37,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const files = await signPatientDocuments((data.documents as PatientDocument[] | null) ?? []);
+  await audit("doctor", { action: "ver_documentos", entity: "paciente", entityId: id, patientId: id, patientName: await patientName(id) });
   return NextResponse.json({ files });
 }
 
@@ -60,6 +62,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const updated = await addPatientDocuments(id, files, { source: "medico" });
     const signed = await signPatientDocuments(updated);
+    await audit("doctor", { action: "anexar_documento", entity: "documento", patientId: id, patientName: await patientName(id), details: { arquivos: files.map((f) => f.name) } });
     return NextResponse.json({ files: signed });
   } catch (err) {
     return NextResponse.json(
@@ -87,6 +90,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   try {
     const updated = await removePatientDocument(id, path);
     const signed = await signPatientDocuments(updated);
+    await audit("doctor", { action: "remover_documento", entity: "documento", entityId: path, patientId: id, patientName: await patientName(id) });
     return NextResponse.json({ files: signed });
   } catch (err) {
     return NextResponse.json(

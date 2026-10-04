@@ -5,6 +5,8 @@ import { clearSigningSession, getSigningDoctor, refreshSigningState } from "@/li
 import { addGeneratedPatientDocument, signPatientDocuments } from "@/lib/patientDocuments";
 import { buildPrescriptionPdf, KIND_TITLES, type PrescriptionItem, type PrescriptionKind } from "@/lib/prescriptionPdf";
 import { downloadSigned, PrescreveError, signPdf } from "@/lib/prescreve";
+import { checkPrescription } from "@/lib/controlledMeds";
+import { audit } from "@/lib/audit";
 
 // Assinar + baixar o PDF pode levar alguns segundos.
 export const maxDuration = 60;
@@ -62,6 +64,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       { error: kind === "receita" ? "Inclua pelo menos um medicamento" : "Inclua pelo menos um exame" },
       { status: 400 }
     );
+  }
+
+  // Medicamento controlado / antimicrobiano: a receita digital comum não
+  // vale (notificação A/B sempre; controle especial e retenção a partir
+  // de 30/10/2026, quando passa a exigir SNCR). A tela já avisa; aqui
+  // garante que não sai mesmo se alguém pular o aviso.
+  if (kind === "receita") {
+    const blocked = checkPrescription(items.map((it) => it.name)).filter((c) => c.blocked);
+    if (blocked.length > 0) {
+      return NextResponse.json({ error: blocked.map((c) => c.message).join(" "), controlled: blocked }, { status: 422 });
+    }
   }
 
   try {
@@ -135,6 +148,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       needs_print: true,
     });
     const [withUrl] = await signPatientDocuments([doc]);
+    await audit("doctor", {
+      action: "emitir_documento",
+      entity: "documento",
+      entityId: doc.path,
+      patientId: patient.id,
+      patientName: patient.full_name,
+      details: { tipo: kind, itens: items.length },
+    });
 
     return NextResponse.json({
       document: withUrl,

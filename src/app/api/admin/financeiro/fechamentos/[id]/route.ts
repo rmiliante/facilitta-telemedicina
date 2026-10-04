@@ -12,6 +12,7 @@ import {
   type PaymentMethod,
 } from "@/lib/finance";
 import { financeErrorResponse } from "@/lib/financeApi";
+import { audit } from "@/lib/audit";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -37,7 +38,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const body = await req.json().catch(() => ({}));
   try {
     if (body?.action === "desfazer_pagamento") {
-      return NextResponse.json({ payout: await unmarkPaid(id) });
+      const undone = await unmarkPaid(id);
+      await audit("staff", { action: "desfazer_pagamento", entity: "repasse", entityId: id, details: { medico: undone.doctors?.name, total: undone.total } });
+      return NextResponse.json({ payout: undone });
     }
     if (body?.action !== "pagar") return NextResponse.json({ error: "Ação inválida" }, { status: 400 });
     if (!isDayKey(body.paidAt)) return NextResponse.json({ error: "Informe a data do pagamento" }, { status: 400 });
@@ -47,6 +50,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const notes = typeof body.notes === "string" && body.notes.trim() ? body.notes.trim().slice(0, 500) : null;
     const staff = await getStaffSession();
     const payout = await markPaid(id, { paidAt: body.paidAt, method: body.method as PaymentMethod, notes }, staff?.name ?? "Administração");
+    await audit("staff", {
+      action: "pagar_repasse",
+      entity: "repasse",
+      entityId: id,
+      details: { medico: payout.doctors?.name, total: payout.total, data: payout.paid_at, forma: payout.payment_method },
+    });
     return NextResponse.json({ payout });
   } catch (err) {
     return financeErrorResponse(err, "Falha ao registrar o pagamento");
@@ -58,6 +67,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   const { id } = await params;
   try {
     await reopenPayout(id);
+    await audit("staff", { action: "reabrir_repasse", entity: "repasse", entityId: id });
     return NextResponse.json({ ok: true });
   } catch (err) {
     return financeErrorResponse(err, "Falha ao reabrir o fechamento");

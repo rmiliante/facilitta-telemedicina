@@ -17,5 +17,5 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   } catch (err) {
     return financeErrorResponse(err, "Falha ao enviar a nota fiscal");
   }
-  return handlePayoutUpload(req, id, "nf", session.name);
+  return handlePayoutUpload(req, id, "nf", session.name, "doctor");
 }

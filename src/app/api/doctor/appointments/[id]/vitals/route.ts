@@ -3,6 +3,7 @@ import { getDoctorSession } from "@/lib/auth";
 import { getOwnedAppointment } from "@/lib/appointments";
 import { cleanVitalValues, insertVitalSign, listVitalSigns, parseMeasuredAt } from "@/lib/vitalSigns";
 import { VITALS_MIGRATION_WARNING } from "@/lib/vitals";
+import { audit } from "@/lib/audit";
 
 /**
  * Aferições do paciente desta consulta, na tela do médico.
@@ -45,5 +46,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   });
   if (result.missingTable) return NextResponse.json({ error: VITALS_MIGRATION_WARNING }, { status: 503 });
   if (result.error) return NextResponse.json({ error: result.error }, { status: 500 });
+  await audit("doctor", { action: "registrar_afericao", entity: "afericao", entityId: id, patientId: appointment.patient_id, patientName: appointment.patients?.full_name ?? null });
   return NextResponse.json({ item: result.item });
 }

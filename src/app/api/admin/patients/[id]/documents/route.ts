@@ -6,6 +6,7 @@ import {
   type PatientDocument,
 } from "@/lib/patientDocuments";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { audit, patientName } from "@/lib/audit";
 
 /** GET /api/admin/patients/:id/documents — lista os documentos do paciente (com link temporário). */
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -22,6 +23,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const files = await signPatientDocuments((data.documents as PatientDocument[] | null) ?? []);
+  await audit("staff", { action: "ver_documentos", entity: "paciente", entityId: id, patientId: id, patientName: await patientName(id) });
   return NextResponse.json({ files });
 }
 
@@ -42,6 +44,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const updated = await addPatientDocuments(id, files, { source: "paciente" });
     const signed = await signPatientDocuments(updated);
+    await audit("staff", {
+      action: "anexar_documento",
+      entity: "documento",
+      patientId: id,
+      patientName: await patientName(id),
+      details: { arquivos: files.map((f) => f.name) },
+    });
     return NextResponse.json({ files: signed });
   } catch (err) {
     return NextResponse.json(
@@ -64,6 +73,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   try {
     const updated = await removePatientDocument(id, path);
     const signed = await signPatientDocuments(updated);
+    await audit("staff", { action: "remover_documento", entity: "documento", entityId: path, patientId: id, patientName: await patientName(id) });
     return NextResponse.json({ files: signed });
   } catch (err) {
     return NextResponse.json(
