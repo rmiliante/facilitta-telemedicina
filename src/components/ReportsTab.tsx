@@ -20,7 +20,10 @@ interface Report {
     pacientesAtendidos: number;
     duracaoMedia: number | null;
     cotaTotal: number;
+    valorReceber?: number;
+    especialidadesSemValor?: number;
   };
+  faturamento?: { disponivel: boolean; inicioContrato: string; primeiroMes: boolean; antesDoContrato: boolean };
   especialidades: {
     id: string;
     name: string;
@@ -32,6 +35,11 @@ interface Report {
     cancelados: number;
     taxaFaltas: number | null;
     duracaoMedia: number | null;
+    valorConsulta?: number | null;
+    faturadas?: number;
+    valorReceber?: number | null;
+    regra?: string;
+    regraLabel?: string;
   }[];
   medicos: { id: string; name: string; realizados: number; faltas: number; taxaFaltas: number | null; duracaoMedia: number | null }[];
   faltososRecorrentes: { id: string; name: string; phone: string | null; faltas: number; ultima: string }[];
@@ -53,6 +61,7 @@ function monthLabel(month: string) {
 }
 
 const p = (v: number | null) => (v === null ? "—" : `${v}%`);
+const money = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const mins = (v: number | null) => (v === null ? "—" : `${v} min`);
 
 /** Cor da barra de uso da cota: verde, amarelo a partir de 80%, vermelho no limite. */
@@ -96,6 +105,20 @@ function exportCsv(r: Report) {
     "",
     line(["Especialidade", "Cota", "Agendados", "Uso da cota (%)", "Realizados", "Faltas", "Taxa de faltas (%)", "Cancelados", "Duração média (min)"]),
     ...r.especialidades.map((s) => line([s.name, s.cota, s.agendados, s.usoCota, s.realizados, s.faltas, s.taxaFaltas, s.cancelados, s.duracaoMedia])),
+    "",
+    line(["Faturamento — especialidade", "Realizadas", "Cota", "Consultas cobradas", "Valor por consulta (R$)", "Valor a receber (R$)", "Regra"]),
+    ...r.especialidades.map((s) =>
+      line([
+        s.name,
+        s.realizados,
+        s.cota,
+        s.faturadas ?? null,
+        s.valorConsulta != null ? s.valorConsulta.toFixed(2).replace(".", ",") : null,
+        s.valorReceber != null ? s.valorReceber.toFixed(2).replace(".", ",") : null,
+        s.regraLabel ?? null,
+      ])
+    ),
+    line(["Valor final a receber (R$)", "", "", "", "", t.valorReceber != null ? t.valorReceber.toFixed(2).replace(".", ",") : "", ""]),
     "",
     line(["Médico", "Realizados", "Faltas", "Taxa de faltas (%)", "Duração média (min)"]),
     ...r.medicos.map((m) => line([m.name, m.realizados, m.faltas, m.taxaFaltas, m.duracaoMedia])),
@@ -186,6 +209,77 @@ export default function ReportsTab() {
             <Stat label="Pacientes atendidos" value={String(t.pacientesAtendidos)} sub="pessoas diferentes" />
             <Stat label="Duração média" value={mins(t.duracaoMedia)} sub="por atendimento" />
           </div>
+
+          <section className="rounded-xl border-2 border-brand-teal-dark bg-white p-4 print:break-inside-avoid">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-bold text-brand-navy">Faturamento do mês (prefeitura)</p>
+                <p className="text-xs text-zinc-500">
+                  {!data.faturamento?.disponivel
+                    ? "Falta rodar a atualização do banco (migration_valor_especialidade.sql)."
+                    : data.faturamento.antesDoContrato
+                      ? "Mês anterior ao início do contrato: sem faturamento."
+                      : data.faturamento.primeiroMes
+                        ? "Primeiro mês do contrato: cobrado pelas consultas realizadas."
+                        : "Mínimo da cota contratada por especialidade; acima da cota, cobra-se cada consulta realizada."}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Valor final a receber</p>
+                <p className="text-3xl font-extrabold text-brand-navy">
+                  {data.faturamento?.disponivel ? money(t.valorReceber ?? 0) : "—"}
+                </p>
+                {!data.faturamento?.antesDoContrato && (t.especialidadesSemValor ?? 0) > 0 && (
+                  <p className="text-[11px] text-amber-700">
+                    {t.especialidadesSemValor} especialidade(s) sem valor cadastrado — não entram no total
+                  </p>
+                )}
+              </div>
+            </div>
+            {data.faturamento?.disponivel && !data.faturamento.antesDoContrato && (
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-[11px] uppercase tracking-wide text-zinc-500">
+                      <th className="py-1.5 pr-3 font-semibold">Especialidade</th>
+                      <th className="py-1.5 pr-3 text-right font-semibold">Realizadas</th>
+                      <th className="py-1.5 pr-3 text-right font-semibold">Cota</th>
+                      <th className="py-1.5 pr-3 text-right font-semibold">Cobradas</th>
+                      <th className="py-1.5 pr-3 text-right font-semibold">Valor/consulta</th>
+                      <th className="py-1.5 pr-3 text-right font-semibold">A receber</th>
+                      <th className="py-1.5 font-semibold">Regra</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.especialidades.map((s) => (
+                      <tr key={s.id} className="border-t border-zinc-100">
+                        <td className="py-2 pr-3 text-brand-navy">{s.name}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums">{s.realizados}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums">{s.cota}</td>
+                        <td className="py-2 pr-3 text-right font-semibold tabular-nums">{s.faturadas ?? "—"}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums">
+                          {s.valorConsulta != null ? money(s.valorConsulta) : <span className="text-amber-700">não cadastrado</span>}
+                        </td>
+                        <td className="py-2 pr-3 text-right font-semibold tabular-nums text-brand-navy">
+                          {s.valorReceber != null ? money(s.valorReceber) : "—"}
+                        </td>
+                        <td className="py-2 text-xs text-zinc-500">{s.regraLabel}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-zinc-200">
+                      <td className="py-2 pr-3 font-bold text-brand-navy" colSpan={5}>
+                        Total
+                      </td>
+                      <td className="py-2 pr-3 text-right font-extrabold tabular-nums text-brand-navy">{money(t.valorReceber ?? 0)}</td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </section>
 
           <section className="rounded-xl border border-zinc-200 bg-white p-4 print:break-inside-avoid">
             <p className="mb-3 text-sm font-bold text-brand-navy">Cota por especialidade</p>

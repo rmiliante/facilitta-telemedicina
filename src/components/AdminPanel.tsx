@@ -21,6 +21,7 @@ interface Specialty {
   id: string;
   name: string;
   monthly_quota: number;
+  contract_fee?: number | string | null;
 }
 
 interface Doctor {
@@ -790,10 +791,12 @@ function SpecialtiesTab() {
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
   const [name, setName] = useState("");
   const [quota, setQuota] = useState("50");
+  const [contractFee, setContractFee] = useState("");
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editQuota, setEditQuota] = useState("");
+  const [editFee, setEditFee] = useState("");
   const [editSaving, setEditSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -813,15 +816,18 @@ function SpecialtiesTab() {
       const res = await fetch("/api/admin/specialties", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, monthlyQuota: Number(quota) || 50 }),
+        body: JSON.stringify({ name, monthlyQuota: Number(quota) || 50, contractFee }),
       });
       if (!res.ok) {
         const err = await res.json();
         alert(err.error);
         return;
       }
+      const created = await res.json().catch(() => ({}));
+      if (created.warning) alert(created.warning);
       setName("");
       setQuota("50");
+      setContractFee("");
       await load();
     } finally {
       setSaving(false);
@@ -832,6 +838,7 @@ function SpecialtiesTab() {
     setEditingId(s.id);
     setEditName(s.name);
     setEditQuota(String(s.monthly_quota));
+    setEditFee(feeInput(s.contract_fee));
   }
 
   async function handleDelete(s: Specialty) {
@@ -851,7 +858,7 @@ function SpecialtiesTab() {
       const res = await fetch(`/api/admin/specialties/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: editName, monthlyQuota: Number(editQuota) || 1 }),
+        body: JSON.stringify({ name: editName, monthlyQuota: Number(editQuota) || 1, contractFee: editFee }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -890,6 +897,16 @@ function SpecialtiesTab() {
             className="w-28 rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
           />
         </label>
+        <label className="text-xs">
+          <span className="mb-1 block font-medium text-zinc-600">Valor que recebemos por consulta (R$)</span>
+          <input
+            value={contractFee}
+            onChange={(e) => setContractFee(e.target.value)}
+            placeholder="ex: 120,00"
+            inputMode="decimal"
+            className="w-40 rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+          />
+        </label>
         <button
           disabled={saving}
           className="rounded-md bg-brand-navy px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
@@ -923,6 +940,16 @@ function SpecialtiesTab() {
                   className="w-28 rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
                 />
               </label>
+              <label className="text-xs">
+                <span className="mb-1 block font-medium text-zinc-600">Valor que recebemos por consulta (R$)</span>
+                <input
+                  value={editFee}
+                  onChange={(e) => setEditFee(e.target.value)}
+                  placeholder="ex: 120,00"
+                  inputMode="decimal"
+                  className="w-40 rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                />
+              </label>
               <button
                 onClick={() => saveEdit(s.id)}
                 disabled={editSaving}
@@ -944,7 +971,10 @@ function SpecialtiesTab() {
             >
               <div>
                 <span className="font-medium text-zinc-800">{s.name}</span>
-                <span className="ml-2 text-xs text-zinc-500">{s.monthly_quota} consultas/mês</span>
+                <span className="ml-2 text-xs text-zinc-500">
+                  {s.monthly_quota} consultas/mês ·{" "}
+                  {feeInput(s.contract_fee) ? `R$ ${feeInput(s.contract_fee)} por consulta` : <span className="text-amber-700">sem valor por consulta</span>}
+                </span>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <button
