@@ -21,7 +21,6 @@ interface Specialty {
   id: string;
   name: string;
   monthly_quota: number;
-  contract_fee?: number | string | null;
 }
 
 interface Doctor {
@@ -38,6 +37,7 @@ interface Doctor {
   rqe?: string | null;
   endereco_profissional?: string | null;
   consult_fee?: number | string | null;
+  contract_fee?: number | string | null;
   pix_key?: string | null;
   specialties: { name: string } | null;
 }
@@ -791,12 +791,10 @@ function SpecialtiesTab() {
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
   const [name, setName] = useState("");
   const [quota, setQuota] = useState("50");
-  const [contractFee, setContractFee] = useState("");
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editQuota, setEditQuota] = useState("");
-  const [editFee, setEditFee] = useState("");
   const [editSaving, setEditSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -816,18 +814,15 @@ function SpecialtiesTab() {
       const res = await fetch("/api/admin/specialties", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, monthlyQuota: Number(quota) || 50, contractFee }),
+        body: JSON.stringify({ name, monthlyQuota: Number(quota) || 50 }),
       });
       if (!res.ok) {
         const err = await res.json();
         alert(err.error);
         return;
       }
-      const created = await res.json().catch(() => ({}));
-      if (created.warning) alert(created.warning);
       setName("");
       setQuota("50");
-      setContractFee("");
       await load();
     } finally {
       setSaving(false);
@@ -838,7 +833,6 @@ function SpecialtiesTab() {
     setEditingId(s.id);
     setEditName(s.name);
     setEditQuota(String(s.monthly_quota));
-    setEditFee(feeInput(s.contract_fee));
   }
 
   async function handleDelete(s: Specialty) {
@@ -858,7 +852,7 @@ function SpecialtiesTab() {
       const res = await fetch(`/api/admin/specialties/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: editName, monthlyQuota: Number(editQuota) || 1, contractFee: editFee }),
+        body: JSON.stringify({ name: editName, monthlyQuota: Number(editQuota) || 1 }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -897,16 +891,6 @@ function SpecialtiesTab() {
             className="w-28 rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
           />
         </label>
-        <label className="text-xs">
-          <span className="mb-1 block font-medium text-zinc-600">Valor que recebemos por consulta (R$)</span>
-          <input
-            value={contractFee}
-            onChange={(e) => setContractFee(e.target.value)}
-            placeholder="ex: 120,00"
-            inputMode="decimal"
-            className="w-40 rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
-          />
-        </label>
         <button
           disabled={saving}
           className="rounded-md bg-brand-navy px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
@@ -940,16 +924,6 @@ function SpecialtiesTab() {
                   className="w-28 rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
                 />
               </label>
-              <label className="text-xs">
-                <span className="mb-1 block font-medium text-zinc-600">Valor que recebemos por consulta (R$)</span>
-                <input
-                  value={editFee}
-                  onChange={(e) => setEditFee(e.target.value)}
-                  placeholder="ex: 120,00"
-                  inputMode="decimal"
-                  className="w-40 rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
-                />
-              </label>
               <button
                 onClick={() => saveEdit(s.id)}
                 disabled={editSaving}
@@ -971,10 +945,7 @@ function SpecialtiesTab() {
             >
               <div>
                 <span className="font-medium text-zinc-800">{s.name}</span>
-                <span className="ml-2 text-xs text-zinc-500">
-                  {s.monthly_quota} consultas/mês ·{" "}
-                  {feeInput(s.contract_fee) ? `R$ ${feeInput(s.contract_fee)} por consulta` : <span className="text-amber-700">sem valor por consulta</span>}
-                </span>
+                <span className="ml-2 text-xs text-zinc-500">{s.monthly_quota} consultas/mês</span>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <button
@@ -1091,10 +1062,10 @@ function feeInput(value: number | string | null | undefined): string {
 function DoctorsTab() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
-  const [form, setForm] = useState({ name: "", email: "", password: "", specialtyId: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "", consultFee: "", pixKey: "" });
+  const [form, setForm] = useState({ name: "", email: "", password: "", specialtyId: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "", consultFee: "", contractFee: "", pixKey: "" });
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", email: "", specialtyId: "", password: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "", consultFee: "", pixKey: "" });
+  const [editForm, setEditForm] = useState({ name: "", email: "", specialtyId: "", password: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "", consultFee: "", contractFee: "", pixKey: "" });
   const [editSaving, setEditSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -1127,7 +1098,7 @@ function DoctorsTab() {
       }
       const created = await res.json().catch(() => ({}));
       if (created.warning) alert(created.warning);
-      setForm({ name: "", email: "", password: "", specialtyId: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "", consultFee: "", pixKey: "" });
+      setForm({ name: "", email: "", password: "", specialtyId: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "", consultFee: "", contractFee: "", pixKey: "" });
       await load();
     } finally {
       setSaving(false);
@@ -1156,6 +1127,7 @@ function DoctorsTab() {
       rqe: d.rqe ?? "",
       enderecoProfissional: d.endereco_profissional ?? "",
       consultFee: feeInput(d.consult_fee),
+      contractFee: feeInput(d.contract_fee),
       pixKey: d.pix_key ?? "",
     });
   }
@@ -1184,6 +1156,7 @@ function DoctorsTab() {
         rqe: editForm.rqe,
         enderecoProfissional: editForm.enderecoProfissional,
         consultFee: editForm.consultFee,
+        contractFee: editForm.contractFee,
         pixKey: editForm.pixKey,
       };
       if (editForm.password) body.password = editForm.password;
@@ -1308,7 +1281,7 @@ function DoctorsTab() {
             />
           </label>
           <label className="text-xs sm:col-span-2">
-            <span className="mb-1 block font-medium text-zinc-600">Valor por consulta (R$)</span>
+            <span className="mb-1 block font-medium text-zinc-600">Valor que o médico recebe por consulta (R$)</span>
             <input
               value={form.consultFee}
               onChange={(e) => setForm((f) => ({ ...f, consultFee: e.target.value }))}
@@ -1317,6 +1290,17 @@ function DoctorsTab() {
               className="w-full max-w-xs rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
             />
             <span className="mt-1 block text-[11px] text-zinc-400">Vale para as próximas consultas concluídas; as já concluídas mantêm o valor da época.</span>
+          </label>
+          <label className="text-xs sm:col-span-2">
+            <span className="mb-1 block font-medium text-zinc-600">Valor que recebemos por consulta (R$)</span>
+            <input
+              value={form.contractFee}
+              onChange={(e) => setForm((f) => ({ ...f, contractFee: e.target.value }))}
+              placeholder="ex: 120,00"
+              inputMode="decimal"
+              className="w-full max-w-xs rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+            />
+            <span className="mt-1 block text-[11px] text-zinc-400">Pago pela prefeitura; entra no faturamento dos Relatórios. Só aparece aqui no admin — o médico não vê.</span>
           </label>
           <label className="text-xs sm:col-span-2">
             <span className="mb-1 block font-medium text-zinc-600">Chave PIX (repasse)</span>
@@ -1441,7 +1425,7 @@ function DoctorsTab() {
                   />
                 </label>
                 <label className="text-xs sm:col-span-2">
-                  <span className="mb-1 block font-medium text-zinc-600">Valor por consulta (R$)</span>
+                  <span className="mb-1 block font-medium text-zinc-600">Valor que o médico recebe por consulta (R$)</span>
                   <input
                     value={editForm.consultFee}
                     onChange={(e) => setEditForm((f) => ({ ...f, consultFee: e.target.value }))}
@@ -1450,6 +1434,17 @@ function DoctorsTab() {
                     className="w-full max-w-xs rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
                   />
                   <span className="mt-1 block text-[11px] text-zinc-400">Vale para as próximas consultas concluídas; as já concluídas mantêm o valor da época.</span>
+                </label>
+                <label className="text-xs sm:col-span-2">
+                  <span className="mb-1 block font-medium text-zinc-600">Valor que recebemos por consulta (R$)</span>
+                  <input
+                    value={editForm.contractFee}
+                    onChange={(e) => setEditForm((f) => ({ ...f, contractFee: e.target.value }))}
+                    placeholder="ex: 120,00"
+                    inputMode="decimal"
+                    className="w-full max-w-xs rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                  />
+                  <span className="mt-1 block text-[11px] text-zinc-400">Pago pela prefeitura; entra no faturamento dos Relatórios. Só aparece aqui no admin — o médico não vê.</span>
                 </label>
                 <label className="text-xs sm:col-span-2">
                   <span className="mb-1 block font-medium text-zinc-600">Chave PIX (repasse)</span>
@@ -1488,7 +1483,8 @@ function DoctorsTab() {
                 <p className="font-medium text-zinc-800">{d.name}</p>
                 <p className="text-xs text-zinc-500">
                   {d.email} {d.specialties?.name ? `· ${d.specialties.name}` : ""}
-                  {feeInput(d.consult_fee) ? ` · R$ ${feeInput(d.consult_fee)} por consulta` : " · sem valor por consulta"}
+                  {feeInput(d.consult_fee) ? ` · médico recebe R$ ${feeInput(d.consult_fee)}` : " · sem valor por consulta"}
+                  {feeInput(d.contract_fee) ? ` · recebemos R$ ${feeInput(d.contract_fee)}` : <span className="text-amber-700"> · sem valor que recebemos</span>}
                   {d.pix_key ? ` · PIX: ${d.pix_key}` : ""}
                 </p>
                 {d.cpf && d.crm && d.crm_uf ? (

@@ -1,32 +1,48 @@
 /**
- * Contrato com a prefeitura: quanto a Facilitta recebe por consulta em
- * cada especialidade (specialties.contract_fee) e como o mês é cobrado.
+ * Contrato com a prefeitura: quanto a Facilitta recebe por consulta
+ * (cadastro de cada médico, doctors.contract_fee, congelado na consulta
+ * em appointments.contract_fee) e como o mês é cobrado por especialidade.
  *
  * Regra combinada:
  * - A partir de outubro/2026: mínimo garantido da cota mensal (ex.: 50
- *   consultas) × valor. Se as consultas realizadas passarem da cota,
- *   cobra-se realizadas × valor.
- * - Setembro/2026 (primeiro mês): só as consultas realizadas × valor.
+ *   consultas). Se as consultas realizadas passarem da cota, cobra-se
+ *   cada consulta realizada.
+ * - Setembro/2026 (primeiro mês): só as consultas realizadas.
  * - Antes de setembro/2026: sem faturamento (contrato ainda não começou).
+ *
+ * Cada consulta realizada vale o que estava combinado com o médico que a
+ * atendeu. As consultas que faltam para completar a cota valem a média
+ * das realizadas no mês (ou, sem nenhuma, a média do valor atual dos
+ * médicos ativos da especialidade).
  */
 
 export const CONTRACT_START_MONTH = "2026-09";
-
-export const CONTRACT_FEE_WARNING =
-  "Especialidade salva, mas o valor por consulta NÃO foi gravado: rode supabase/migration_valor_especialidade.sql no Supabase.";
 
 export type BillingRule = "sem_contrato" | "sem_valor" | "realizadas" | "minimo" | "excedente";
 
 export const BILLING_RULE_LABEL: Record<BillingRule, string> = {
   sem_contrato: "Antes do início do contrato",
-  sem_valor: "Valor por consulta não cadastrado",
+  sem_valor: "Falta o valor no cadastro do médico",
   realizadas: "1º mês: consultas realizadas",
   minimo: "Mínimo da cota contratada",
   excedente: "Acima da cota: consultas realizadas",
 };
 
-/** Quantas consultas são cobradas no mês e por qual regra. */
-export function billing(month: string, realizadas: number, cota: number, valorConsulta: number | null) {
+const round = (v: number) => Math.round(v * 100) / 100;
+
+/**
+ * Faturamento de uma especialidade no mês.
+ * @param fees valor de cada consulta realizada (null = sem valor gravado)
+ * @param valorReferencia valor atual dos médicos da especialidade, usado
+ *   para completar a cota quando não houve consulta realizada com valor
+ */
+export function billing(month: string, fees: (number | null)[], cota: number, valorReferencia: number | null) {
+  const realizadas = fees.length;
+  const semValor = fees.filter((f) => f === null).length;
+  const comValor = fees.filter((f): f is number => f !== null);
+  const soma = comValor.reduce((a, b) => a + b, 0);
+  const media = comValor.length ? soma / comValor.length : valorReferencia;
+
   let rule: BillingRule;
   let faturadas: number;
   if (month < CONTRACT_START_MONTH) {
@@ -42,9 +58,12 @@ export function billing(month: string, realizadas: number, cota: number, valorCo
     rule = "minimo";
     faturadas = cota;
   }
-  if (rule !== "sem_contrato" && valorConsulta === null) {
-    return { rule: "sem_valor" as BillingRule, faturadas, valor: null };
+  const valorMedio = media === null ? null : round(media);
+  if (rule === "sem_contrato") return { rule, faturadas, valor: 0, valorMedio, semValor };
+
+  const complemento = faturadas - realizadas; // consultas que completam a cota
+  if (semValor > 0 || (complemento > 0 && media === null)) {
+    return { rule: "sem_valor" as BillingRule, faturadas, valor: null, valorMedio, semValor };
   }
-  const valor = rule === "sem_contrato" ? 0 : Math.round(faturadas * (valorConsulta ?? 0) * 100) / 100;
-  return { rule, faturadas, valor };
+  return { rule, faturadas, valor: round(soma + complemento * (media ?? 0)), valorMedio, semValor };
 }

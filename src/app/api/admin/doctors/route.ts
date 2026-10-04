@@ -6,16 +6,18 @@ import { audit } from "@/lib/audit";
 
 export async function GET() {
   const supabase = getSupabaseAdmin();
-  const columns =
-    "id, name, email, specialty_id, active, memed_email, memed_linked_at, created_at, cpf, crm, crm_uf, rqe, endereco_profissional, consult_fee, pix_key, specialties(name)";
-  const run = (cols: string) => supabase.from("doctors").select(cols).order("name", { ascending: true });
-  let { data, error } = await run(columns);
-  // Colunas de migrações que podem não ter sido rodadas ainda (valor por
-  // consulta, RQE/endereço, receita digital) — tira da mais nova pra mais antiga.
-  if (error?.code === "42703") ({ data, error } = await run(columns.replace(", pix_key", "")));
-  if (error?.code === "42703") ({ data, error } = await run(columns.replace(", consult_fee, pix_key", "")));
-  if (error?.code === "42703") ({ data, error } = await run(columns.replace(", rqe, endereco_profissional, consult_fee, pix_key", "")));
-  if (error?.code === "42703") ({ data, error } = await run(columns.replace(", cpf, crm, crm_uf, rqe, endereco_profissional, consult_fee, pix_key", "")));
+  // Colunas de migrações que podem não ter sido rodadas ainda — tira da
+  // mais nova pra mais antiga até a consulta passar.
+  const base = "id, name, email, specialty_id, active, memed_email, memed_linked_at, created_at";
+  const optional = ["cpf, crm, crm_uf", "rqe, endereco_profissional", "consult_fee", "pix_key", "contract_fee"];
+  const run = (n: number) =>
+    supabase
+      .from("doctors")
+      .select([base, ...optional.slice(0, n), "specialties(name)"].join(", "))
+      .order("name", { ascending: true });
+  let n = optional.length;
+  let { data, error } = await run(n);
+  while (error?.code === "42703" && n > 0) ({ data, error } = await run(--n));
 
   if (error) {
     console.error("Erro ao buscar médicos:", error);
@@ -25,7 +27,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const { name, email, password, specialtyId, memedEmail, cpf, crm, crmUf, rqe, enderecoProfissional, consultFee, pixKey } = await req.json().catch(() => ({}));
+  const { name, email, password, specialtyId, memedEmail, cpf, crm, crmUf, rqe, enderecoProfissional, consultFee, contractFee, pixKey } = await req.json().catch(() => ({}));
 
   if (
     typeof name !== "string" ||
@@ -45,6 +47,10 @@ export async function POST(req: NextRequest) {
   if (fee === undefined) {
     return NextResponse.json({ error: "Valor por consulta inválido (ex: 70,00)" }, { status: 400 });
   }
+  const received = parseConsultFee(contractFee);
+  if (received === undefined) {
+    return NextResponse.json({ error: "Valor que recebemos por consulta inválido (ex: 120,00)" }, { status: 400 });
+  }
 
   const passwordHash = await bcrypt.hash(password, 10);
   const supabase = getSupabaseAdmin();
@@ -57,6 +63,7 @@ export async function POST(req: NextRequest) {
     memed_email: typeof memedEmail === "string" && memedEmail.trim() ? memedEmail.trim().toLowerCase() : null,
     ...professionalFields({ cpf, crm, crmUf, rqe, enderecoProfissional, pixKey }),
     consult_fee: fee,
+    contract_fee: received,
   };
   const insert = (r: Record<string, unknown>) =>
     supabase.from("doctors").insert(r).select("id, name, email, specialty_id, active, memed_email, created_at").single();

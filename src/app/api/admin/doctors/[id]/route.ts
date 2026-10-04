@@ -29,6 +29,14 @@ export async function PATCH(
     }
     update.consult_fee = fee;
   }
+  // Valor que a Facilitta recebe da prefeitura por consulta deste médico.
+  if ("contractFee" in body) {
+    const received = parseConsultFee(body.contractFee);
+    if (received === undefined) {
+      return NextResponse.json({ error: "Valor que recebemos por consulta inválido (ex: 120,00)" }, { status: 400 });
+    }
+    update.contract_fee = received;
+  }
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: "Nada para atualizar" }, { status: 400 });
@@ -48,6 +56,17 @@ export async function PATCH(
 
   if (error) {
     return NextResponse.json({ error: "Falha ao atualizar médico" }, { status: 500 });
+  }
+  // Consultas já concluídas que ficaram sem valor (cadastro em branco na
+  // época) passam a usar o valor informado agora. As que já tinham valor
+  // continuam com o valor combinado na data.
+  if (typeof update.contract_fee === "number") {
+    await supabase
+      .from("appointments")
+      .update({ contract_fee: update.contract_fee })
+      .eq("doctor_id", id)
+      .eq("status", "concluido")
+      .is("contract_fee", null);
   }
   await audit("staff", {
     action: "alterar_medico",
