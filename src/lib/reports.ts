@@ -1,11 +1,13 @@
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { monthRange } from "@/lib/finance";
+import { billing, BILLING_RULE_LABEL, CONTRACT_START_MONTH } from "@/lib/contract";
 
 /**
  * Relatório mensal (prestação de contas à prefeitura): uso da cota por
  * especialidade, comparecimento, faltas, cancelamentos, pacientes
  * atendidos, duração média e produção por médico. Também lista quem
- * faltou várias vezes nos últimos 90 dias.
+ * faltou várias vezes nos últimos 90 dias e calcula o valor a receber da
+ * prefeitura (regra do contrato em lib/contract.ts).
  */
 
 interface Row {
@@ -50,7 +52,7 @@ export async function monthlyReport(month: string) {
       .select("id, status, patient_id, specialty_id, doctor_id, called_at, finished_at, specialties(name), doctors(name)")
       .gte("scheduled_at", start)
       .lt("scheduled_at", end),
-    supabase.from("specialties").select("id, name, monthly_quota").order("name", { ascending: true }),
+    supabase.from("specialties").select("id, name, monthly_quota, contract_fee").order("name", { ascending: true }),
     supabase
       .from("appointments")
       .select("patient_id, scheduled_at, patients(full_name, phone)")
@@ -58,10 +60,21 @@ export async function monthlyReport(month: string) {
       .gte("scheduled_at", since90)
       .lt("scheduled_at", end),
   ]);
-  for (const r of [apptRes, specRes, faltasRes]) if (r.error) throw r.error;
+  // Sem a migração do valor por especialidade: relatório sai sem faturamento.
+  let specData = specRes.data as unknown[] | null;
+  let valorDisponivel = true;
+  if (specRes.error && /contract_fee/.test(specRes.error.message ?? "")) {
+    valorDisponivel = false;
+    const retry = await supabase.from("specialties").select("id, name, monthly_quota").order("name", { ascending: true });
+    if (retry.error) throw retry.error;
+    specData = retry.data;
+  } else if (specRes.error) {
+    throw specRes.error;
+  }
+  for (const r of [apptRes, faltasRes]) if (r.error) throw r.error;
 
   const rows = (apptRes.data ?? []) as unknown as Row[];
-  const specs = (specRes.data ?? []) as { id: string; name: string; monthly_quota: number }[];
+  const specs = (specData ?? []) as { id: string; name: string; monthly_quota: number; contract_fee?: number | string | null }[];
   const count = (list: Row[], status: string) => list.filter((r) => r.status === status).length;
 
   const especialidades = specs
@@ -70,10 +83,17 @@ export async function monthlyReport(month: string) {
       const naoCancelados = list.filter((r) => r.status !== "cancelado").length;
       const realizados = count(list, "concluido");
       const faltas = count(list, "faltou");
+      const fee = s.contract_fee === null || s.contract_fee === undefined || s.contract_fee === "" ? null : Number(s.contract_fee);
+      const fat = billing(month, realizados, s.monthly_quota, fee);
       return {
         id: s.id,
         name: s.name,
         cota: s.monthly_quota,
+        valorConsulta: fee,
+        faturadas: fat.faturadas,
+        valorReceber: fat.valor,
+        regra: fat.rule,
+        regraLabel: BILLING_RULE_LABEL[fat.rule],
         agendados: naoCancelados,
         usoCota: pct(naoCancelados, s.monthly_quota),
         realizados,
@@ -116,6 +136,9 @@ export async function monthlyReport(month: string) {
     pacientesAtendidos: new Set(rows.filter((r) => r.status === "concluido").map((r) => r.patient_id)).size,
     duracaoMedia: avg(rows.map(duration).filter((m): m is number => m !== null)),
     cotaTotal: especialidades.reduce((a, s) => a + s.cota, 0),
+    // Valor final a receber da prefeitura no mês (soma das especialidades com valor cadastrado).
+    valorReceber: Math.round(especialidades.reduce((a, s) => a + (s.valorReceber ?? 0), 0) * 100) / 100,
+    especialidadesSemValor: especialidades.filter((s) => s.regra === "sem_valor").length,
   };
 
   // Faltas recorrentes: 2 ou mais nos últimos 90 dias (até o fim do mês).
@@ -135,7 +158,19 @@ export async function monthlyReport(month: string) {
     .map(([id, v]) => ({ id, ...v }))
     .sort((a, b) => b.faltas - a.faltas || b.ultima.localeCompare(a.ultima));
 
-  return { month, totais, especialidades, medicos, faltososRecorrentes };
+  return {
+    month,
+    totais,
+    especialidades,
+    medicos,
+    faltososRecorrentes,
+    faturamento: {
+      disponivel: valorDisponivel,
+      inicioContrato: CONTRACT_START_MONTH,
+      primeiroMes: month === CONTRACT_START_MONTH,
+      antesDoContrato: month < CONTRACT_START_MONTH,
+    },
+  };
 }
 
 /**
