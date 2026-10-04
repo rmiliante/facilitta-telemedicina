@@ -252,7 +252,7 @@ export default function FinanceTab({ readOnly = false }: { readOnly?: boolean })
                       <p className="font-semibold text-brand-navy">{r.name}</p>
                       <p className="text-xs text-zinc-500">
                         {r.valorConsulta !== null ? `${fmtMoney(r.valorConsulta)} por consulta (atual)` : (
-                          <span className="text-amber-700">Sem valor por consulta — cadastre em Médicos</span>
+                          <span className="text-amber-700">{readOnly ? "Sem valor por consulta" : "Sem valor por consulta — cadastre em Médicos"}</span>
                         )}
                       </p>
                       <p className="flex flex-wrap items-center gap-1 text-xs text-zinc-500">
