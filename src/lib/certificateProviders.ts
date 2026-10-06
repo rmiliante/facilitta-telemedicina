@@ -19,7 +19,7 @@ export interface CertificateProvider {
 
 function birdIdApproval(): ApprovalType {
   // A forma de aprovar o BirdID na API depende da Prescreve; ajustável por env sem mexer no código.
-  return process.env.BIRDID_APPROVAL === "otp" ? "otp" : "push";
+  return process.env.BIRDID_APPROVAL === "push" ? "push" : "otp";
 }
 
 export function listCertificates(): CertificateProvider[] {
