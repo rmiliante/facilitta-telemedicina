@@ -8,6 +8,7 @@ import PatientTimeline from "./PatientTimeline";
 import TipoConsultaBadge, { TipoConsultaChoice, tipoSuffix } from "./TipoConsultaBadge";
 import VitalSignsPanel from "./VitalSigns";
 import type { TimelineAppointment, TimelineDoc } from "@/lib/patientTimeline";
+import { publicOrigin } from "@/lib/format";
 
 interface Doctor {
   id: string;
@@ -383,7 +384,7 @@ function FilaTab() {
   const [scheduledPatientIds, setScheduledPatientIds] = useState<Set<string>>(new Set());
 
   function copyBoothLink() {
-    const url = `${window.location.origin}/atendimento`;
+    const url = `${publicOrigin()}/atendimento`;
     navigator.clipboard.writeText(url).then(() => {
       setBoothCopied(true);
       setTimeout(() => setBoothCopied(false), 2000);
@@ -529,7 +530,7 @@ function FilaTab() {
   }
 
   function copyLink(item: QueueItem) {
-    const url = `${window.location.origin}/paciente/${item.access_token}`;
+    const url = `${publicOrigin()}/paciente/${item.access_token}`;
     navigator.clipboard.writeText(url).then(() => {
       setCopiedId(item.id);
       setTimeout(() => setCopiedId(null), 2000);
