@@ -79,3 +79,13 @@ export function safeHttpUrl(value: unknown): string | null {
     return null;
   }
 }
+
+/** Endereço público da plataforma: links copiados/enviados usam o domínio oficial, não o *.vercel.app. */
+export const PUBLIC_SITE_URL = "https://facilittasaude.tec.br";
+
+export function publicOrigin(): string {
+  if (typeof window !== "undefined" && /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)) {
+    return window.location.origin;
+  }
+  return PUBLIC_SITE_URL;
+}
