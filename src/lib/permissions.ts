@@ -48,12 +48,13 @@ export type AdminTab =
   | "medicos"
   | "captacao"
   | "especialidades"
+  | "manuais"
   | "equipe"
   | "auditoria";
 
 /** Telas do /admin por nível (o atendente usa o /atendente). */
 export const ROLE_TABS: Record<StaffRole, AdminTab[]> = {
-  master: ["dashboard", "agenda", "historico", "financeiro", "relatorios", "pacientes", "medicos", "captacao", "especialidades", "equipe", "auditoria"],
+  master: ["dashboard", "agenda", "historico", "financeiro", "relatorios", "pacientes", "medicos", "captacao", "especialidades", "manuais", "equipe", "auditoria"],
   gestor: ["dashboard", "agenda", "historico", "financeiro", "relatorios", "pacientes"],
   financeiro: ["dashboard", "historico", "financeiro", "relatorios"],
   prefeitura: ["dashboard", "relatorios"],
