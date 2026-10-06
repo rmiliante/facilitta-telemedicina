@@ -26,6 +26,7 @@ interface Application {
   crm: string | null;
   crm_uf: string | null;
   specialty: string | null;
+  specializations?: string[] | null;
   profession?: string | null;
   collaboration?: string | null;
   comments?: string | null;
@@ -241,6 +242,7 @@ export default function CaptacaoFunil() {
   const [fOrigin, setFOrigin] = useState("");
   const [fCollab, setFCollab] = useState("");
   const [fSpecialty, setFSpecialty] = useState("");
+  const [fSpecs, setFSpecs] = useState<string[]>([]);
   const [fCity, setFCity] = useState("");
   const [fStage, setFStage] = useState<"" | Stage>("");
 
@@ -284,9 +286,10 @@ export default function CaptacaoFunil() {
       professions: uniq(apps.map(profession)),
       collabs: uniq(apps.map((a) => a.collaboration)),
       specialties: uniq(apps.map((a) => a.specialty)),
+      specs: uniq(apps.filter((a) => !fSpecialty || a.specialty === fSpecialty).flatMap((a) => a.specializations ?? [])),
       cities: uniq(apps.map((a) => a.city)),
     };
-  }, [apps]);
+  }, [apps, fSpecialty]);
 
   const counts = useMemo(() => {
     const c: Record<Stage, number> = { novo: 0, em_avaliacao: 0, falta_cadastro: 0, incompleto: 0, assinatura: 0, atendendo: 0, recusado: 0 };
@@ -297,12 +300,14 @@ export default function CaptacaoFunil() {
   const filtered = apps.filter((a) => {
     if (search) {
       const q = search.toLowerCase();
-      if (![a.name, a.email, a.crm ?? ""].some((v) => v.toLowerCase().includes(q))) return false;
+      const hay = [a.name, a.email, a.crm ?? "", a.specialty ?? "", ...(a.specializations ?? [])];
+      if (!hay.some((v) => v.toLowerCase().includes(q))) return false;
     }
     if (fProfession && profession(a) !== fProfession) return false;
     if (fOrigin && originOf(a) !== fOrigin) return false;
     if (fCollab && a.collaboration !== fCollab) return false;
     if (fSpecialty && a.specialty !== fSpecialty) return false;
+    if (fSpecs.length > 0 && !fSpecs.some((s) => (a.specializations ?? []).includes(s))) return false;
     if (fCity && a.city !== fCity) return false;
     if (fStage && stageOf(a) !== fStage) return false;
     return true;
@@ -442,7 +447,7 @@ export default function CaptacaoFunil() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 bg-white p-3">
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar nome, e-mail ou registro" className={`w-52 ${input}`} />
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar nome, e-mail, registro ou especialidade" className={`w-64 ${input}`} />
         <select value={fProfession} onChange={(e) => setFProfession(e.target.value)} className={input} aria-label="Profissão">
           <option value="">Profissão: todas</option>
           {opts.professions.map((v) => (
@@ -460,12 +465,40 @@ export default function CaptacaoFunil() {
             <option key={v}>{v}</option>
           ))}
         </select>
-        <select value={fSpecialty} onChange={(e) => setFSpecialty(e.target.value)} className={input} aria-label="Especialidade">
+        <select
+          value={fSpecialty}
+          onChange={(e) => {
+            setFSpecialty(e.target.value);
+            setFSpecs([]);
+          }}
+          className={input}
+          aria-label="Especialidade"
+        >
           <option value="">Especialidade: todas</option>
           {opts.specialties.map((v) => (
-            <option key={v}>{v}</option>
+            <option key={v} value={v}>
+              {v} ({apps.filter((a) => a.specialty === v).length})
+            </option>
           ))}
         </select>
+        {fSpecialty && opts.specs.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1 rounded-md border border-teal-200 bg-teal-50/50 px-2 py-1" aria-label="Especializações">
+            <span className="text-xs font-medium text-teal-800">{fSpecialty} ›</span>
+            {opts.specs.map((s) => {
+              const on = fSpecs.includes(s);
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setFSpecs(on ? fSpecs.filter((x) => x !== s) : [...fSpecs, s])}
+                  className={`rounded-full border px-2 py-0.5 text-xs ${on ? "border-teal-700 bg-teal-700 text-white" : "border-teal-200 bg-white text-teal-800 hover:bg-teal-50"}`}
+                >
+                  {s}
+                </button>
+              );
+            })}
+          </div>
+        )}
         <select value={fCity} onChange={(e) => setFCity(e.target.value)} className={input} aria-label="Cidade">
           <option value="">Cidade: todas</option>
           {opts.cities.map((v) => (
@@ -488,6 +521,7 @@ export default function CaptacaoFunil() {
             setFOrigin("");
             setFCollab("");
             setFSpecialty("");
+            setFSpecs([]);
             setFCity("");
             setFStage("");
           }}
@@ -527,7 +561,10 @@ export default function CaptacaoFunil() {
                     </button>
                   </td>
                   <td className="px-3 py-2.5 text-zinc-600">{profession(a)}</td>
-                  <td className="px-3 py-2.5 text-zinc-600">{a.specialty || "—"}</td>
+                  <td className="px-3 py-2.5 text-zinc-600">
+                    {a.specialty || "—"}
+                    {(a.specializations ?? []).length > 0 && <span className="block text-xs text-zinc-400">› {(a.specializations ?? []).join(", ")}</span>}
+                  </td>
                   <td className="px-3 py-2.5 text-zinc-600">{a.city ? `${a.city}${a.state ? ` - ${a.state}` : ""}` : a.state || "—"}</td>
                   <td className="max-w-[130px] truncate px-3 py-2.5 text-zinc-600" title={a.collaboration ?? ""}>
                     {a.collaboration || "—"}
@@ -645,6 +682,7 @@ function Ficha({
             <p className="text-xs text-zinc-500">
               {profession(app)}
               {app.specialty ? ` · ${app.specialty}` : ""}
+              {(app.specializations ?? []).length > 0 ? ` › ${(app.specializations ?? []).join(", ")}` : ""}
               {app.experience_years ? ` · ${app.experience_years} anos de experiência` : ""}
             </p>
             {waiting !== null && waiting >= 7 && <p className="mt-0.5 text-xs font-medium text-amber-700">Sem resposta há {waiting} dias</p>}
