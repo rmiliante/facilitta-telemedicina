@@ -73,6 +73,7 @@ const NAV_ITEMS = [
   { href: "/medico/atendimentos", label: "Atendimentos", icon: <IconList /> },
   { href: "/medico/historico", label: "Histórico de atendimentos", icon: <IconChart /> },
   { href: "/medico/financeiro", label: "Financeiro", icon: <IconMoney /> },
+  { href: "/medico/manuais", label: "Manuais", icon: <IconList /> },
   { href: "/medico/assinatura", label: "Minha assinatura", icon: <IconPen /> },
   { href: "/medico/cadastro", label: "Meu cadastro", icon: <IconUser /> },
 ];
