@@ -572,7 +572,7 @@ export default function CaptacaoFunil() {
               <th className="px-3 py-2.5">Origem</th>
               <th className="px-3 py-2.5">Etapa</th>
               <th className="px-3 py-2.5">Sem resposta</th>
-              <th className="px-3 py-2.5">Ações</th>
+              <th className="sticky right-0 border-l border-zinc-100 bg-white px-3 py-2.5">Ações</th>
             </tr>
           </thead>
           <tbody>
@@ -615,7 +615,7 @@ export default function CaptacaoFunil() {
                       <span className={days >= 7 ? "font-semibold text-amber-700" : "text-zinc-500"}>{days} d</span>
                     )}
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="sticky right-0 border-l border-zinc-100 bg-white px-3 py-2.5">
                     <div className="flex gap-1.5">
                       <button onClick={() => setSelected(a)} className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50">
                         Abrir
