@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { BRAZIL_STATES, uploadApplicationPhoto } from "@/lib/doctorApplications";
+import { normalizeSpecialty } from "@/lib/specialtyNormalize";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // A Vercel recusa requisições acima de ~4,5 MB antes de chegar aqui,
@@ -83,7 +84,8 @@ export async function POST(req: NextRequest) {
     name,
     crm,
     crm_uf: crmUf,
-    specialty,
+    specialty: normalizeSpecialty("Médico(a)", specialty),
+    specialty_raw: specialty,
     experience_years: experienceYears,
     email,
     whatsapp,
