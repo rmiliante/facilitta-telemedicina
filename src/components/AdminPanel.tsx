@@ -1,6 +1,7 @@
 "use client";
 
 import CaptacaoFunil from "@/components/CaptacaoFunil";
+import ManuaisTab, { ManuaisSubmenu, MANUAIS_CATEGORY_EVENT } from "@/components/ManuaisTab";
 import DashboardTabs from "./DashboardTabs";
 import { useEffect, useState, useCallback } from "react";
 import VitalSignsPanel from "./VitalSigns";
@@ -215,6 +216,7 @@ const NAV_ITEMS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: "medicos", label: "Médicos", icon: <IconStethoscope /> },
   { key: "captacao", label: "Captação", icon: <IconClipboard /> },
   { key: "especialidades", label: "Especialidades", icon: <IconTag /> },
+  { key: "manuais", label: "Manuais", icon: <IconReport /> },
   { key: "equipe", label: "Equipe", icon: <IconTeam /> },
   { key: "auditoria", label: "Auditoria", icon: <IconShield /> },
 ];
@@ -279,6 +281,12 @@ function AdminSidebar({
                 {item.icon}
                 {item.label}
               </button>
+              {item.key === "manuais" && (
+                <ManuaisSubmenu
+                  active={tab === "manuais"}
+                  onSelect={(id) => window.dispatchEvent(new CustomEvent(MANUAIS_CATEGORY_EVENT, { detail: id }))}
+                />
+              )}
             </li>
           ))}
           {/* Mesmo visual dos outros itens, mas em vez de abrir uma tela
@@ -403,6 +411,7 @@ export default function AdminPanel({ role }: { role: StaffRole }) {
           <div className={tab === "historico" || tab === "financeiro" || tab === "relatorios" || tab === "auditoria" ? "mx-auto max-w-6xl" : tab === "dashboard" ? "mx-auto max-w-6xl" : "mx-auto max-w-4xl"}>
             {tab === "dashboard" && <DashboardTabs consultas={<DashboardTab />} />}
             {tab === "especialidades" && <SpecialtiesTab />}
+            {tab === "manuais" && <ManuaisTab />}
             {tab === "medicos" && <DoctorsTab />}
             {tab === "captacao" && <CaptacaoFunil />}
             {tab === "pacientes" && <PatientsTab />}
