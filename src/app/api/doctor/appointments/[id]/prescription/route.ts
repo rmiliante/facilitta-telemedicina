@@ -5,8 +5,6 @@ import { clearSigningSession, getSigningDoctor, refreshSigningState } from "@/li
 import { addGeneratedPatientDocument, signPatientDocuments } from "@/lib/patientDocuments";
 import { buildPrescriptionPdf, KIND_TITLES, type PrescriptionItem, type PrescriptionKind } from "@/lib/prescriptionPdf";
 import { downloadSigned, PrescreveError, signPdf } from "@/lib/prescreve";
-import { checkPrescription } from "@/lib/controlledMeds";
-import { audit } from "@/lib/audit";
 
 // Assinar + baixar o PDF pode levar alguns segundos.
 export const maxDuration = 60;
@@ -66,17 +64,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     );
   }
 
-  // Medicamento controlado / antimicrobiano: a receita digital comum não
-  // vale (notificação A/B sempre; controle especial e retenção a partir
-  // de 30/10/2026, quando passa a exigir SNCR). A tela já avisa; aqui
-  // garante que não sai mesmo se alguém pular o aviso.
-  if (kind === "receita") {
-    const blocked = checkPrescription(items.map((it) => it.name)).filter((c) => c.blocked);
-    if (blocked.length > 0) {
-      return NextResponse.json({ error: blocked.map((c) => c.message).join(" "), controlled: blocked }, { status: 422 });
-    }
-  }
-
   try {
     const doctor = await getSigningDoctor(session.doctorId);
     if (!doctor) return NextResponse.json({ error: "Médico não encontrado" }, { status: 404 });
@@ -90,7 +77,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
     if (state.status !== "active" || !doctor.prescreve_session_id) {
       return NextResponse.json(
-        { error: "Autorize a assinatura no app VIDaaS antes de emitir.", needsSession: true },
+        { error: "Ative a assinatura (aprovação no app do seu certificado) antes de emitir.", needsSession: true },
         { status: 409 }
       );
     }
@@ -122,7 +109,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (err instanceof PrescreveError && /sess/i.test(err.message)) {
         await clearSigningSession(doctor.id);
         return NextResponse.json(
-          { error: "A autorização do VIDaaS expirou. Autorize de novo no app.", needsSession: true },
+          { error: "A autorização do certificado expirou. Aprove de novo no app.", needsSession: true },
           { status: 409 }
         );
       }
@@ -148,14 +135,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       needs_print: true,
     });
     const [withUrl] = await signPatientDocuments([doc]);
-    await audit("doctor", {
-      action: "emitir_documento",
-      entity: "documento",
-      entityId: doc.path,
-      patientId: patient.id,
-      patientName: patient.full_name,
-      details: { tipo: kind, itens: items.length },
-    });
 
     return NextResponse.json({
       document: withUrl,

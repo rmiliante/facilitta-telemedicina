@@ -4,11 +4,10 @@ import { useEffect, useId, useRef, useState } from "react";
 import { SIGNING_CHANGED_EVENT } from "@/lib/signingEvents";
 import { searchExams, findExam, type ExamHit } from "@/lib/examSearch";
 import { EXAM_PACKAGES } from "@/data/exames";
-import { CATEGORY_LABEL, checkPrescription } from "@/lib/controlledMeds";
 
 /**
  * Receita digital na tela de consulta: o médico monta a receita / pedido
- * de exame / atestado aqui mesmo, autoriza a assinatura no app VIDaaS
+ * de exame / atestado aqui mesmo, autoriza a assinatura no app do certificado (VIDaaS, BirdID...)
  * (uma vez vale até 8h) e o PDF assinado vai direto pro cadastro do
  * paciente, marcado pra atendente imprimir. Nada é enviado ao paciente.
  */
@@ -38,6 +37,7 @@ interface SigningState {
   message?: string;
   error?: string;
   accountEmail?: string;
+  provider?: { id: string; label: string; appName: string; approval: "push" | "otp" } | null;
 }
 
 type Credentials = { email: string; password: string };
@@ -51,14 +51,6 @@ const KIND_LABELS: Record<Kind, string> = {
 };
 
 const EMPTY_ITEM: Item = { name: "", quantity: "", instructions: "" };
-
-interface Template {
-  id: string;
-  kind: Kind;
-  name: string;
-  items: Item[];
-  notes: string | null;
-}
 const POLL_MS = 3000;
 const APPROVAL_TIMEOUT_MS = 3 * 60 * 1000;
 
@@ -99,9 +91,6 @@ export default function PrescriptionPanel({
   });
   const items = itemsByKind[kind];
   const notes = notesByKind[kind];
-  // Medicamentos controlados / antimicrobianos na receita (aviso ou bloqueio).
-  const controlled = checkPrescription(itemsByKind.receita.map((it) => it.name).filter((n) => n.trim()));
-  const controlledBlocked = controlled.some((c) => c.blocked);
   const setItems = (next: Item[] | ((prev: Item[]) => Item[])) =>
     setItemsByKind((all) => ({
       ...all,
@@ -114,6 +103,7 @@ export default function PrescriptionPanel({
   >("edit");
   const [signEmail, setSignEmail] = useState("");
   const [signPassword, setSignPassword] = useState("");
+  const [signOtp, setSignOtp] = useState("");
   const [credError, setCredError] = useState<string | null>(null);
   const credResolver = useRef<((choice: CredChoice) => void) | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -121,55 +111,6 @@ export default function PrescriptionPanel({
   /** Documentos da última emissão (um ou vários), pra confirmação na coluna. */
   const [lastBatch, setLastBatch] = useState<IssuedDocument[]>([]);
   const cancelledRef = useRef(false);
-  /** Modelos salvos pelo médico (ex.: "Hipertensão padrão"). */
-  const [templates, setTemplates] = useState<Template[]>([]);
-  const [templateMsg, setTemplateMsg] = useState<string | null>(null);
-
-  async function loadTemplates() {
-    const res = await fetch("/api/doctor/modelos").catch(() => null);
-    const data = res ? await res.json().catch(() => ({})) : {};
-    if (res?.ok) setTemplates(data.templates ?? []);
-  }
-
-  function applyTemplate(t: Template) {
-    const hasContent =
-      t.kind === "atestado" ? notesByKind.atestado.trim() : itemsByKind[t.kind].some((it) => it.name.trim());
-    if (hasContent && !confirm(`Substituir o que já está preenchido pelo modelo "${t.name}"?`)) return;
-    setItemsByKind((all) => ({
-      ...all,
-      [t.kind]: t.items.length ? t.items.map((it) => ({ ...EMPTY_ITEM, ...it })) : [{ ...EMPTY_ITEM }],
-    }));
-    setNotesByKind((all) => ({ ...all, [t.kind]: t.notes ?? "" }));
-    setTemplateMsg(null);
-  }
-
-  async function saveTemplate() {
-    const clean = items.filter((it) => it.name.trim());
-    if (kind === "atestado" ? !notes.trim() : clean.length === 0) {
-      setTemplateMsg("Preencha antes de salvar como modelo.");
-      return;
-    }
-    const name = prompt(`Nome do modelo de ${KIND_LABELS[kind].toLowerCase()} (ex.: Hipertensão padrão):`)?.trim();
-    if (!name) return;
-    const res = await fetch("/api/doctor/modelos", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind, name, items: kind === "atestado" ? [] : clean, notes }),
-    }).catch(() => null);
-    const data = res ? await res.json().catch(() => ({})) : {};
-    if (!res?.ok) {
-      setTemplateMsg(data.error ?? "Não foi possível salvar o modelo.");
-      return;
-    }
-    setTemplates((all) => [...all, data.template].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")));
-    setTemplateMsg(`Modelo "${name}" salvo.`);
-  }
-
-  async function deleteTemplate(t: Template) {
-    if (!confirm(`Excluir o modelo "${t.name}"?`)) return;
-    const res = await fetch(`/api/doctor/modelos/${t.id}`, { method: "DELETE" }).catch(() => null);
-    if (res?.ok) setTemplates((all) => all.filter((x) => x.id !== t.id));
-  }
 
   async function loadSigning(): Promise<SigningState | null> {
     const res = await fetch("/api/doctor/signing-session").catch(() => null);
@@ -213,10 +154,8 @@ export default function PrescriptionPanel({
     });
     setNotesByKind({ receita: "", exame: "", atestado: "" });
     setError(null);
-    setTemplateMsg(null);
     setPhase("edit");
     setOpen(true);
-    loadTemplates();
   }
 
   function closeModal() {
@@ -233,7 +172,7 @@ export default function PrescriptionPanel({
     );
   }
 
-  /** Garante sessão de assinatura ativa: dispara o push no VIDaaS e espera a aprovação. */
+  /** Garante sessão de assinatura ativa: dispara a aprovação no app do certificado e espera a aprovação. */
   async function ensureAuthorized(): Promise<boolean> {
     const current = await loadSigning();
     if (current?.status === "active") return true;
@@ -266,7 +205,7 @@ export default function PrescriptionPanel({
         const res = await fetch("/api/doctor/signing-session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(choice ?? {}),
+          body: JSON.stringify({ ...(choice ?? {}), ...(signing?.provider?.approval === "otp" ? { otp: signOtp } : {}) }),
         }).catch(() => null);
         const data = res ? await res.json().catch(() => ({})) : {};
         setSignPassword("");
@@ -278,7 +217,7 @@ export default function PrescriptionPanel({
             continue; // volta pro passo 1
           }
           setError(
-            data.error ?? "Não foi possível pedir a autorização no VIDaaS.",
+            data.error ?? "Não foi possível pedir a autorização no app do certificado.",
           );
           setPhase("edit");
           return false;
@@ -338,11 +277,6 @@ export default function PrescriptionPanel({
     setError(null);
     cancelledRef.current = false;
 
-    if (kinds.includes("receita") && controlledBlocked) {
-      setKind("receita");
-      setError("A receita tem medicamento que não pode sair em receita digital comum. Veja o aviso acima da lista.");
-      return;
-    }
     for (const k of kinds) {
       const clean = itemsByKind[k].filter((it) => it.name.trim());
       if (k === "atestado" ? !notesByKind[k].trim() : clean.length === 0) {
@@ -453,7 +387,7 @@ export default function PrescriptionPanel({
       ? `Assinatura ativa até ${formatTime(signing.expiresAt)}`
       : signing && !signing.ready
         ? `Falta no cadastro: ${signing.missing.join(", ")}`
-        : "Assinatura inativa · aprova no VIDaaS ao emitir";
+        : `Assinatura inativa · aprova no ${signing?.provider?.label ?? "app do certificado"} ao emitir`;
 
   const last = lastBatch[lastBatch.length - 1];
   const btn =
@@ -596,6 +530,21 @@ export default function PrescriptionPanel({
                       className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-brand-teal-dark"
                     />
                   </label>
+                  {signing?.provider?.approval === "otp" && (
+                    <label className="text-xs">
+                      <span className="mb-1 block font-medium text-zinc-600">
+                        Código do app {signing.provider.label}
+                      </span>
+                      <input
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        value={signOtp}
+                        onChange={(e) => setSignOtp(e.target.value.replace(/[^\d\s]/g, ""))}
+                        placeholder="6 dígitos"
+                        className="w-40 rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-brand-teal-dark"
+                      />
+                    </label>
+                  )}
                   <p className="text-[11px] text-zinc-500">
                     Com a conta, o seu CRM vai gravado dentro da assinatura. A
                     senha não fica guardada no sistema.
@@ -615,18 +564,19 @@ export default function PrescriptionPanel({
                 </form>
                 <div className="flex flex-col gap-3 bg-zinc-50 px-6 py-6">
                   <p className="text-base font-semibold text-zinc-600">
-                    2. Aprovar no app VIDaaS
+                    2. Aprovar no app {signing?.provider?.label ?? "do certificado"}
                   </p>
                   <p className="text-sm text-zinc-600">
-                    Depois do passo 1, chega o pedido no celular. Toque em
-                    Autorizar e pronto.
+                    {signing?.provider?.approval === "otp"
+                      ? "Depois do passo 1, digite o código do app abaixo e pronto."
+                      : "Depois do passo 1, chega o pedido no celular. Toque em Autorizar e pronto."}
                   </p>
                   <div className="mt-auto rounded-md border border-zinc-200 bg-white p-3 text-xs text-zinc-600">
                     <p className="font-semibold text-brand-navy">
                       Sem conta de assinatura?
                     </p>
                     <p className="mt-1">
-                      Dá para seguir só com o VIDaaS: a receita continua com
+                      Dá para seguir só com o {signing?.provider?.label ?? "certificado"}: a receita continua com
                       validade legal, só sem o CRM gravado dentro da assinatura.
                       Crie a conta em <strong>Minha assinatura</strong>, no
                       menu.
@@ -636,7 +586,7 @@ export default function PrescriptionPanel({
                       onClick={() => credResolver.current?.(null)}
                       className="mt-2 font-semibold text-brand-teal-dark underline"
                     >
-                      Pular e usar só o VIDaaS
+                      Pular e usar só o {signing?.provider?.label ?? "certificado"}
                     </button>
                   </div>
                 </div>
@@ -648,7 +598,7 @@ export default function PrescriptionPanel({
                   Confirme a assinatura no seu celular
                 </p>
                 <p className="max-w-md text-sm text-zinc-600">
-                  Enviamos um pedido para o app <strong>VIDaaS</strong>. Toque
+                  Enviamos um pedido para o app <strong>{signing?.provider?.label ?? "do seu certificado"}</strong>. Toque
                   em Autorizar. Essa autorização vale por até 8 horas: nas
                   próximas receitas de hoje não vai precisar de novo.
                 </p>
@@ -690,28 +640,6 @@ export default function PrescriptionPanel({
                 </div>
 
                 <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-[11px] font-semibold text-zinc-500">Meus modelos:</span>
-                    {templates.filter((t) => t.kind === kind).length === 0 && (
-                      <span className="text-[11px] text-zinc-400">nenhum ainda</span>
-                    )}
-                    {templates
-                      .filter((t) => t.kind === kind)
-                      .map((t) => (
-                        <span key={t.id} className="inline-flex items-center rounded-full border border-brand-navy/30 bg-white text-[11px] font-medium text-brand-navy">
-                          <button type="button" onClick={() => applyTemplate(t)} className="rounded-l-full py-0.5 pl-2.5 pr-1 hover:bg-brand-teal/10" title="Usar este modelo">
-                            {t.name}
-                          </button>
-                          <button type="button" onClick={() => deleteTemplate(t)} className="rounded-r-full px-1.5 py-0.5 text-zinc-400 hover:text-red-600" title="Excluir modelo" aria-label={`Excluir modelo ${t.name}`}>
-                            ×
-                          </button>
-                        </span>
-                      ))}
-                    <button type="button" onClick={saveTemplate} className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-brand-teal-dark hover:bg-brand-teal/10">
-                      + Salvar como modelo
-                    </button>
-                    {templateMsg && <span className="text-[11px] text-zinc-500">{templateMsg}</span>}
-                  </div>
                   {kind === "atestado" ? (
                     <label className="block text-xs">
                       <span className="mb-1 block font-medium text-zinc-600">
@@ -850,35 +778,6 @@ export default function PrescriptionPanel({
                           )}
                         </div>
                       ))}
-                      {kind === "receita" && controlled.length > 0 && (
-                        <div
-                          className={`rounded-lg border px-3 py-2 text-xs ${
-                            controlledBlocked
-                              ? "border-red-200 bg-red-50 text-red-800"
-                              : "border-amber-200 bg-amber-50 text-amber-900"
-                          }`}
-                        >
-                          <p className="font-semibold">
-                            {controlledBlocked
-                              ? "Esta receita não pode ser emitida aqui"
-                              : "Atenção: medicamento com receita especial"}
-                          </p>
-                          <ul className="mt-1 list-disc space-y-0.5 pl-4">
-                            {controlled.map((c) => (
-                              <li key={c.name}>
-                                <span className="font-medium">{CATEGORY_LABEL[c.category]}.</span>{" "}
-                                {c.message}
-                              </li>
-                            ))}
-                          </ul>
-                          {controlledBlocked && (
-                            <p className="mt-1">
-                              Retire o item desta receita e emita-o no receituário adequado. Os demais
-                              medicamentos podem seguir normalmente.
-                            </p>
-                          )}
-                        </div>
-                      )}
                       <button
                         type="button"
                         onClick={() =>

@@ -10,7 +10,17 @@ interface AccountInfo {
   crmUf: string | null;
   rqe?: string | null;
   email: string;
-  certificate: { status: string; providers: string[] };
+  certificate: { status: string; providers: string[]; preferred?: string | null };
+  catalog: CertOption[];
+  selected: string | null;
+}
+
+interface CertOption {
+  id: string;
+  label: string;
+  appName: string;
+  hint: string;
+  approval: "push" | "otp";
 }
 
 const DONE_KEY = "facilitta_sign_account";
@@ -37,6 +47,10 @@ export default function SigningAccountClient() {
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const [shiftUntil, setShiftUntil] = useState<string | null>(null);
+  const [choice, setChoice] = useState<string | null>(null);
+  const [savingCert, setSavingCert] = useState(false);
+  const [certWarn, setCertWarn] = useState<string | null>(null);
+  const [changingCert, setChangingCert] = useState(false);
   const [confirmed, setConfirmed] = useState(() => {
     try {
       return typeof window !== "undefined" && localStorage.getItem(CONFIRMED_KEY) === "1";
@@ -62,6 +76,18 @@ export default function SigningAccountClient() {
       })
       .then((d) => {
         setInfo(d);
+        // Um só certificado encontrado no CPF: já vincula sozinho, sem pedir nada ao médico.
+        const found = d.certificate.providers.filter((p) => d.catalog.some((c) => c.id === p));
+        if (!d.selected && d.certificate.status === "ok" && found.length === 1) {
+          fetch("/api/doctor/signing-provider", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ provider: found[0] }),
+          })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((r) => r?.saved && setInfo((cur) => (cur ? { ...cur, selected: found[0] } : cur)))
+            .catch(() => {});
+        }
         let saved: string | null = null;
         try {
           saved = localStorage.getItem(DONE_KEY);
@@ -94,6 +120,29 @@ export default function SigningAccountClient() {
     setSentTo(null);
     setConfirmed(false);
     setError(null);
+  }
+
+  async function confirmCert(id: string) {
+    setSavingCert(true);
+    setCertWarn(null);
+    try {
+      const res = await fetch("/api/doctor/signing-provider", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCertWarn(data.error ?? "Não foi possível salvar. Tente de novo.");
+        return;
+      }
+      if (data.warning) setCertWarn(data.warning);
+      setInfo((cur) => (cur ? { ...cur, selected: id } : cur));
+      setChangingCert(false);
+      window.dispatchEvent(new Event(SIGNING_CHANGED_EVENT));
+    } finally {
+      setSavingCert(false);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -134,9 +183,11 @@ export default function SigningAccountClient() {
 
   const missing = !info.cpf || !info.crm || !info.crmUf;
   const certOk = info.certificate.status === "ok";
-  const provider = info.certificate.providers
-    .map((p) => (p === "vidaas" ? "VIDaaS" : p === "birdid" ? "BirdID" : p))
-    .join(" + ");
+  const found = info.certificate.providers;
+  const current = choice ?? info.selected ?? info.certificate.preferred ?? found[0] ?? null;
+  const currentCert = info.catalog.find((c) => c.id === current) ?? null;
+  const chosen = info.catalog.find((c) => c.id === info.selected) ?? null;
+  const certTitle = chosen ? `Certificado ${chosen.label}` : "Qual certificado você usa?";
   const conselho =
     info.crm && info.crmUf
       ? [`CRM-${info.crmUf} ${info.crm}`, info.rqe ? `RQE ${info.rqe}` : null].filter(Boolean).join(" · ")
@@ -147,7 +198,7 @@ export default function SigningAccountClient() {
   const box = "flex min-w-0 flex-col gap-1.5 text-xs";
   const lbl = "truncate font-medium text-zinc-600";
 
-  const step1 = certOk ? "done" : "todo";
+  const step1 = certOk && chosen && !changingCert ? "done" : "todo";
   const step2 = confirmed ? "done" : sentTo ? "wait" : "todo";
 
   return (
@@ -166,32 +217,80 @@ export default function SigningAccountClient() {
       </header>
 
       {/* Passo 1 */}
-      <Step n={1} title="Certificado VIDaaS no seu celular" state={step1}>
-        {certOk ? (
+      <Step n={1} title={certTitle} state={step1} hint={step1 === "done" ? undefined : "Escolha o certificado digital que você tem no celular."}>
+        {step1 === "done" ? (
           <p className="text-sm text-zinc-600">
-            Encontramos o seu certificado <strong>{provider}</strong> no CPF <strong>{formatCpf(info.cpf)}</strong>.
-            Nada a fazer aqui.
+            Encontramos o seu certificado <strong>{chosen?.label}</strong> no CPF <strong>{formatCpf(info.cpf)}</strong>.
+            Nada a fazer aqui.{" "}
+            {info.catalog.length > 1 && (
+              <button type="button" onClick={() => setChangingCert(true)} className="text-xs text-zinc-500 underline">
+                Usar outro certificado
+              </button>
+            )}
           </p>
         ) : (
           <div className="flex flex-col gap-3 text-sm text-zinc-600">
-            <p>
-              {info.certificate.status === "sem_cpf"
-                ? "O seu CPF ainda não está no cadastro. Peça para a administração completar."
-                : "Ainda não encontramos um certificado em nuvem no seu CPF."}
-            </p>
-            <ol className="list-decimal space-y-1 pl-5">
-              <li>Instale o app <strong>VIDaaS</strong> (Valid) no celular.</li>
-              <li>Ative o seu certificado digital no app, com o mesmo CPF do cadastro.</li>
-              <li>Volte aqui e clique em verificar.</li>
-            </ol>
-            <button
-              type="button"
-              onClick={recheck}
-              disabled={checking}
-              className="self-start rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-brand-navy hover:bg-zinc-50 disabled:opacity-50"
-            >
-              {checking ? "Verificando..." : "Verificar de novo"}
-            </button>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {info.catalog.map((c) => {
+                const isFound = found.includes(c.id);
+                const sel = current === c.id;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setChoice(c.id)}
+                    className={`relative rounded-xl border-2 p-4 text-left transition-colors ${
+                      sel ? "border-brand-teal-dark bg-brand-teal/10" : "border-zinc-200 hover:border-zinc-300"
+                    }`}
+                  >
+                    {isFound && (
+                      <span className="absolute right-3 top-3 rounded-full bg-brand-teal px-2.5 py-0.5 text-[10.5px] font-bold text-brand-navy">
+                        Encontrado
+                      </span>
+                    )}
+                    <span className="flex items-center gap-2 text-sm font-semibold text-brand-navy">
+                      <span
+                        className={`h-4 w-4 rounded-full border-2 ${
+                          sel ? "border-brand-teal-dark bg-brand-teal-dark shadow-[inset_0_0_0_3px_#fff]" : "border-zinc-300"
+                        }`}
+                      />
+                      {c.label}
+                    </span>
+                    <span className="mt-1 block text-xs text-zinc-500">
+                      {c.appName}. {c.hint}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {currentCert && !certOk && (
+              <div className="rounded-lg bg-zinc-50 px-4 py-3 text-xs">
+                <p>
+                  {info.certificate.status === "sem_cpf"
+                    ? "O seu CPF ainda não está no cadastro. Peça para a administração completar."
+                    : `Ainda não encontramos um certificado em nuvem no seu CPF. Instale o app ${currentCert.appName} no celular, ative o seu certificado com o mesmo CPF do cadastro e volte aqui.`}
+                </p>
+                <button
+                  type="button"
+                  onClick={recheck}
+                  disabled={checking}
+                  className="mt-2 rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-brand-navy hover:bg-white disabled:opacity-50"
+                >
+                  {checking ? "Verificando..." : "Verificar de novo"}
+                </button>
+              </div>
+            )}
+            {certWarn && <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">{certWarn}</p>}
+            <div className="flex justify-end">
+              <button
+                type="button"
+                disabled={!currentCert || savingCert}
+                onClick={() => currentCert && confirmCert(currentCert.id)}
+                className="rounded-md bg-brand-navy px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {savingCert ? "Salvando..." : currentCert ? `Confirmar ${currentCert.label}` : "Confirmar"}
+              </button>
+            </div>
           </div>
         )}
       </Step>
@@ -283,7 +382,7 @@ export default function SigningAccountClient() {
         title="No início do plantão: ative a assinatura"
         state={shiftUntil ? "done" : "todo"}
         badgeText={shiftUntil ? `Ativa até ${shiftUntil}` : "Ative antes de prescrever"}
-        hint="Aprove uma vez no app VIDaaS e assine tudo por 8 horas, sem aprovar de novo."
+        hint={`Aprove uma vez${chosen ? ` no app ${chosen.label}` : " no app do seu certificado"} e assine tudo por 8 horas, sem aprovar de novo.`}
       >
         <ShiftActivation defaultEmail={sentTo || email} onActive={setShiftUntil} onAccountOk={markConfirmed} />
         <p className="mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-zinc-500">Depois, em cada consulta</p>
@@ -382,6 +481,7 @@ interface SessionState {
   status: "none" | "awaiting_approval" | "active" | "expired";
   expiresAt: string | null;
   error?: string;
+  provider?: { id: string; label: string; appName: string; approval: "push" | "otp" } | null;
 }
 
 const SIGN_EMAIL_KEY = "facilitta_sign_email";
@@ -394,7 +494,7 @@ function hhmm(iso: string | null) {
 }
 
 /**
- * Ativa a sessão de assinatura do plantão (aprovação no app VIDaaS, vale 8h)
+ * Ativa a sessão de assinatura do plantão (aprovação no app do certificado, vale 8h)
  * antes da primeira receita. Com e-mail e senha da conta de assinatura, o
  * CRM vai gravado; sem eles, assina só pelo CPF.
  */
@@ -421,6 +521,7 @@ export function ShiftActivation({
   });
   const email = typedEmail ?? defaultEmail;
   const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const polling = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -465,10 +566,17 @@ export function ShiftActivation({
     return stopPolling;
   }, [apply, startPolling, stopPolling]);
 
+  const label = state?.provider?.label ?? "certificado";
+  const needsOtp = state?.provider?.approval === "otp";
+
   async function activate(withAccount: boolean) {
     setError(null);
     if (withAccount && (!email.trim() || !password)) {
-      setError("Informe o e-mail e a senha da assinatura, ou ative só com o VIDaaS.");
+      setError(`Informe o e-mail e a senha da assinatura, ou ative só com o ${label}.`);
+      return;
+    }
+    if (needsOtp && otp.replace(/\s/g, "").length < 4) {
+      setError(`Digite o código que aparece no app ${label}.`);
       return;
     }
     setBusy(true);
@@ -476,7 +584,7 @@ export function ShiftActivation({
       const res = await fetch("/api/doctor/signing-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(withAccount ? { email: email.trim(), password } : {}),
+        body: JSON.stringify({ ...(withAccount ? { email: email.trim(), password } : {}), ...(needsOtp ? { otp } : {}) }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -493,6 +601,7 @@ export function ShiftActivation({
         }
       }
       setPassword("");
+      setOtp("");
       apply(data as SessionState);
       if (data.status === "awaiting_approval") startPolling();
     } finally {
@@ -525,7 +634,7 @@ export function ShiftActivation({
       <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
         <span className="mt-1 h-3 w-3 shrink-0 animate-pulse rounded-full bg-amber-400" />
         <div>
-          <p className="font-semibold">Abra o app VIDaaS no celular e aprove o pedido.</p>
+          <p className="font-semibold">{state.provider ? `Abra o app ${label} no celular e aprove o pedido.` : "Abra o app do seu certificado no celular e aprove o pedido."}</p>
           <p className="mt-0.5 text-xs">Você tem até 3 minutos. Esta tela atualiza sozinha.</p>
         </div>
       </div>
@@ -537,7 +646,7 @@ export function ShiftActivation({
     <div className="flex flex-col gap-3">
       {renewing && (
         <p className="text-xs text-zinc-600">
-          Uma nova aprovação no app VIDaaS vale por mais 8 horas a partir de agora.{" "}
+          Uma nova aprovação no app {label} vale por mais 8 horas a partir de agora.{" "}
           <button type="button" onClick={() => setRenewing(false)} className="underline">
             Cancelar
           </button>
@@ -572,6 +681,20 @@ export function ShiftActivation({
           />
         </label>
       </div>
+      {needsOtp && (
+        <label className="flex min-w-0 flex-col gap-1.5 text-xs">
+          <span className="truncate font-medium text-zinc-600">Código do app {label}</span>
+          <input
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            value={otp}
+            onChange={(e) => setOtp(e.target.value.replace(/[^\d\s]/g, ""))}
+            placeholder="6 dígitos"
+            className={`${base} sm:max-w-[200px]`}
+          />
+          <span className="text-[11px] text-zinc-500">Abra o app {label} e digite o código que aparece.</span>
+        </label>
+      )}
       {error && <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
       <div className="flex flex-wrap items-center justify-end gap-3">
         <button
@@ -580,7 +703,7 @@ export function ShiftActivation({
           disabled={busy || !state.ready}
           className="text-xs text-zinc-500 underline disabled:opacity-50"
         >
-          Ativar só com o VIDaaS (sem CRM)
+          Ativar só com o {label} (sem CRM)
         </button>
         <button
           type="button"

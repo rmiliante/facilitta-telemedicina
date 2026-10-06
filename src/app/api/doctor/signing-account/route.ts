@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDoctorSession } from "@/lib/auth";
 import { getSigningDoctor } from "@/lib/doctorSigning";
+import { listCertificates } from "@/lib/certificateProviders";
 import { discoverCertificate, PrescreveError, registerProfessional } from "@/lib/prescreve";
 
 /** Nome sem "Dr./Dra." na frente — a conta de assinatura pede o nome civil completo. */
@@ -18,11 +19,11 @@ export async function GET() {
   try {
     const doctor = await getSigningDoctor(session.doctorId);
     if (!doctor) return NextResponse.json({ error: "Médico não encontrado" }, { status: 404 });
-    let certificate: { status: string; providers: string[] } = { status: "sem_cpf", providers: [] };
+    let certificate: { status: string; providers: string[]; preferred?: string | null } = { status: "sem_cpf", providers: [] };
     if (doctor.cpf && doctor.cpf.replace(/\D/g, "").length === 11) {
       try {
         const info = await discoverCertificate(doctor.cpf);
-        certificate = { status: info.can_sign ? "ok" : "nenhum", providers: info.providers ?? [] };
+        certificate = { status: info.can_sign ? "ok" : "nenhum", providers: info.providers ?? [], preferred: info.preferred_provider ?? null };
       } catch {
         certificate = { status: "erro", providers: [] };
       }
@@ -35,6 +36,9 @@ export async function GET() {
       rqe: doctor.rqe,
       email: session.email,
       certificate,
+      // Certificados que a Facilitta aceita + o escolhido pelo médico (null = ainda não escolheu).
+      catalog: listCertificates().map((c) => ({ id: c.id, label: c.label, appName: c.appName, hint: c.hint, approval: c.approval })),
+      selected: doctor.signing_provider,
     });
   } catch (err) {
     const message = err instanceof PrescreveError ? err.message : "Falha ao carregar os dados";

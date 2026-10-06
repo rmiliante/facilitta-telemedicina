@@ -1,22 +1,14 @@
 "use client";
 
+import CaptacaoFunil from "@/components/CaptacaoFunil";
+import DashboardTabs from "./DashboardTabs";
 import { useEffect, useState, useCallback } from "react";
 import VitalSignsPanel from "./VitalSigns";
 import TipoConsultaBadge, { TipoConsultaChoice, tipoSuffix } from "./TipoConsultaBadge";
 import PatientTimeline from "./PatientTimeline";
-import FinanceTab from "./FinanceTab";
-import ReportsTab, { QuotaBar } from "./ReportsTab";
-import AuditTab from "./AuditTab";
 import AttendanceHistoryTab from "./AttendanceHistoryTab";
 import { printFile } from "@/lib/printPdf";
 import type { TimelineDoc } from "@/lib/patientTimeline";
-import { canSeePatients, financeReadOnly, ROLE_DESCRIPTION, ROLE_LABEL, ROLE_TABS, STAFF_ROLES, type AdminTab, type StaffRole } from "@/lib/permissions";
-import {
-  APPLICATION_STATUSES,
-  SHIFTS,
-  SPECIALTIES,
-  type ApplicationStatus,
-} from "@/lib/doctorApplications";
 
 interface Specialty {
   id: string;
@@ -37,9 +29,6 @@ interface Doctor {
   crm_uf?: string | null;
   rqe?: string | null;
   endereco_profissional?: string | null;
-  consult_fee?: number | string | null;
-  contract_fee?: number | string | null;
-  pix_key?: string | null;
   specialties: { name: string } | null;
 }
 
@@ -51,8 +40,6 @@ interface Patient {
   email: string | null;
   city: string | null;
   state: string | null;
-  /** Quantas vezes faltou (vem da lista de pacientes). */
-  faltas?: number;
 }
 
 interface Appointment {
@@ -71,31 +58,19 @@ interface StaffMember {
   id: string;
   name: string;
   email: string;
-  role: string;
+  role: "admin" | "atendente";
   active: boolean;
 }
 
-type Tab = AdminTab;
-
-interface DoctorApplication {
-  id: string;
-  name: string;
-  crm: string;
-  crm_uf: string;
-  specialty: string;
-  experience_years: number | null;
-  email: string;
-  whatsapp: string;
-  city: string;
-  state: string;
-  consult_price: number | null;
-  available_days: string[];
-  available_shifts: string[];
-  presentation: string | null;
-  photo_url: string | null;
-  status: ApplicationStatus;
-  created_at: string;
-}
+type Tab =
+  | "dashboard"
+  | "agenda"
+  | "historico"
+  | "pacientes"
+  | "medicos"
+  | "captacao"
+  | "especialidades"
+  | "equipe";
 
 interface DashboardData {
   totals: Record<string, number>;
@@ -194,32 +169,6 @@ function IconChart() {
   );
 }
 
-function IconReport() {
-  return (
-    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M7 3h7l5 5v13H7zM14 3v5h5M10 17v-3M13 17v-5M16 17v-2" />
-    </svg>
-  );
-}
-
-function IconShield() {
-  return (
-    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3 5 6v6c0 4 3 7.5 7 9 4-1.5 7-5 7-9V6zM9 12l2 2 4-4" />
-    </svg>
-  );
-}
-
-function IconMoney() {
-  return (
-    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-      <rect x="2.5" y="6" width="19" height="12" rx="2" />
-      <circle cx="12" cy="12" r="2.5" />
-      <path strokeLinecap="round" d="M6 9.5v5M18 9.5v5" />
-    </svg>
-  );
-}
-
 function IconHistory() {
   return (
     <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -232,33 +181,27 @@ const NAV_ITEMS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: "dashboard", label: "Dashboard", icon: <IconChart /> },
   { key: "agenda", label: "Agenda", icon: <IconCalendar /> },
   { key: "historico", label: "Histórico de atendimentos", icon: <IconHistory /> },
-  { key: "financeiro", label: "Financeiro", icon: <IconMoney /> },
-  { key: "relatorios", label: "Relatórios", icon: <IconReport /> },
   { key: "pacientes", label: "Pacientes", icon: <IconUsers /> },
   { key: "medicos", label: "Médicos", icon: <IconStethoscope /> },
   { key: "captacao", label: "Captação", icon: <IconClipboard /> },
   { key: "especialidades", label: "Especialidades", icon: <IconTag /> },
   { key: "equipe", label: "Equipe", icon: <IconTeam /> },
-  { key: "auditoria", label: "Auditoria", icon: <IconShield /> },
 ];
 
 function AdminSidebar({
-  role,
   tab,
   onSelect,
   open,
   onClose,
 }: {
-  role: StaffRole;
   tab: Tab;
   onSelect: (t: Tab) => void;
   open: boolean;
   onClose: () => void;
 }) {
-  const [linksOpen, setLinksOpen] = useState(false);
   return (
     <nav
-      className={`fixed inset-y-0 left-0 z-40 flex h-full w-64 shrink-0 -translate-x-full flex-col border-r border-zinc-200 bg-white transition-transform duration-200 md:static md:z-auto md:w-56 md:translate-x-0 print:hidden ${
+      className={`fixed inset-y-0 left-0 z-40 flex h-full w-64 shrink-0 -translate-x-full flex-col border-r border-zinc-200 bg-white transition-transform duration-200 md:static md:z-auto md:w-56 md:translate-x-0 ${
         open ? "translate-x-0" : ""
       }`}
     >
@@ -285,7 +228,7 @@ function AdminSidebar({
           Administração
         </p>
         <ul className="space-y-0.5">
-          {NAV_ITEMS.filter((item) => ROLE_TABS[role].includes(item.key)).map((item) => (
+          {NAV_ITEMS.map((item) => (
             <li key={item.key}>
               <button
                 type="button"
@@ -304,101 +247,19 @@ function AdminSidebar({
               </button>
             </li>
           ))}
-          {/* Mesmo visual dos outros itens, mas em vez de abrir uma tela
-              mostra os links logo abaixo. Só para o Master. */}
-          {role === "master" && (
-          <li>
-            <button
-              type="button"
-              onClick={() => setLinksOpen((v) => !v)}
-              aria-expanded={linksOpen}
-              className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-medium transition-colors ${
-                linksOpen ? "bg-zinc-50 text-brand-navy" : "text-zinc-600 hover:bg-zinc-50"
-              }`}
-            >
-              <IconLink />
-              Links
-              <span className={`ml-auto text-xs text-zinc-400 transition-transform ${linksOpen ? "rotate-180" : ""}`}>▾</span>
-            </button>
-            {linksOpen && (
-              <ul className="mt-0.5 space-y-0.5 border-l border-zinc-200 pl-2 ml-4">
-                {QUICK_LINKS.map((link) => (
-                  <QuickLink key={link.path} {...link} />
-                ))}
-              </ul>
-            )}
-          </li>
-          )}
         </ul>
       </div>
-      <p className="border-t border-zinc-100 px-4 py-3 text-[11px] text-zinc-400">
-        Nível de acesso: <span className="font-semibold text-zinc-600">{ROLE_LABEL[role]}</span>
-      </p>
     </nav>
   );
 }
 
-/** Endereços de cada área do sistema, pra abrir ou copiar e mandar pra quem usa. */
-const QUICK_LINKS: { label: string; path: string; hint: string }[] = [
-  { label: "Admin", path: "/admin", hint: "Painel da administração" },
-  { label: "Médico", path: "/medico", hint: "Área do médico (pede login)" },
-  { label: "Cabine", path: "/atendimento", hint: "Tela da cabine de atendimento presencial" },
-  { label: "Atendimento", path: "/atendente", hint: "Painel da atendente (pede login da equipe)" },
-];
-
-function QuickLink({ label, path, hint }: { label: string; path: string; hint: string }) {
-  const [copied, setCopied] = useState(false);
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(`${window.location.origin}${path}`);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      prompt("Copie o link:", `${window.location.origin}${path}`);
-    }
-  }
-
-  return (
-    <li className="flex items-center gap-1">
-      <a
-        href={path}
-        target="_blank"
-        rel="noopener noreferrer"
-        title={hint}
-        className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-50"
-      >
-        <span className="truncate">{label}</span>
-        <span className="ml-auto text-[10px] text-zinc-400">↗</span>
-      </a>
-      <button
-        type="button"
-        onClick={copy}
-        title={`Copiar o link de ${label}`}
-        aria-label={`Copiar o link de ${label}`}
-        className="shrink-0 rounded-md px-1.5 py-1 text-[11px] font-semibold text-brand-teal-dark hover:bg-brand-teal/10"
-      >
-        {copied ? "✓" : "Copiar"}
-      </button>
-    </li>
-  );
-}
-
-function IconLink() {
-  return (
-    <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1m-2 6a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" />
-    </svg>
-  );
-}
-
-export default function AdminPanel({ role }: { role: StaffRole }) {
-  const [tab, setTab] = useState<Tab>(ROLE_TABS[role][0] ?? "dashboard");
+export default function AdminPanel() {
+  const [tab, setTab] = useState<Tab>("dashboard");
   const [navOpen, setNavOpen] = useState(false);
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-brand-bg print:block print:h-auto print:overflow-visible print:bg-white">
-      <AdminSidebar role={role} tab={tab} onSelect={setTab} open={navOpen} onClose={() => setNavOpen(false)} />
+    <div className="flex h-screen w-full overflow-hidden bg-brand-bg">
+      <AdminSidebar tab={tab} onSelect={setTab} open={navOpen} onClose={() => setNavOpen(false)} />
 
       {navOpen && (
         <div
@@ -407,8 +268,8 @@ export default function AdminPanel({ role }: { role: StaffRole }) {
         />
       )}
 
-      <div className="flex h-full flex-1 flex-col overflow-hidden print:block print:h-auto print:overflow-visible">
-        <div className="flex shrink-0 items-center gap-3 border-b border-brand-navy bg-brand-navy px-4 py-3 sm:px-6 print:hidden">
+      <div className="flex h-full flex-1 flex-col overflow-hidden">
+        <div className="flex shrink-0 items-center gap-3 border-b border-brand-navy bg-brand-navy px-4 py-3 sm:px-6">
           <button
             type="button"
             onClick={() => setNavOpen(true)}
@@ -422,22 +283,17 @@ export default function AdminPanel({ role }: { role: StaffRole }) {
           </h1>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 print:overflow-visible print:p-0">
-          <div className={tab === "historico" || tab === "financeiro" || tab === "relatorios" || tab === "auditoria" ? "mx-auto max-w-6xl" : tab === "dashboard" ? "mx-auto max-w-5xl" : "mx-auto max-w-4xl"}>
-            {tab === "dashboard" && <DashboardTab />}
+        <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+          <div className={tab === "historico" ? "mx-auto max-w-6xl" : tab === "dashboard" ? "mx-auto max-w-6xl" : "mx-auto max-w-4xl"}>
+            {tab === "dashboard" && <DashboardTabs consultas={<DashboardTab />} />}
             {tab === "especialidades" && <SpecialtiesTab />}
             {tab === "medicos" && <DoctorsTab />}
-            {tab === "captacao" && <CaptacaoTab />}
+            {tab === "captacao" && <CaptacaoFunil />}
             {tab === "pacientes" && <PatientsTab />}
             {tab === "agenda" && <AgendaTab />}
             {tab === "historico" && (
-              <AttendanceHistoryTab
-                renderPatientHistory={canSeePatients(role) ? (id) => <PatientHistoryPanel patientId={id} /> : undefined}
-              />
+              <AttendanceHistoryTab renderPatientHistory={(id) => <PatientHistoryPanel patientId={id} />} />
             )}
-            {tab === "financeiro" && <FinanceTab readOnly={financeReadOnly(role)} />}
-            {tab === "relatorios" && <ReportsTab />}
-            {tab === "auditoria" && <AuditTab />}
             {tab === "equipe" && <StaffTab />}
           </div>
         </div>
@@ -642,54 +498,6 @@ function RankedBarChart({ data, emptyLabel }: { data: { name: string; count: num
   );
 }
 
-/** Dashboard: uso da cota do mês atual por especialidade, com alerta a partir de 80%. */
-function QuotaAlertCard() {
-  const [rows, setRows] = useState<{ id: string; name: string; cota: number; agendados: number; usoCota: number | null }[] | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    const month = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit" }).format(new Date());
-    fetch(`/api/admin/relatorios?month=${month}`)
-      .then(async (r) => {
-        const json = await r.json().catch(() => ({}));
-        if (!cancelled && r.ok) setRows(json.especialidades ?? []);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (!rows || rows.length === 0) return null;
-  const alertas = rows.filter((r) => (r.usoCota ?? 0) >= 80);
-
-  return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-4">
-      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Cota do mês por especialidade</p>
-        {alertas.length > 0 ? (
-          <p className="rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800">
-            ⚠ {alertas.map((a) => `${a.name} em ${a.usoCota}%`).join(" · ")}
-          </p>
-        ) : (
-          <p className="text-[11px] text-zinc-400">Todas abaixo de 80%</p>
-        )}
-      </div>
-      <ul className="space-y-2">
-        {rows.map((r) => (
-          <li key={r.id} className="grid grid-cols-[minmax(0,10rem)_1fr_auto] items-center gap-3 text-sm">
-            <span className="truncate text-brand-navy">{r.name}</span>
-            <QuotaBar uso={r.usoCota} />
-            <span className="whitespace-nowrap text-xs tabular-nums" style={{ color: (r.usoCota ?? 0) >= 100 ? "#dc2626" : (r.usoCota ?? 0) >= 80 ? "#b45309" : "#71717a" }}>
-              {r.agendados} / {r.cota}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 function DashboardTab() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -740,8 +548,6 @@ function DashboardTab() {
 
   return (
     <div className="space-y-6">
-      <QuotaAlertCard />
-
       <p className="text-xs text-zinc-400">Últimos {data.rangeDays} dias</p>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -1051,20 +857,13 @@ function CertificateBadge({ doctorId, cpf }: { doctorId: string; cpf?: string | 
   return <span className="text-zinc-400">· não foi possível verificar o certificado</span>;
 }
 
-/** Valor por consulta como aparece no campo (ex: "70,00"); vazio se não cadastrado. */
-function feeInput(value: number | string | null | undefined): string {
-  if (value === null || value === undefined || value === "") return "";
-  const n = Number(value);
-  return Number.isFinite(n) ? n.toFixed(2).replace(".", ",") : "";
-}
-
 function DoctorsTab() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
-  const [form, setForm] = useState({ name: "", email: "", password: "", specialtyId: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "", consultFee: "", contractFee: "", pixKey: "" });
+  const [form, setForm] = useState({ name: "", email: "", password: "", specialtyId: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "" });
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", email: "", specialtyId: "", password: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "", consultFee: "", contractFee: "", pixKey: "" });
+  const [editForm, setEditForm] = useState({ name: "", email: "", specialtyId: "", password: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "" });
   const [editSaving, setEditSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -1097,7 +896,7 @@ function DoctorsTab() {
       }
       const created = await res.json().catch(() => ({}));
       if (created.warning) alert(created.warning);
-      setForm({ name: "", email: "", password: "", specialtyId: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "", consultFee: "", contractFee: "", pixKey: "" });
+      setForm({ name: "", email: "", password: "", specialtyId: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "" });
       await load();
     } finally {
       setSaving(false);
@@ -1125,9 +924,6 @@ function DoctorsTab() {
       crmUf: d.crm_uf ?? "",
       rqe: d.rqe ?? "",
       enderecoProfissional: d.endereco_profissional ?? "",
-      consultFee: feeInput(d.consult_fee),
-      contractFee: feeInput(d.contract_fee),
-      pixKey: d.pix_key ?? "",
     });
   }
 
@@ -1154,9 +950,6 @@ function DoctorsTab() {
         crmUf: editForm.crmUf,
         rqe: editForm.rqe,
         enderecoProfissional: editForm.enderecoProfissional,
-        consultFee: editForm.consultFee,
-        contractFee: editForm.contractFee,
-        pixKey: editForm.pixKey,
       };
       if (editForm.password) body.password = editForm.password;
       const res = await fetch(`/api/admin/doctors/${id}`, {
@@ -1169,9 +962,6 @@ function DoctorsTab() {
         alert(err.error);
         return;
       }
-      // Ex.: valor por consulta não gravado porque falta a migração no banco.
-      const saved = await res.json().catch(() => ({}));
-      if (saved.warning) alert(saved.warning);
       setEditingId(null);
       await load();
     } finally {
@@ -1278,39 +1068,6 @@ function DoctorsTab() {
               maxLength={200}
               className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
             />
-          </label>
-          <label className="text-xs sm:col-span-2">
-            <span className="mb-1 block font-medium text-zinc-600">Valor que o médico recebe por consulta (R$)</span>
-            <input
-              value={form.consultFee}
-              onChange={(e) => setForm((f) => ({ ...f, consultFee: e.target.value }))}
-              placeholder="ex: 70,00"
-              inputMode="decimal"
-              className="w-full max-w-xs rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
-            />
-            <span className="mt-1 block text-[11px] text-zinc-400">Vale para as próximas consultas concluídas; as já concluídas mantêm o valor da época.</span>
-          </label>
-          <label className="text-xs sm:col-span-2">
-            <span className="mb-1 block font-medium text-zinc-600">Valor que recebemos por consulta (R$)</span>
-            <input
-              value={form.contractFee}
-              onChange={(e) => setForm((f) => ({ ...f, contractFee: e.target.value }))}
-              placeholder="ex: 120,00"
-              inputMode="decimal"
-              className="w-full max-w-xs rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
-            />
-            <span className="mt-1 block text-[11px] text-zinc-400">Pago pela prefeitura; entra no faturamento dos Relatórios. Só aparece aqui no admin — o médico não vê.</span>
-          </label>
-          <label className="text-xs sm:col-span-2">
-            <span className="mb-1 block font-medium text-zinc-600">Chave PIX (repasse)</span>
-            <input
-              value={form.pixKey}
-              onChange={(e) => setForm((f) => ({ ...f, pixKey: e.target.value }))}
-              placeholder="CPF/CNPJ, e-mail, celular ou aleatória"
-              maxLength={140}
-              className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
-            />
-            <span className="mt-1 block text-[11px] text-zinc-400">O médico também pode preencher em Meu cadastro.</span>
           </label>
         </div>
         <div className="sm:col-span-2">
@@ -1423,39 +1180,6 @@ function DoctorsTab() {
                     className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
                   />
                 </label>
-                <label className="text-xs sm:col-span-2">
-                  <span className="mb-1 block font-medium text-zinc-600">Valor que o médico recebe por consulta (R$)</span>
-                  <input
-                    value={editForm.consultFee}
-                    onChange={(e) => setEditForm((f) => ({ ...f, consultFee: e.target.value }))}
-                    placeholder="ex: 70,00"
-                    inputMode="decimal"
-                    className="w-full max-w-xs rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
-                  />
-                  <span className="mt-1 block text-[11px] text-zinc-400">Vale para as próximas consultas concluídas; as já concluídas mantêm o valor da época.</span>
-                </label>
-                <label className="text-xs sm:col-span-2">
-                  <span className="mb-1 block font-medium text-zinc-600">Valor que recebemos por consulta (R$)</span>
-                  <input
-                    value={editForm.contractFee}
-                    onChange={(e) => setEditForm((f) => ({ ...f, contractFee: e.target.value }))}
-                    placeholder="ex: 120,00"
-                    inputMode="decimal"
-                    className="w-full max-w-xs rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
-                  />
-                  <span className="mt-1 block text-[11px] text-zinc-400">Pago pela prefeitura; entra no faturamento dos Relatórios. Só aparece aqui no admin — o médico não vê.</span>
-                </label>
-                <label className="text-xs sm:col-span-2">
-                  <span className="mb-1 block font-medium text-zinc-600">Chave PIX (repasse)</span>
-                  <input
-                    value={editForm.pixKey}
-                    onChange={(e) => setEditForm((f) => ({ ...f, pixKey: e.target.value }))}
-                    placeholder="CPF/CNPJ, e-mail, celular ou aleatória"
-                    maxLength={140}
-                    className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
-                  />
-                  <span className="mt-1 block text-[11px] text-zinc-400">O médico também pode preencher em Meu cadastro.</span>
-                </label>
               </div>
               <div className="flex gap-2 sm:col-span-2">
                 <button
@@ -1482,9 +1206,6 @@ function DoctorsTab() {
                 <p className="font-medium text-zinc-800">{d.name}</p>
                 <p className="text-xs text-zinc-500">
                   {d.email} {d.specialties?.name ? `· ${d.specialties.name}` : ""}
-                  {feeInput(d.consult_fee) ? ` · médico recebe R$ ${feeInput(d.consult_fee)}` : " · sem valor por consulta"}
-                  {feeInput(d.contract_fee) ? ` · recebemos R$ ${feeInput(d.contract_fee)}` : <span className="text-amber-700"> · sem valor que recebemos</span>}
-                  {d.pix_key ? ` · PIX: ${d.pix_key}` : ""}
                 </p>
                 {d.cpf && d.crm && d.crm_uf ? (
                   <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-brand-teal-dark">
@@ -1543,8 +1264,6 @@ interface PatientHistoryItem {
   called_at: string | null;
   finished_at: string | null;
   doctor_notes: string | null;
-  chief_complaint?: string | null;
-  conduct?: string | null;
   prescription_url: string | null;
   memed_prescription_at: string | null;
   memed_prescription_summary: string | null;
@@ -1638,16 +1357,6 @@ function PatientHistoryPanel({ patientId }: { patientId: string }) {
               </span>
             ))}
           </div>
-        )}
-        {h.chief_complaint && (
-          <p className="text-zinc-700">
-            <span className="font-semibold">Queixa:</span> {h.chief_complaint}
-          </p>
-        )}
-        {h.conduct && (
-          <p className="whitespace-pre-wrap text-zinc-700">
-            <span className="font-semibold">Conduta:</span> {h.conduct}
-          </p>
         )}
         {h.doctor_notes && <p className="whitespace-pre-wrap text-zinc-700">{h.doctor_notes}</p>}
         {h.prescription_url && (
@@ -1965,17 +1674,7 @@ function PatientsTab() {
             >
               <div className="flex items-center justify-between gap-2 px-4 py-2.5">
                 <div className="min-w-0">
-                  <p className="flex flex-wrap items-center gap-1.5 font-medium text-zinc-800">
-                    {p.full_name}
-                    {(p.faltas ?? 0) >= 2 && (
-                      <span
-                        className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700"
-                        title="Faltou várias vezes: vale confirmar antes de agendar"
-                      >
-                        {p.faltas} faltas
-                      </span>
-                    )}
-                  </p>
+                  <p className="font-medium text-zinc-800">{p.full_name}</p>
                   <p className="text-xs text-zinc-500">
                     {p.cpf ? `CPF ${p.cpf} · ` : ""}
                     {p.phone ?? p.email ?? ""}
@@ -2447,26 +2146,12 @@ function AgendaTab() {
 }
 
 // ------------------------------------------------------------
-// Equipe (níveis de acesso em lib/permissions.ts)
+// Equipe (admin / atendente)
 // ------------------------------------------------------------
-const ROLE_LABELS: Record<string, string> = { ...ROLE_LABEL, admin: "Master" };
-
-function RoleOptions() {
-  return (
-    <>
-      {STAFF_ROLES.map((r) => (
-        <option key={r} value={r}>
-          {ROLE_LABEL[r]}
-        </option>
-      ))}
-    </>
-  );
-}
-
-function RoleHint({ role }: { role: string }) {
-  const r = (role === "admin" ? "master" : role) as StaffRole;
-  return ROLE_DESCRIPTION[r] ? <span className="mt-1 block text-[11px] text-zinc-400">{ROLE_DESCRIPTION[r]}</span> : null;
-}
+const ROLE_LABELS: Record<string, string> = {
+  admin: "Administrador",
+  atendente: "Atendente",
+};
 
 function StaffTab() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
@@ -2518,7 +2203,7 @@ function StaffTab() {
 
   function startEdit(m: StaffMember) {
     setEditingId(m.id);
-    setEditForm({ name: m.name, email: m.email, role: m.role === "admin" ? "master" : m.role, password: "" });
+    setEditForm({ name: m.name, email: m.email, role: m.role, password: "" });
   }
 
   async function handleDelete(m: StaffMember) {
@@ -2593,15 +2278,15 @@ function StaffTab() {
           />
         </label>
         <label className="text-xs">
-          <span className="mb-1 block font-medium text-zinc-600">Nível de acesso</span>
+          <span className="mb-1 block font-medium text-zinc-600">Papel</span>
           <select
             value={form.role}
             onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
             className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
           >
-            <RoleOptions />
+            <option value="atendente">Atendente</option>
+            <option value="admin">Administrador</option>
           </select>
-          <RoleHint role={form.role} />
         </label>
         <div className="sm:col-span-2">
           <button
@@ -2638,15 +2323,15 @@ function StaffTab() {
                 />
               </label>
               <label className="text-xs">
-                <span className="mb-1 block font-medium text-zinc-600">Nível de acesso</span>
+                <span className="mb-1 block font-medium text-zinc-600">Papel</span>
                 <select
                   value={editForm.role}
                   onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value }))}
                   className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
                 >
-                  <RoleOptions />
+                  <option value="atendente">Atendente</option>
+                  <option value="admin">Administrador</option>
                 </select>
-                <RoleHint role={editForm.role} />
               </label>
               <label className="text-xs">
                 <span className="mb-1 block font-medium text-zinc-600">Nova senha (opcional)</span>
@@ -2715,399 +2400,6 @@ function StaffTab() {
           <p className="text-xs text-zinc-400">Nenhum membro da equipe cadastrado ainda.</p>
         )}
       </ul>
-    </div>
-  );
-}
-
-// ------------------------------------------------------------
-// Captação de médicos (formulário público de cadastro)
-// ------------------------------------------------------------
-const APPLICATION_STATUS_LABELS: Record<ApplicationStatus, string> = {
-  novo: "Novo",
-  em_avaliacao: "Em avaliação",
-  aprovado: "Aprovado",
-  recusado: "Recusado",
-};
-
-const APPLICATION_STATUS_STYLES: Record<ApplicationStatus, string> = {
-  novo: "bg-sky-50 text-sky-700",
-  em_avaliacao: "bg-amber-50 text-amber-700",
-  aprovado: "bg-emerald-50 text-emerald-700",
-  recusado: "bg-red-50 text-red-700",
-};
-
-const WEEKDAY_LABELS: Record<string, string> = {
-  seg: "Seg",
-  ter: "Ter",
-  qua: "Qua",
-  qui: "Qui",
-  sex: "Sex",
-  sab: "Sáb",
-  dom: "Dom",
-};
-
-function formatApplicationDays(app: DoctorApplication) {
-  const days = app.available_days.map((d) => WEEKDAY_LABELS[d] ?? d).join(", ");
-  const shifts = app.available_shifts
-    .map((s) => SHIFTS.find((x) => x.key === s)?.label ?? s)
-    .join("/");
-  if (!days && !shifts) return "—";
-  return [days, shifts].filter(Boolean).join(" · ");
-}
-
-function formatPrice(value: number | null) {
-  if (value === null) return "—";
-  return `R$ ${value.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
-}
-
-function initials(name: string) {
-  return name
-    .replace(/^Dra?\.\s*/i, "")
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase())
-    .join("");
-}
-
-function CaptacaoTab() {
-  const [applications, setApplications] = useState<DoctorApplication[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [specialty, setSpecialty] = useState("");
-  const [city, setCity] = useState("");
-  const [shift, setShift] = useState("");
-  const [status, setStatus] = useState("");
-  const [selected, setSelected] = useState<DoctorApplication | null>(null);
-
-  const [weekAgo, setWeekAgo] = useState(0);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setWeekAgo(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    try {
-      const res = await fetch("/api/admin/doctor-applications");
-      if (res.ok) setApplications((await res.json()).applications);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    const timeout = setTimeout(load, 0);
-    return () => clearTimeout(timeout);
-  }, [load]);
-
-  async function updateStatus(app: DoctorApplication, next: ApplicationStatus) {
-    const res = await fetch(`/api/admin/doctor-applications/${app.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: next }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      alert(err.error ?? "Falha ao atualizar candidatura");
-      return;
-    }
-    setSelected(null);
-    await load();
-  }
-
-  const cities = Array.from(new Set(applications.map((a) => a.city))).sort();
-
-  const filtered = applications.filter((a) => {
-    if (search) {
-      const q = search.toLowerCase();
-      if (!a.name.toLowerCase().includes(q) && !a.crm.toLowerCase().includes(q)) return false;
-    }
-    if (specialty && a.specialty !== specialty) return false;
-    if (city && a.city !== city) return false;
-    if (shift && !a.available_shifts.includes(shift)) return false;
-    if (status && a.status !== status) return false;
-    return true;
-  });
-
-  const totals = {
-    total: applications.length,
-    novaSemana: applications.filter((a) => new Date(a.created_at).getTime() >= weekAgo).length,
-    emAvaliacao: applications.filter((a) => a.status === "em_avaliacao").length,
-    aprovados: applications.filter((a) => a.status === "aprovado").length,
-  };
-  const taxaAprovacao = totals.total > 0 ? Math.round((totals.aprovados / totals.total) * 100) : 0;
-
-  function clearFilters() {
-    setSearch("");
-    setSpecialty("");
-    setCity("");
-    setShift("");
-    setStatus("");
-  }
-
-  return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-lg border border-zinc-200 bg-white p-4">
-          <p className="text-xs font-medium text-zinc-500">Total cadastrados</p>
-          <p className="mt-1 text-2xl font-semibold text-zinc-900">{totals.total}</p>
-        </div>
-        <div className="rounded-lg border border-zinc-200 bg-white p-4">
-          <p className="text-xs font-medium text-zinc-500">Novos esta semana</p>
-          <p className="mt-1 text-2xl font-semibold text-zinc-900">{totals.novaSemana}</p>
-        </div>
-        <div className="rounded-lg border border-zinc-200 bg-white p-4">
-          <p className="text-xs font-medium text-zinc-500">Em avaliação</p>
-          <p className="mt-1 text-2xl font-semibold text-zinc-900">{totals.emAvaliacao}</p>
-        </div>
-        <div className="rounded-lg border border-zinc-200 bg-white p-4">
-          <p className="text-xs font-medium text-zinc-500">Aprovados · taxa</p>
-          <p className="mt-1 text-2xl font-semibold text-zinc-900">
-            {totals.aprovados}{" "}
-            <span className="text-sm font-medium text-brand-teal-dark">({taxaAprovacao}%)</span>
-          </p>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 bg-white p-3">
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar por nome ou CRM"
-          className="w-48 rounded-md border border-zinc-300 px-3 py-1.5 text-xs outline-none focus:border-brand-teal-dark"
-        />
-        <select
-          value={specialty}
-          onChange={(e) => setSpecialty(e.target.value)}
-          className="rounded-md border border-zinc-300 px-2.5 py-1.5 text-xs outline-none focus:border-brand-teal-dark"
-        >
-          <option value="">Especialidade: todas</option>
-          {SPECIALTIES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-        <select
-          value={city}
-          onChange={(e) => setCity(e.target.value)}
-          className="rounded-md border border-zinc-300 px-2.5 py-1.5 text-xs outline-none focus:border-brand-teal-dark"
-        >
-          <option value="">Cidade: todas</option>
-          {cities.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-        <select
-          value={shift}
-          onChange={(e) => setShift(e.target.value)}
-          className="rounded-md border border-zinc-300 px-2.5 py-1.5 text-xs outline-none focus:border-brand-teal-dark"
-        >
-          <option value="">Disponibilidade: qualquer</option>
-          {SHIFTS.map((s) => (
-            <option key={s.key} value={s.key}>
-              {s.label}
-            </option>
-          ))}
-        </select>
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-          className="rounded-md border border-zinc-300 px-2.5 py-1.5 text-xs outline-none focus:border-brand-teal-dark"
-        >
-          <option value="">Status: todos</option>
-          {APPLICATION_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {APPLICATION_STATUS_LABELS[s]}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          onClick={clearFilters}
-          className="text-xs font-medium text-brand-teal-dark hover:underline"
-        >
-          Limpar filtros
-        </button>
-      </div>
-
-      <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-zinc-200 text-left text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
-              <th className="px-4 py-3">Médico</th>
-              <th className="px-4 py-3">Especialidade</th>
-              <th className="px-4 py-3">Cidade</th>
-              <th className="px-4 py-3">Disponibilidade</th>
-              <th className="px-4 py-3">Valor/consulta</th>
-              <th className="px-4 py-3">Cadastrado em</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((a) => (
-              <tr key={a.id} className="border-b border-zinc-100 last:border-0">
-                <td className="px-4 py-3">
-                  <button
-                    type="button"
-                    onClick={() => setSelected(a)}
-                    className="flex items-center gap-2.5 text-left"
-                  >
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-xs font-semibold text-zinc-500">
-                      {initials(a.name)}
-                    </span>
-                    <span>
-                      <span className="block font-medium text-zinc-800">{a.name}</span>
-                      <span className="block text-xs text-zinc-400">
-                        CRM {a.crm}-{a.crm_uf}
-                      </span>
-                    </span>
-                  </button>
-                </td>
-                <td className="px-4 py-3 text-zinc-600">{a.specialty}</td>
-                <td className="px-4 py-3 text-zinc-600">
-                  {a.city} - {a.state}
-                </td>
-                <td className="px-4 py-3 text-zinc-600">{formatApplicationDays(a)}</td>
-                <td className="px-4 py-3 text-zinc-600">{formatPrice(a.consult_price)}</td>
-                <td className="px-4 py-3 text-zinc-500">
-                  {new Date(a.created_at).toLocaleDateString("pt-BR")}
-                </td>
-                <td className="px-4 py-3">
-                  <span
-                    className={`rounded-full px-2.5 py-1 text-xs font-semibold ${APPLICATION_STATUS_STYLES[a.status]}`}
-                  >
-                    {APPLICATION_STATUS_LABELS[a.status]}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex gap-1.5">
-                    <button
-                      onClick={() => setSelected(a)}
-                      title="Ver perfil"
-                      className="rounded-md border border-zinc-300 p-1.5 text-zinc-600 hover:bg-zinc-50"
-                    >
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-3.5 w-3.5">
-                        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
-                        <circle cx="12" cy="12" r="3" />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={() => updateStatus(a, "aprovado")}
-                      title="Aprovar"
-                      className="rounded-md border border-emerald-200 p-1.5 text-emerald-600 hover:bg-emerald-50"
-                    >
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5">
-                        <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={() => updateStatus(a, "recusado")}
-                      title="Recusar"
-                      className="rounded-md border border-red-200 p-1.5 text-red-600 hover:bg-red-50"
-                    >
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5">
-                        <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
-                      </svg>
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {!loading && filtered.length === 0 && (
-          <p className="p-6 text-center text-xs text-zinc-400">Nenhuma candidatura encontrada.</p>
-        )}
-        {loading && <p className="p-6 text-center text-xs text-zinc-400">Carregando...</p>}
-      </div>
-
-      {selected && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onClick={() => setSelected(null)}
-        >
-          <div
-            className="w-full max-w-lg rounded-xl bg-white p-6 shadow-lg"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start gap-3">
-              {selected.photo_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <a href={selected.photo_url} target="_blank" rel="noopener noreferrer" title="Ver foto em tamanho maior"><img src={selected.photo_url} alt={selected.name} className="h-14 w-14 shrink-0 cursor-pointer rounded-full object-cover transition-opacity hover:opacity-80" /></a>
-              ) : (
-                <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-sm font-semibold text-zinc-500">
-                  {initials(selected.name)}
-                </span>
-              )}
-              <div className="flex-1">
-                <h3 className="text-base font-semibold text-zinc-900">{selected.name}</h3>
-                <p className="text-xs text-zinc-500">
-                  CRM {selected.crm}-{selected.crm_uf} · {selected.specialty}
-                  {selected.experience_years ? ` · ${selected.experience_years} anos de experiência` : ""}
-                </p>
-              </div>
-              <span
-                className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${APPLICATION_STATUS_STYLES[selected.status]}`}
-              >
-                {APPLICATION_STATUS_LABELS[selected.status]}
-              </span>
-            </div>
-
-            <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2.5 text-xs">
-              <div>
-                <dt className="font-medium text-zinc-400">E-mail</dt>
-                <dd className="text-zinc-700">{selected.email}</dd>
-              </div>
-              <div>
-                <dt className="font-medium text-zinc-400">WhatsApp</dt>
-                <dd className="text-zinc-700">{selected.whatsapp}</dd>
-              </div>
-              <div>
-                <dt className="font-medium text-zinc-400">Cidade</dt>
-                <dd className="text-zinc-700">
-                  {selected.city} - {selected.state}
-                </dd>
-              </div>
-              <div>
-                <dt className="font-medium text-zinc-400">Valor pretendido</dt>
-                <dd className="text-zinc-700">{formatPrice(selected.consult_price)}</dd>
-              </div>
-              <div className="col-span-2">
-                <dt className="font-medium text-zinc-400">Disponibilidade</dt>
-                <dd className="text-zinc-700">{formatApplicationDays(selected)}</dd>
-              </div>
-              {selected.presentation && (
-                <div className="col-span-2">
-                  <dt className="font-medium text-zinc-400">Apresentação</dt>
-                  <dd className="text-zinc-700">{selected.presentation}</dd>
-                </div>
-              )}
-            </dl>
-
-            <div className="mt-5 flex flex-wrap justify-end gap-2">
-              {(["novo", "em_avaliacao", "aprovado", "recusado"] as ApplicationStatus[])
-                .filter((s) => s !== selected.status)
-                .map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => updateStatus(selected, s)}
-                    className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50"
-                  >
-                    Marcar como {APPLICATION_STATUS_LABELS[s]}
-                  </button>
-                ))}
-              <button
-                onClick={() => setSelected(null)}
-                className="rounded-md bg-brand-navy px-3 py-1.5 text-xs font-medium text-white"
-              >
-                Fechar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

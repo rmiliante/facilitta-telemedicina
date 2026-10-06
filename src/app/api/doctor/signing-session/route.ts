@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDoctorSession } from "@/lib/auth";
 import { getSigningDoctor, refreshSigningState, startSigningSession } from "@/lib/doctorSigning";
+import { getCertificate } from "@/lib/certificateProviders";
 import { PrescreveError } from "@/lib/prescreve";
 
 function errorResponse(err: unknown) {
@@ -14,7 +15,7 @@ function errorResponse(err: unknown) {
 /**
  * GET /api/doctor/signing-session
  * Estado da assinatura digital do médico logado (pronto? sessão ativa?
- * aguardando aprovação no app VIDaaS?). Chamado em polling pela tela
+ * aguardando aprovação no app do certificado?). Chamado em polling pela tela
  * enquanto o médico aprova no celular.
  */
 export async function GET() {
@@ -31,13 +32,14 @@ export async function GET() {
 
 /**
  * POST /api/doctor/signing-session — envia o pedido de aprovação pro app
- * VIDaaS do médico. Body opcional { email, password } da conta de
+ * do certificado do médico (VIDaaS, BirdID...). Body opcional { email, password } da conta de
  * assinatura: com ele, o CRM vai gravado na assinatura (a senha não é guardada).
  */
 export async function POST(req: NextRequest) {
   const session = await getDoctorSession();
   if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const body = await req.json().catch(() => ({}));
+  const otp = typeof body?.otp === "string" ? body.otp.replace(/\s/g, "") : "";
   const account =
     typeof body?.email === "string" && body.email.trim() && typeof body?.password === "string" && body.password
       ? { email: body.email as string, password: body.password as string }
@@ -45,9 +47,13 @@ export async function POST(req: NextRequest) {
   try {
     const doctor = await getSigningDoctor(session.doctorId);
     if (!doctor) return NextResponse.json({ error: "Médico não encontrado" }, { status: 404 });
+    const cert = getCertificate(doctor.signing_provider);
+    if (cert?.approval === "otp" && !otp) {
+      return NextResponse.json({ error: `Digite o código de 6 dígitos que aparece no app ${cert.label}.` }, { status: 400 });
+    }
     let state;
     try {
-      state = await startSigningSession(doctor, account);
+      state = await startSigningSession(doctor, account, otp || undefined);
     } catch (err) {
       if (account && err instanceof PrescreveError && (err.status === 401 || err.status === 400)) {
         return NextResponse.json(

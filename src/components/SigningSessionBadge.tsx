@@ -10,6 +10,7 @@ interface SessionState {
   missing: string[];
   status: "none" | "awaiting_approval" | "active" | "expired";
   expiresAt: string | null;
+  provider?: { id: string; label: string } | null;
 }
 
 export { SIGNING_CHANGED_EVENT };
@@ -31,7 +32,7 @@ function hhmm(iso: string) {
 
 /**
  * Selo no topo da área do médico com o tempo que falta pra acabar a
- * assinatura do plantão (sessão VIDaaS de 8h). Atualiza sozinho.
+ * assinatura do plantão (sessão de 8h no certificado do médico). Atualiza sozinho.
  */
 export default function SigningSessionBadge() {
   const [state, setState] = useState<SessionState | null>(null);
@@ -99,7 +100,7 @@ export default function SigningSessionBadge() {
       Assinatura · faltam {left.label} · <span className="underline">Renovar</span>
     </>
   ) : state.status === "awaiting_approval" ? (
-    "Aprove no app VIDaaS"
+    `Aprove no app ${state.provider?.label ?? "do certificado"}`
   ) : (
     <>
       Assinatura inativa · <span className="underline">Ativar</span>

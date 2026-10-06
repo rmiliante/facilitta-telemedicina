@@ -76,11 +76,20 @@ export interface SessionInfo {
  * sai "com OID": o CRM vai gravado dentro da assinatura de cada PDF.
  * Sem ele, usa só o CPF (assinatura válida, sem o CRM embutido).
  */
-export function startSession(cpf: string, accessToken?: string): Promise<SessionInfo> {
+export function startSession(
+  cpf: string,
+  accessToken?: string,
+  opts?: { provider?: string; otp?: string }
+): Promise<SessionInfo> {
+  // `provider` e `otp` só vão quando o médico escolheu um certificado que exige
+  // (o VIDaaS segue o fluxo de sempre, sem campos extras).
+  const extra: Record<string, string> = {};
+  if (opts?.provider) extra.provider = opts.provider;
+  if (opts?.otp) extra.otp = opts.otp;
   return call<SessionInfo>("/wl/v1/sessions/start", {
     method: "POST",
     headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-    body: JSON.stringify(accessToken ? {} : { cpf: cpf.replace(/\D/g, "") }),
+    body: JSON.stringify(accessToken ? extra : { cpf: cpf.replace(/\D/g, ""), ...extra }),
   });
 }
 

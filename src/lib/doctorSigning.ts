@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { getCertificate, type CertificateProvider } from "@/lib/certificateProviders";
 import { getSession, loginProfessional, startSession, PrescreveError } from "@/lib/prescreve";
 
 /**
@@ -19,6 +20,8 @@ export interface SigningDoctor {
   prescreve_session_id: string | null;
   prescreve_session_status: string | null;
   prescreve_session_expires_at: string | null;
+  /** Certificado escolhido pelo médico (vidaas, birdid...). null = ainda não escolheu. */
+  signing_provider: string | null;
 }
 
 export interface SigningState {
@@ -28,16 +31,21 @@ export interface SigningState {
   status: "none" | "awaiting_approval" | "active" | "expired";
   expiresAt: string | null;
   message?: string;
+  /** Certificado em uso (null = ainda não definido). */
+  provider?: { id: string; label: string; appName: string; approval: "push" | "otp" } | null;
 }
 
 export async function getSigningDoctor(doctorId: string): Promise<SigningDoctor | null> {
   const supabase = getSupabaseAdmin();
   const columns =
-    "id, name, cpf, crm, crm_uf, rqe, endereco_profissional, memed_cpf, memed_crm, memed_uf, prescreve_session_id, prescreve_session_status, prescreve_session_expires_at, specialties(name)";
+    "id, name, cpf, crm, crm_uf, rqe, endereco_profissional, memed_cpf, memed_crm, memed_uf, prescreve_session_id, prescreve_session_status, prescreve_session_expires_at, signing_provider, specialties(name)";
   const run = (cols: string) => supabase.from("doctors").select(cols).eq("id", doctorId).maybeSingle();
   let { data, error } = await run(columns);
-  // RQE/endereço: se as colunas ainda não existem no banco, segue sem elas.
-  if (error?.code === "42703") ({ data, error } = await run(columns.replace(" rqe, endereco_profissional,", "")));
+  // Colunas novas (certificado escolhido, RQE/endereço): se ainda não existem no banco, segue sem elas.
+  if (error?.code === "42703") ({ data, error } = await run(columns.replace(" signing_provider,", "")));
+  if (error?.code === "42703") {
+    ({ data, error } = await run(columns.replace(" signing_provider,", "").replace(" rqe, endereco_profissional,", "")));
+  }
 
   if (error) {
     // 42703 = coluna não existe: migração da receita ainda não rodada.
@@ -64,7 +72,18 @@ export async function getSigningDoctor(doctorId: string): Promise<SigningDoctor 
     prescreve_session_id: (d.prescreve_session_id as string | null) ?? null,
     prescreve_session_status: (d.prescreve_session_status as string | null) ?? null,
     prescreve_session_expires_at: (d.prescreve_session_expires_at as string | null) ?? null,
+    signing_provider: (d.signing_provider as string | null) ?? null,
   };
+}
+
+function providerInfo(p: CertificateProvider | null): SigningState["provider"] {
+  return p ? { id: p.id, label: p.label, appName: p.appName, approval: p.approval } : null;
+}
+
+/** Guarda o certificado escolhido. Retorna false se a coluna ainda não existe no banco. */
+export async function saveSigningProvider(doctorId: string, providerId: string): Promise<boolean> {
+  const { error } = await getSupabaseAdmin().from("doctors").update({ signing_provider: providerId }).eq("id", doctorId);
+  return !error;
 }
 
 function missingFields(doctor: SigningDoctor): string[] {
@@ -92,7 +111,7 @@ async function saveSession(doctorId: string, sessionId: string | null, status: s
 /** Estado atual da sessão; se estiver aguardando aprovação no app, consulta a Prescreve. */
 export async function refreshSigningState(doctor: SigningDoctor): Promise<SigningState> {
   const missing = missingFields(doctor);
-  const base = { ready: missing.length === 0, missing };
+  const base = { ready: missing.length === 0, missing, provider: providerInfo(getCertificate(doctor.signing_provider)) };
   const expiresAt = doctor.prescreve_session_expires_at;
   const notExpired = expiresAt ? new Date(expiresAt).getTime() > Date.now() + 30_000 : false;
 
@@ -129,14 +148,22 @@ export async function refreshSigningState(doctor: SigningDoctor): Promise<Signin
  */
 export async function startSigningSession(
   doctor: SigningDoctor,
-  account?: { email: string; password: string }
+  account?: { email: string; password: string },
+  otp?: string
 ): Promise<SigningState> {
   const missing = missingFields(doctor);
+  const cert = getCertificate(doctor.signing_provider);
+  const provider = providerInfo(cert);
   if (missing.length > 0) {
-    return { ready: false, missing, status: "none", expiresAt: null };
+    return { ready: false, missing, status: "none", expiresAt: null, provider };
   }
   const token = account ? await loginProfessional(account.email, account.password) : undefined;
-  const info = await startSession(doctor.cpf!, token);
+  // VIDaaS (ou sem escolha) segue o fluxo de sempre; outros certificados informam o provedor.
+  const info = await startSession(
+    doctor.cpf!,
+    token,
+    cert && cert.id !== "vidaas" ? { provider: cert.id, otp: cert.approval === "otp" ? otp : undefined } : undefined
+  );
   if (info.status === "active") {
     await saveSession(doctor.id, info.session_id, "active", info.expires_in ?? 8 * 60 * 60);
     return {
@@ -144,10 +171,11 @@ export async function startSigningSession(
       missing: [],
       status: "active",
       expiresAt: new Date(Date.now() + (info.expires_in ?? 8 * 60 * 60) * 1000).toISOString(),
+      provider,
     };
   }
   await saveSession(doctor.id, info.session_id, "awaiting_approval", info.expires_in ?? 180);
-  return { ready: true, missing: [], status: "awaiting_approval", expiresAt: null };
+  return { ready: true, missing: [], status: "awaiting_approval", expiresAt: null, provider };
 }
 
 export async function clearSigningSession(doctorId: string) {
