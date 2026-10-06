@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { BRAZIL_STATES } from "@/lib/doctorApplications";
-import { normalizeSpecialty } from "@/lib/specialtyNormalize";
+import { normalizeSpecialty, specializationsOf } from "@/lib/specialtyNormalize";
 
 /**
  * POST /api/admin/doctor-applications/import — importa candidatos vindos do
@@ -99,6 +99,7 @@ export async function POST(req: NextRequest) {
       crm: number || null,
       crm_uf: uf || null,
       specialty: normalizeSpecialty(str(r.profession, 80) || "Médico(a)", str(r.specialty, 120)),
+      specializations: specializationsOf(str(r.profession, 80) || "Médico(a)", str(r.specialty, 120), str(r.comments)),
       specialty_raw: str(r.specialty, 120) || null,
       collaboration: str(r.collaboration, 300) || null,
       comments: str(r.comments) || null,
