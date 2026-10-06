@@ -630,6 +630,18 @@ function Ficha({
   const [created, setCreated] = useState<{ email: string; password: string; specialtyMatched: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  async function deleteApp() {
+    if (!confirm(`Excluir o candidato "${app.name}"? Essa ação não pode ser desfeita.`)) return;
+    setError(null);
+    const res = await fetch(`/api/admin/doctor-applications/${app.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      setError("Não foi possível excluir. Tente novamente.");
+      return;
+    }
+    await onChanged();
+    onClose();
+  }
+
   async function createDoctor() {
     setCreating(true);
     setError(null);
@@ -753,7 +765,11 @@ function Ficha({
           </div>
         )}
 
-        <div className="mt-5 flex flex-wrap justify-end gap-2">
+        {error && app.status !== "aprovado" && <p className="mt-3 text-right text-xs text-red-600">{error}</p>}
+        <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
+          <button onClick={deleteApp} className="mr-auto rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50">
+            Excluir
+          </button>
           {APPLICATION_STATUSES.filter((s) => s !== app.status).map((s) => (
             <button key={s} onClick={() => onStatus(app, s)} className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50">
               Marcar como {STATUS_LABEL[s]}
