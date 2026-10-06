@@ -12,6 +12,7 @@ import AuditTab from "./AuditTab";
 import AttendanceHistoryTab from "./AttendanceHistoryTab";
 import { printFile } from "@/lib/printPdf";
 import type { TimelineDoc } from "@/lib/patientTimeline";
+import { publicOrigin } from "@/lib/format";
 import { canSeePatients, financeReadOnly, ROLE_DESCRIPTION, ROLE_LABEL, ROLE_TABS, STAFF_ROLES, type AdminTab, type StaffRole } from "@/lib/permissions";
 
 interface Specialty {
@@ -327,11 +328,11 @@ function QuickLink({ label, path, hint }: { label: string; path: string; hint: s
 
   async function copy() {
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}${path}`);
+      await navigator.clipboard.writeText(`${publicOrigin()}${path}`);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      prompt("Copie o link:", `${window.location.origin}${path}`);
+      prompt("Copie o link:", `${publicOrigin()}${path}`);
     }
   }
 
@@ -2044,7 +2045,7 @@ function AgendaTab() {
   }, [form.specialtyId, form.scheduledDate]);
 
   function copyBoothLink() {
-    const url = `${window.location.origin}/atendimento`;
+    const url = `${publicOrigin()}/atendimento`;
     navigator.clipboard.writeText(url).then(() => {
       setBoothCopied(true);
       setTimeout(() => setBoothCopied(false), 2000);
@@ -2165,7 +2166,7 @@ function AgendaTab() {
   }
 
   function copyLink(appointment: Appointment) {
-    const url = `${window.location.origin}/paciente/${appointment.access_token}`;
+    const url = `${publicOrigin()}/paciente/${appointment.access_token}`;
     navigator.clipboard.writeText(url).then(() => {
       setCopiedId(appointment.id);
       setTimeout(() => setCopiedId(null), 2000);
