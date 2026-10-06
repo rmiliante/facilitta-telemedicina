@@ -236,6 +236,8 @@ export default function CaptacaoFunil() {
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(0);
   const [selected, setSelected] = useState<Application | null>(null);
+  const [editing, setEditing] = useState<Application | null>(null);
+  const [pending, setPending] = useState<PendingAction | null>(null);
 
   const [search, setSearch] = useState("");
   const [fProfession, setFProfession] = useState("");
@@ -314,6 +316,33 @@ export default function CaptacaoFunil() {
   });
 
   const semResposta = apps.filter((a) => (waitingDays(a) ?? 0) >= 7).length;
+
+  function askStatus(app: Application, next: ApplicationStatus) {
+    setPending({
+      title: `Marcar como ${STATUS_LABEL[next]}?`,
+      body: `O candidato ${app.name} passará de "${STATUS_LABEL[app.status]}" para "${STATUS_LABEL[next]}".`,
+      label: "Confirmar",
+      run: () => setStatus(app, next),
+    });
+  }
+
+  function askDelete(app: Application) {
+    setPending({
+      title: "Excluir candidato?",
+      body: `Você vai excluir ${app.name} (${registry(app)}). Essa ação não pode ser desfeita.`,
+      label: "Sim, excluir",
+      danger: true,
+      run: async () => {
+        const res = await fetch(`/api/admin/doctor-applications/${app.id}`, { method: "DELETE" });
+        if (!res.ok) {
+          alert("Não foi possível excluir. Tente novamente.");
+          return;
+        }
+        setSelected(null);
+        await load();
+      },
+    });
+  }
 
   async function setStatus(app: Application, next: ApplicationStatus) {
     const res = await fetch(`/api/admin/doctor-applications/${app.id}`, {
@@ -591,11 +620,17 @@ export default function CaptacaoFunil() {
                       <button onClick={() => setSelected(a)} className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50">
                         Abrir
                       </button>
+                      <button onClick={() => setEditing(a)} className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50">
+                        Editar
+                      </button>
                       {a.status !== "aprovado" && a.status !== "recusado" && (
-                        <button onClick={() => setStatus(a, "aprovado")} title="Aprovar" className="rounded-md border border-emerald-200 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50">
+                        <button onClick={() => askStatus(a, "aprovado")} title="Aprovar" className="rounded-md border border-emerald-200 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50">
                           Aprovar
                         </button>
                       )}
+                      <button onClick={() => askDelete(a)} className="rounded-md border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50">
+                        Excluir
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -607,7 +642,31 @@ export default function CaptacaoFunil() {
         {loading && <p className="p-6 text-center text-xs text-zinc-400">Carregando...</p>}
       </div>
 
-      {selected && <Ficha app={selected} onClose={() => setSelected(null)} onStatus={setStatus} onChanged={load} waiting={waitingDays(selected)} />}
+      {selected && (
+        <Ficha app={selected} onClose={() => setSelected(null)} onStatus={askStatus} onDelete={askDelete} onChanged={load} waiting={waitingDays(selected)} />
+      )}
+      {editing && (
+        <EditDialog
+          app={editing}
+          onClose={() => setEditing(null)}
+          onSaved={async () => {
+            setEditing(null);
+            setSelected(null);
+            await load();
+          }}
+        />
+      )}
+      {pending && (
+        <ConfirmDialog
+          action={pending}
+          onCancel={() => setPending(null)}
+          onConfirm={async () => {
+            const run = pending.run;
+            setPending(null);
+            await run();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -616,31 +675,22 @@ function Ficha({
   app,
   onClose,
   onStatus,
+  onDelete,
   onChanged,
   waiting,
 }: {
   app: Application;
   onClose: () => void;
   onStatus: (a: Application, s: ApplicationStatus) => void;
+  onDelete: (a: Application) => void;
   onChanged: () => Promise<void>;
   waiting: number | null;
 }) {
   const stage = stageOf(app);
   const [creating, setCreating] = useState(false);
+  const [confirmCreate, setConfirmCreate] = useState(false);
   const [created, setCreated] = useState<{ email: string; password: string; specialtyMatched: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  async function deleteApp() {
-    if (!confirm(`Excluir o candidato "${app.name}"? Essa ação não pode ser desfeita.`)) return;
-    setError(null);
-    const res = await fetch(`/api/admin/doctor-applications/${app.id}`, { method: "DELETE" });
-    if (!res.ok) {
-      setError("Não foi possível excluir. Tente novamente.");
-      return;
-    }
-    await onChanged();
-    onClose();
-  }
 
   async function createDoctor() {
     setCreating(true);
@@ -745,7 +795,7 @@ function Ficha({
         {app.status === "aprovado" && !app.doctor && !created && (
           <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
             <p className="text-xs text-emerald-800">Aprovado e ainda sem acesso à plataforma. O cadastro é criado com nome, e-mail, especialidade e registro desta candidatura.</p>
-            <button onClick={createDoctor} disabled={creating} className="mt-2 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60">
+            <button onClick={() => setConfirmCreate(true)} disabled={creating} className="mt-2 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60">
               {creating ? "Criando..." : "Criar cadastro do médico"}
             </button>
             {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
@@ -765,9 +815,24 @@ function Ficha({
           </div>
         )}
 
+        {confirmCreate && (
+          <ConfirmDialog
+            action={{
+              title: "Criar cadastro do médico?",
+              body: `Será criado o acesso à plataforma para ${app.name} (${app.email}), com senha provisória.`,
+              label: "Criar cadastro",
+              run: createDoctor,
+            }}
+            onCancel={() => setConfirmCreate(false)}
+            onConfirm={async () => {
+              setConfirmCreate(false);
+              await createDoctor();
+            }}
+          />
+        )}
         {error && app.status !== "aprovado" && <p className="mt-3 text-right text-xs text-red-600">{error}</p>}
         <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
-          <button onClick={deleteApp} className="mr-auto rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50">
+          <button onClick={() => onDelete(app)} className="mr-auto rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50">
             Excluir
           </button>
           {APPLICATION_STATUSES.filter((s) => s !== app.status).map((s) => (
@@ -780,6 +845,132 @@ function Ficha({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+
+interface PendingAction {
+  title: string;
+  body: string;
+  label: string;
+  danger?: boolean;
+  run: () => void | Promise<void>;
+}
+
+function ConfirmDialog({ action, onCancel, onConfirm }: { action: PendingAction; onCancel: () => void; onConfirm: () => void | Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={(e) => { e.stopPropagation(); if (!busy) onCancel(); }}>
+      <div role="alertdialog" aria-modal="true" className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-base font-semibold text-zinc-900">{action.title}</h3>
+        <p className="mt-2 whitespace-pre-line text-sm text-zinc-600">{action.body}</p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button disabled={busy} onClick={onCancel} className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50">
+            Cancelar
+          </button>
+          <button
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              await onConfirm();
+            }}
+            className={`rounded-md px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60 ${action.danger ? "bg-red-600" : "bg-brand-navy"}`}
+          >
+            {busy ? "Aguarde..." : action.label}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const EDIT_FIELDS: { key: "name" | "email" | "profession" | "specialty" | "crm" | "crm_uf" | "whatsapp" | "city" | "state"; label: string }[] = [
+  { key: "name", label: "Nome" },
+  { key: "email", label: "E-mail" },
+  { key: "profession", label: "Profissão" },
+  { key: "specialty", label: "Especialidade" },
+  { key: "crm", label: "Registro (número)" },
+  { key: "crm_uf", label: "UF do registro" },
+  { key: "whatsapp", label: "WhatsApp" },
+  { key: "city", label: "Cidade" },
+  { key: "state", label: "UF" },
+];
+
+function EditDialog({ app, onClose, onSaved }: { app: Application; onClose: () => void; onSaved: () => Promise<void> }) {
+  const initial: Record<string, string> = {
+    name: app.name ?? "",
+    email: app.email ?? "",
+    profession: app.profession ?? "Médico(a)",
+    specialty: app.specialty ?? "",
+    crm: app.crm ?? "",
+    crm_uf: app.crm_uf ?? "",
+    whatsapp: app.whatsapp ?? "",
+    city: app.city ?? "",
+    state: app.state ?? "",
+  };
+  const [vals, setVals] = useState(initial);
+  const [asking, setAsking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const changes = EDIT_FIELDS.filter((f) => vals[f.key].trim() !== initial[f.key]);
+
+  async function save() {
+    const res = await fetch(`/api/admin/doctor-applications/${app.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fields: vals }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      setAsking(false);
+      setError(err.error ?? "Falha ao salvar alterações");
+      return;
+    }
+    await onSaved();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-lg" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-base font-semibold text-zinc-900">Editar candidato</h3>
+        <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-3">
+          {EDIT_FIELDS.map((f) => (
+            <label key={f.key} className="block text-xs font-medium text-zinc-500">
+              {f.label}
+              <input
+                value={vals[f.key]}
+                onChange={(e) => setVals({ ...vals, [f.key]: e.target.value })}
+                className="mt-1 w-full rounded-md border border-zinc-300 px-2.5 py-1.5 text-xs text-zinc-800 outline-none focus:border-brand-teal-dark"
+              />
+            </label>
+          ))}
+        </div>
+        {error && <p className="mt-3 text-xs text-red-600">{error}</p>}
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50">
+            Cancelar
+          </button>
+          <button
+            disabled={changes.length === 0}
+            onClick={() => setAsking(true)}
+            className="rounded-md bg-brand-navy px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+          >
+            Salvar alterações
+          </button>
+        </div>
+      </div>
+      {asking && (
+        <ConfirmDialog
+          action={{
+            title: "Salvar alterações?",
+            body: `Você vai alterar os dados de ${app.name}:\n${changes.map((f) => `• ${f.label}: ${initial[f.key] || "—"} → ${vals[f.key].trim() || "—"}`).join("\n")}`,
+            label: "Confirmar e salvar",
+            run: save,
+          }}
+          onCancel={() => setAsking(false)}
+          onConfirm={save}
+        />
+      )}
     </div>
   );
 }
