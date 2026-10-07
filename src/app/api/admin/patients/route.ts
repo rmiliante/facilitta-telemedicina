@@ -4,6 +4,7 @@ import { cpfLikePattern, formatCpf, sanitizeSearch } from "@/lib/format";
 import { findPatientsByCpf } from "@/lib/patientLookup";
 import { faltasPorPaciente } from "@/lib/reports";
 import { audit } from "@/lib/audit";
+import { currentStaffRole } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
   // ?cpf=... → confere se já existe cadastro com esse CPF (aviso no formulário).
@@ -28,6 +29,12 @@ export async function GET(req: NextRequest) {
   if (error) {
     return NextResponse.json({ error: "Falha ao buscar pacientes" }, { status: 500 });
   }
+  // Nível Agendamento: só o básico para achar o paciente (sem contatos extras nem notas).
+  if ((await currentStaffRole()) === "agendamento") {
+    return NextResponse.json({
+      patients: (data ?? []).map((p) => ({ id: p.id, full_name: p.full_name, cpf: p.cpf, phone: p.phone, birth_date: p.birth_date })),
+    });
+  }
   // Faltas por paciente (lista do admin marca quem falta com frequência).
   const faltas = await faltasPorPaciente((data ?? []).map((p) => p.id));
   return NextResponse.json({ patients: (data ?? []).map((p) => ({ ...p, faltas: faltas[p.id] ?? 0 })) });
@@ -39,6 +46,11 @@ export async function POST(req: NextRequest) {
 
   if (typeof fullName !== "string" || !fullName.trim()) {
     return NextResponse.json({ error: "fullName é obrigatório" }, { status: 400 });
+  }
+
+  // Nível Agendamento: CPF completo é obrigatório (é ele que impede cadastro duplicado).
+  if ((await currentStaffRole()) === "agendamento" && (typeof cpf !== "string" || cpf.replace(/\D/g, "").length !== 11)) {
+    return NextResponse.json({ error: "Informe o CPF completo (11 números)." }, { status: 400 });
   }
 
   // Não cria cadastro repetido: se o CPF já existe, devolve o original.
