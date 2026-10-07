@@ -2028,6 +2028,9 @@ function AgendaTab() {
   const [editSaving, setEditSaving] = useState(false);
   const [boothCopied, setBoothCopied] = useState(false);
   const [scheduledPatientIds, setScheduledPatientIds] = useState<Set<string>>(new Set());
+  // Busca de paciente por nome ou CPF (lista de opções vai aparecendo ao digitar).
+  const [patientQuery, setPatientQuery] = useState("");
+  const [patientListOpen, setPatientListOpen] = useState(false);
 
   // Busca quem já está agendado nessa data pra essa especialidade, pra
   // tirar da lista de seleção (evita marcar o mesmo paciente duas vezes
@@ -2081,6 +2084,10 @@ function AgendaTab() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
+    if (!form.patientId) {
+      alert("Escolha o paciente na busca (digite o nome ou o CPF).");
+      return;
+    }
     if (!form.tipoConsulta) {
       alert("Marque se é primeiro atendimento (rotina) ou retorno.");
       return;
@@ -2213,19 +2220,77 @@ function AgendaTab() {
       <form onSubmit={handleCreate} className="grid gap-3 rounded-lg border border-zinc-200 bg-white p-4 sm:grid-cols-2">
         <label className="text-xs sm:col-span-2">
           <span className="mb-1 block font-medium text-zinc-600">Paciente</span>
-          <select
-            required
-            value={form.patientId}
-            onChange={(e) => setForm((f) => ({ ...f, patientId: e.target.value }))}
-            className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
-          >
-            <option value="">Selecione...</option>
-            {patientsForSelection.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.full_name}
-              </option>
-            ))}
-          </select>
+          {form.patientId ? (
+            <div className="flex items-center justify-between rounded-md border border-brand-teal-dark bg-brand-teal/10 px-3 py-1.5 text-sm">
+              <span>
+                {patients.find((p) => p.id === form.patientId)?.full_name ?? "Paciente"}
+                {patients.find((p) => p.id === form.patientId)?.cpf
+                  ? ` — ${patients.find((p) => p.id === form.patientId)?.cpf}`
+                  : ""}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setForm((f) => ({ ...f, patientId: "" }));
+                  setPatientQuery("");
+                }}
+                className="text-xs text-zinc-600 underline"
+              >
+                trocar
+              </button>
+            </div>
+          ) : (
+            <div className="relative">
+              <input
+                type="text"
+                autoComplete="off"
+                placeholder="Digite o nome ou o CPF do paciente"
+                value={patientQuery}
+                onChange={(e) => {
+                  setPatientQuery(e.target.value);
+                  setPatientListOpen(true);
+                }}
+                onFocus={() => setPatientListOpen(true)}
+                onBlur={() => setTimeout(() => setPatientListOpen(false), 150)}
+                className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+              />
+              {patientListOpen && patientQuery.trim().length >= 2 && (() => {
+                const norm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+                const term = norm(patientQuery.trim());
+                const digits = patientQuery.replace(/\D/g, "");
+                const found = patientsForSelection
+                  .filter(
+                    (p) =>
+                      norm(p.full_name).includes(term) ||
+                      (digits.length >= 3 && (p.cpf ?? "").replace(/\D/g, "").includes(digits))
+                  )
+                  .slice(0, 8);
+                return (
+                  <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border border-zinc-200 bg-white shadow-lg">
+                    {found.length === 0 && (
+                      <li className="px-3 py-2 text-xs text-zinc-500">Nenhum paciente encontrado.</li>
+                    )}
+                    {found.map((p) => (
+                      <li key={p.id}>
+                        <button
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            setForm((f) => ({ ...f, patientId: p.id }));
+                            setPatientQuery("");
+                            setPatientListOpen(false);
+                          }}
+                          className="block w-full px-3 py-2 text-left text-sm hover:bg-zinc-50"
+                        >
+                          {p.full_name} <span className="text-xs text-zinc-500">{p.cpf ?? ""}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                );
+              })()}
+            </div>
+          )}
           {form.specialtyId && form.scheduledDate && patientsForSelection.length < patients.length && (
             <span className="mt-1 block text-[11px] text-zinc-400">
               Pacientes já agendados nessa especialidade/data não aparecem na lista.
