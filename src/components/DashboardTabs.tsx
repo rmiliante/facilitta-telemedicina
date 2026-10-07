@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
+import PacientesDashboard from "./PacientesDashboard";
 
-type Sub = "consultas" | "captacao" | "medicos";
+type Sub = "consultas" | "pacientes" | "captacao" | "medicos";
 
 const SUBS: { key: Sub; label: string }[] = [
   { key: "consultas", label: "Consultas" },
+  { key: "pacientes", label: "Pacientes" },
   { key: "captacao", label: "Captação" },
   { key: "medicos", label: "Médicos" },
 ];
@@ -32,6 +34,7 @@ export default function DashboardTabs({ consultas }: { consultas: ReactNode }) {
         ))}
       </div>
       {sub === "consultas" && consultas}
+      {sub === "pacientes" && <PacientesDashboard />}
       {sub === "captacao" && <CaptacaoDashboard />}
       {sub === "medicos" && <MedicosDashboard />}
     </div>
