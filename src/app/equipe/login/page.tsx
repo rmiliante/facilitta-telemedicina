@@ -25,7 +25,7 @@ export default function StaffLoginPage() {
         setError(data.error ?? "Não foi possível entrar");
         return;
       }
-      router.push(data.role === "atendente" ? "/atendente" : "/admin");
+      router.push(data.role === "atendente" ? "/atendente" : data.role === "agendamento" ? "/agendamento" : "/admin");
       router.refresh();
     } finally {
       setLoading(false);
