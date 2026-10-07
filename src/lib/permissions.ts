@@ -12,9 +12,9 @@
  * Sem imports de Node: roda no proxy.
  */
 
-export type StaffRole = "master" | "gestor" | "financeiro" | "prefeitura" | "atendente";
+export type StaffRole = "master" | "gestor" | "financeiro" | "prefeitura" | "atendente" | "agendamento";
 
-export const STAFF_ROLES: StaffRole[] = ["master", "gestor", "financeiro", "prefeitura", "atendente"];
+export const STAFF_ROLES: StaffRole[] = ["master", "gestor", "financeiro", "prefeitura", "atendente", "agendamento"];
 
 export const ROLE_LABEL: Record<StaffRole, string> = {
   master: "Master",
@@ -22,6 +22,7 @@ export const ROLE_LABEL: Record<StaffRole, string> = {
   financeiro: "Financeiro",
   prefeitura: "Prefeitura",
   atendente: "Atendente",
+  agendamento: "Agendamento",
 };
 
 export const ROLE_DESCRIPTION: Record<StaffRole, string> = {
@@ -30,6 +31,7 @@ export const ROLE_DESCRIPTION: Record<StaffRole, string> = {
   financeiro: "Financeiro (repasse, fechamento, NF), histórico e relatórios com valores. Sem dados clínicos.",
   prefeitura: "Só consulta: dashboard e relatórios com faturamento. Sem dados de pacientes e sem valores pagos aos médicos.",
   atendente: "Painel de atendimento: agenda, pacientes e fila.",
+  agendamento: "Só cadastra pacientes (sem duplicar) e agenda consultas. Sem histórico, prontuário, valores nem exclusões.",
 };
 
 /** Converte o papel gravado (inclui o antigo "admin" = Master). */
@@ -59,6 +61,7 @@ export const ROLE_TABS: Record<StaffRole, AdminTab[]> = {
   financeiro: ["dashboard", "historico", "financeiro", "relatorios"],
   prefeitura: ["dashboard", "relatorios"],
   atendente: [],
+  agendamento: [],
 };
 
 /** Pode abrir o /admin (o atendente vai para o /atendente). */
@@ -97,6 +100,14 @@ export function apiAllowed(role: StaffRole, pathname: string, method: string): b
   switch (role) {
     case "atendente":
       return lists || under(pathname, "/api/admin/patients") || under(pathname, "/api/admin/appointments");
+    case "agendamento":
+      return (
+        lists ||
+        ((method === "GET" || method === "POST") && pathname === "/api/admin/patients") ||
+        ((method === "GET" || method === "POST") && pathname === "/api/admin/appointments") ||
+        (method === "GET" && pathname === "/api/admin/appointments/scheduled-patients") ||
+        (method === "PATCH" && /^\/api\/admin\/appointments\/[^/]+$/.test(pathname))
+      );
     case "gestor":
       return (
         lists ||
