@@ -160,7 +160,7 @@ export async function proxy(request: NextRequest) {
         return NextResponse.json({ error: "Sem permissão para este nível de acesso" }, { status: 403 });
       }
     } else if (!canUseAdmin(role)) {
-      return NextResponse.redirect(new URL("/atendente", request.url));
+      return NextResponse.redirect(new URL(role === "agendamento" ? "/agendamento" : "/atendente", request.url));
     }
     return withRole(request, role);
   }
@@ -168,10 +168,17 @@ export async function proxy(request: NextRequest) {
   if (pathname.startsWith("/atendente")) {
     const staff = await getStaffFromCookie(request);
     if (staff?.role === "atendente" || staff?.role === "master") return NextResponse.next();
-    if (staff) return NextResponse.redirect(new URL("/admin", request.url));
+    if (staff) return NextResponse.redirect(new URL(staff.role === "agendamento" ? "/agendamento" : "/admin", request.url));
 
     const loginUrl = new URL("/equipe/login", request.url);
     return NextResponse.redirect(loginUrl);
+  }
+
+  if (pathname.startsWith("/agendamento")) {
+    const staff = await getStaffFromCookie(request);
+    if (staff?.role === "agendamento" || staff?.role === "master") return withRole(request, staff.role);
+    if (staff) return NextResponse.redirect(new URL(staff.role === "atendente" ? "/atendente" : "/admin", request.url));
+    return NextResponse.redirect(new URL("/equipe/login", request.url));
   }
 
   if (pathname.startsWith("/medico") || pathname.startsWith("/api/doctor")) {
