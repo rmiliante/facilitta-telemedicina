@@ -115,6 +115,7 @@ export function apiAllowed(role: StaffRole, pathname: string, method: string): b
         under(pathname, "/api/admin/appointments") ||
         (isRead(method) &&
           (under(pathname, "/api/admin/dashboard") ||
+            under(pathname, "/api/admin/dashboard-pacientes") ||
             under(pathname, "/api/admin/historico") ||
             under(pathname, "/api/admin/relatorios") ||
             under(pathname, "/api/admin/financeiro")))
