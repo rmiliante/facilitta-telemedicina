@@ -23,21 +23,25 @@ export type BillingRule = "sem_contrato" | "sem_valor" | "realizadas" | "minimo"
 export const BILLING_RULE_LABEL: Record<BillingRule, string> = {
   sem_contrato: "Antes do início do contrato",
   sem_valor: "Falta o valor no cadastro do médico",
-  realizadas: "1º mês: consultas realizadas",
+  realizadas: "1º mês: consultas agendadas (presentes + ausentes)",
   minimo: "Mínimo da cota contratada",
-  excedente: "Acima da cota: consultas realizadas",
+  excedente: "Acima da cota: consultas agendadas (presentes + ausentes)",
 };
 
 const round = (v: number) => Math.round(v * 100) / 100;
 
 /**
- * Faturamento de uma especialidade no mês.
+ * Faturamento de uma especialidade no mês. O agendamento gera a cobrança:
+ * contam presentes (consulta realizada) e ausentes (agendados que não
+ * aconteceram), pois a prefeitura paga pelo agendado no período.
  * @param fees valor de cada consulta realizada (null = sem valor gravado)
+ * @param ausentes agendados no período que não foram realizados (faltas e
+ *   agendamentos vencidos); entram na cobrança pela média dos presentes
  * @param valorReferencia valor atual dos médicos da especialidade, usado
  *   para completar a cota quando não houve consulta realizada com valor
  */
-export function billing(month: string, fees: (number | null)[], cota: number, valorReferencia: number | null) {
-  const realizadas = fees.length;
+export function billing(month: string, fees: (number | null)[], cota: number, valorReferencia: number | null, ausentes = 0) {
+  const realizadas = fees.length + ausentes;
   const semValor = fees.filter((f) => f === null).length;
   const comValor = fees.filter((f): f is number => f !== null);
   const soma = comValor.reduce((a, b) => a + b, 0);
@@ -62,8 +66,9 @@ export function billing(month: string, fees: (number | null)[], cota: number, va
   if (rule === "sem_contrato") return { rule, faturadas, valor: 0, valorMedio, semValor };
 
   const complemento = faturadas - realizadas; // consultas que completam a cota
-  if (semValor > 0 || (complemento > 0 && media === null)) {
+  const pelaMedia = complemento + ausentes; // ausentes e cota valem a média
+  if (semValor > 0 || (pelaMedia > 0 && media === null)) {
     return { rule: "sem_valor" as BillingRule, faturadas, valor: null, valorMedio, semValor };
   }
-  return { rule, faturadas, valor: round(soma + complemento * (media ?? 0)), valorMedio, semValor };
+  return { rule, faturadas, valor: round(soma + pelaMedia * (media ?? 0)), valorMedio, semValor };
 }
