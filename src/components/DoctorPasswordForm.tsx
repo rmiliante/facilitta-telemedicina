@@ -39,7 +39,7 @@ export default function DoctorPasswordForm() {
   }
 
   const input =
-    "mt-1 w-full max-w-sm rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-brand-teal-dark";
+    "mt-1 block w-full max-w-sm rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-brand-teal-dark";
 
   return (
     <form onSubmit={salvar} className="mt-8 max-w-xl rounded-xl border border-zinc-200 bg-white p-5">
