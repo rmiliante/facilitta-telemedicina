@@ -15,6 +15,7 @@ interface Report {
     agendamentos: number;
     realizados: number;
     faltas: number;
+    aRealizar?: number;
     cancelados: number;
     taxaFaltas: number | null;
     pacientesAtendidos: number;
@@ -32,6 +33,7 @@ interface Report {
     usoCota: number | null;
     realizados: number;
     faltas: number;
+    aRealizar?: number;
     cancelados: number;
     taxaFaltas: number | null;
     duracaoMedia: number | null;
@@ -45,6 +47,7 @@ interface Report {
   medicos: { id: string; name: string; realizados: number; faltas: number; taxaFaltas: number | null; duracaoMedia: number | null }[];
   /** null quando o nível de acesso não pode ver pacientes. */
   faltososRecorrentes: { id: string; name: string; phone: string | null; faltas: number; ultima: string }[] | null;
+  detalhe?: { date: string; patient: string; specialty: string; doctor: string | null; situacao: "presente" | "ausente" | "a_realizar" }[] | null;
 }
 
 function currentMonth() {
@@ -102,17 +105,18 @@ function exportCsv(r: Report) {
   const lines = [
     line([`Relatório de atendimentos — ${monthLabel(r.month)}`]),
     "",
-    line(["Agendamentos", "Realizados", "Faltas", "Taxa de faltas (%)", "Cancelados", "Pacientes atendidos", "Duração média (min)", "Cota total"]),
+    line(["Agendamentos", "Presentes", "Ausentes", "Taxa de ausência (%)", "Cancelados", "Pacientes atendidos", "Duração média (min)", "Cota total"]),
     line([t.agendamentos, t.realizados, t.faltas, t.taxaFaltas, t.cancelados, t.pacientesAtendidos, t.duracaoMedia, t.cotaTotal]),
     "",
-    line(["Especialidade", "Cota", "Agendados", "Uso da cota (%)", "Realizados", "Faltas", "Taxa de faltas (%)", "Cancelados", "Duração média (min)"]),
+    line(["Especialidade", "Cota", "Agendados", "Uso da cota (%)", "Presentes", "Ausentes", "Taxa de ausência (%)", "Cancelados", "Duração média (min)"]),
     ...r.especialidades.map((s) => line([s.name, s.cota, s.agendados, s.usoCota, s.realizados, s.faltas, s.taxaFaltas, s.cancelados, s.duracaoMedia])),
     "",
-    line(["Faturamento — especialidade", "Realizadas", "Cota", "Consultas cobradas", "Valor médio por consulta (R$)", "Valor a receber (R$)", "Regra"]),
+    line(["Faturamento — especialidade", "Presentes", "Ausentes e a realizar", "Cota", "Consultas cobradas", "Valor médio por consulta (R$)", "Valor a receber (R$)", "Regra"]),
     ...r.especialidades.map((s) =>
       line([
         s.name,
         s.realizados,
+        s.faltas + (s.aRealizar ?? 0),
         s.cota,
         s.faturadas ?? null,
         s.valorConsulta != null ? s.valorConsulta.toFixed(2).replace(".", ",") : null,
@@ -120,10 +124,17 @@ function exportCsv(r: Report) {
         s.regraLabel ?? null,
       ])
     ),
-    line(["Valor final a receber (R$)", "", "", "", "", t.valorReceber != null ? t.valorReceber.toFixed(2).replace(".", ",") : "", ""]),
+    line(["Valor final a receber (R$)", "", "", "", "", "", t.valorReceber != null ? t.valorReceber.toFixed(2).replace(".", ",") : "", ""]),
     "",
-    line(["Médico", "Realizados", "Faltas", "Taxa de faltas (%)", "Duração média (min)"]),
+    line(["Médico", "Presentes", "Ausentes", "Taxa de ausência (%)", "Duração média (min)"]),
     ...r.medicos.map((m) => line([m.name, m.realizados, m.faltas, m.taxaFaltas, m.duracaoMedia])),
+    ...(r.detalhe
+      ? [
+          "",
+          line(["Dia", "Paciente", "Especialidade", "Médico", "Situação"]),
+          ...r.detalhe.map((d) => line([d.date.split("-").reverse().join("/"), d.patient, d.specialty, d.doctor, d.situacao === "presente" ? "Presente" : d.situacao === "ausente" ? "Ausente" : "A realizar"])),
+        ]
+      : []),
   ];
   const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -204,9 +215,9 @@ export default function ReportsTab() {
           </div>
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6 print:grid-cols-3">
-            <Stat label="Agendamentos" value={String(t.agendamentos)} sub={t.cotaTotal ? `de ${t.cotaTotal} contratados` : undefined} />
-            <Stat label="Realizados" value={String(t.realizados)} />
-            <Stat label="Faltas" value={String(t.faltas)} sub={`taxa de faltas ${p(t.taxaFaltas)}`} />
+            <Stat label="Agendamentos" value={String(t.agendamentos)} sub={[t.cotaTotal ? `de ${t.cotaTotal} contratados` : "", (t.aRealizar ?? 0) > 0 ? `${t.aRealizar} a realizar` : ""].filter(Boolean).join(" · ") || undefined} />
+            <Stat label="Presentes" value={String(t.realizados)} sub="consultas realizadas" />
+            <Stat label="Ausentes" value={String(t.faltas)} sub={`taxa de ausência ${p(t.taxaFaltas)}`} />
             <Stat label="Cancelados" value={String(t.cancelados)} />
             <Stat label="Pacientes atendidos" value={String(t.pacientesAtendidos)} sub="pessoas diferentes" />
             <Stat label="Duração média" value={mins(t.duracaoMedia)} sub="por atendimento" />
@@ -222,8 +233,8 @@ export default function ReportsTab() {
                     : data.faturamento.antesDoContrato
                       ? "Mês anterior ao início do contrato: sem faturamento."
                       : data.faturamento.primeiroMes
-                        ? "Primeiro mês do contrato: cobrado pelas consultas realizadas, cada uma pelo valor do médico que atendeu."
-                        : "Mínimo da cota contratada por especialidade; acima da cota, cobra-se cada consulta realizada. Cada consulta vale o combinado com o médico que atendeu; as que completam a cota valem a média do mês."}
+                        ? "Primeiro mês do contrato: cobrado por todas as consultas agendadas no período (presentes e ausentes). Presentes valem o combinado com o médico que atendeu; ausentes valem a média."
+                        : "Mínimo da cota contratada por especialidade; acima da cota, cobra-se cada consulta agendada (presentes e ausentes). Presentes valem o combinado com o médico que atendeu; ausentes e as que completam a cota valem a média."}
                 </p>
               </div>
               <div className="text-right">
@@ -244,7 +255,8 @@ export default function ReportsTab() {
                   <thead>
                     <tr className="text-left text-[11px] uppercase tracking-wide text-zinc-500">
                       <th className="py-1.5 pr-3 font-semibold">Especialidade</th>
-                      <th className="py-1.5 pr-3 text-right font-semibold">Realizadas</th>
+                      <th className="py-1.5 pr-3 text-right font-semibold">Presentes</th>
+                      <th className="py-1.5 pr-3 text-right font-semibold">Ausentes e a realizar</th>
                       <th className="py-1.5 pr-3 text-right font-semibold">Cota</th>
                       <th className="py-1.5 pr-3 text-right font-semibold">Cobradas</th>
                       <th className="py-1.5 pr-3 text-right font-semibold">Valor médio/consulta</th>
@@ -257,6 +269,7 @@ export default function ReportsTab() {
                       <tr key={s.id} className="border-t border-zinc-100">
                         <td className="py-2 pr-3 text-brand-navy">{s.name}</td>
                         <td className="py-2 pr-3 text-right tabular-nums">{s.realizados}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums">{s.faltas + (s.aRealizar ?? 0)}</td>
                         <td className="py-2 pr-3 text-right tabular-nums">{s.cota}</td>
                         <td className="py-2 pr-3 text-right font-semibold tabular-nums">{s.faturadas ?? "—"}</td>
                         <td className="py-2 pr-3 text-right tabular-nums">
@@ -272,7 +285,7 @@ export default function ReportsTab() {
                   </tbody>
                   <tfoot>
                     <tr className="border-t-2 border-zinc-200">
-                      <td className="py-2 pr-3 font-bold text-brand-navy" colSpan={5}>
+                      <td className="py-2 pr-3 font-bold text-brand-navy" colSpan={6}>
                         Total
                       </td>
                       <td className="py-2 pr-3 text-right font-extrabold tabular-nums text-brand-navy">{money(t.valorReceber ?? 0)}</td>
@@ -293,8 +306,8 @@ export default function ReportsTab() {
                     <th className="py-1.5 pr-3 font-semibold">Especialidade</th>
                     <th className="w-40 py-1.5 pr-3 font-semibold">Uso da cota</th>
                     <th className="py-1.5 pr-3 text-right font-semibold">Agendados / cota</th>
-                    <th className="py-1.5 pr-3 text-right font-semibold">Realizados</th>
-                    <th className="py-1.5 pr-3 text-right font-semibold">Faltas</th>
+                    <th className="py-1.5 pr-3 text-right font-semibold">Presentes</th>
+                    <th className="py-1.5 pr-3 text-right font-semibold">Ausentes</th>
                     <th className="py-1.5 pr-3 text-right font-semibold">Cancelados</th>
                     <th className="py-1.5 text-right font-semibold">Duração média</th>
                   </tr>
@@ -332,8 +345,8 @@ export default function ReportsTab() {
                 <thead>
                   <tr className="text-left text-[11px] uppercase tracking-wide text-zinc-500">
                     <th className="py-1.5 pr-3 font-semibold">Médico</th>
-                    <th className="py-1.5 pr-3 text-right font-semibold">Realizados</th>
-                    <th className="py-1.5 pr-3 text-right font-semibold">Faltas</th>
+                    <th className="py-1.5 pr-3 text-right font-semibold">Presentes</th>
+                    <th className="py-1.5 pr-3 text-right font-semibold">Ausentes</th>
                     <th className="py-1.5 text-right font-semibold">Duração média</th>
                   </tr>
                 </thead>
@@ -352,6 +365,59 @@ export default function ReportsTab() {
               </table>
             )}
           </section>
+
+          {data.detalhe && (
+            <section className="rounded-xl border border-zinc-200 bg-white p-4 print:hidden">
+              <p className="text-sm font-bold text-brand-navy">Presentes e ausentes</p>
+              <p className="mb-3 text-xs text-zinc-500">
+                Tudo que foi agendado no mês é cobrado. Presente = consulta realizada. Ausente = faltou ou o dia passou sem a consulta acontecer.
+              </p>
+              <div className="grid gap-4 lg:grid-cols-2">
+                {(
+                  [
+                    ["presente", "Presentes", "text-emerald-700"],
+                    ["ausente", "Ausentes", "text-red-700"],
+                  ] as const
+                ).map(([key, title, color]) => {
+                  const list = data.detalhe!.filter((d) => d.situacao === key);
+                  return (
+                    <div key={key}>
+                      <p className={`mb-2 text-sm font-semibold ${color}`}>
+                        {title} ({list.length})
+                      </p>
+                      {list.length === 0 ? (
+                        <p className="text-xs text-zinc-400">Nenhum no mês.</p>
+                      ) : (
+                        <table className="w-full text-xs">
+                          <thead className="text-[10.5px] uppercase tracking-wide text-zinc-400">
+                            <tr>
+                              <th className="pb-1.5 pr-2 text-left font-semibold">Dia</th>
+                              <th className="pb-1.5 pr-2 text-left font-semibold">Paciente</th>
+                              <th className="pb-1.5 text-left font-semibold">Especialidade</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {list.map((d, i) => (
+                              <tr key={`${d.date}-${d.patient}-${i}`} className="border-t border-zinc-100 text-zinc-700">
+                                <td className="py-1.5 pr-2 tabular-nums">{d.date.split("-").reverse().slice(0, 2).join("/")}</td>
+                                <td className="py-1.5 pr-2 font-medium text-brand-navy">{d.patient}</td>
+                                <td className="py-1.5">{d.specialty}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {data.detalhe.some((d) => d.situacao === "a_realizar") && (
+                <p className="mt-3 text-xs text-zinc-500">
+                  Ainda a realizar (agendados de hoje em diante): {data.detalhe.filter((d) => d.situacao === "a_realizar").length}. Também entram na cobrança.
+                </p>
+              )}
+            </section>
+          )}
 
           {data.faltososRecorrentes && (
           <section className="rounded-xl border border-zinc-200 bg-white p-4 print:hidden">
