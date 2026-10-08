@@ -10,7 +10,7 @@ export interface ExamFile {
   name: string;
   uploaded_at: string;
   /** Tipo do documento (receita, exame, atestado); ausente = anexo comum. */
-  kind?: "receita" | "exame" | "atestado";
+  kind?: "receita" | "exame" | "atestado" | "apac";
   /** true = PDF com assinatura digital ICP-Brasil (emitido pelo sistema). */
   signed?: boolean;
   /** Quem emitiu (nome do médico), quando gerado pelo sistema. */
