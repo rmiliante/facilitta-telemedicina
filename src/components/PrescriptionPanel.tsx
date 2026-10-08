@@ -13,7 +13,7 @@ import { CATEGORY_LABEL, checkPrescription } from "@/lib/controlledMeds";
  * paciente, marcado pra atendente imprimir. Nada é enviado ao paciente.
  */
 
-type Kind = "receita" | "exame" | "atestado";
+type Kind = "receita" | "exame" | "atestado" | "apac";
 
 interface Item {
   name: string;
@@ -49,6 +49,7 @@ const KIND_LABELS: Record<Kind, string> = {
   receita: "Receita",
   exame: "Pedido de exame",
   atestado: "Atestado",
+  apac: "Laudo APAC",
 };
 
 const EMPTY_ITEM: Item = { name: "", quantity: "", instructions: "" };
@@ -92,11 +93,13 @@ export default function PrescriptionPanel({
     receita: [{ ...EMPTY_ITEM }],
     exame: [{ ...EMPTY_ITEM }],
     atestado: [{ ...EMPTY_ITEM }],
+    apac: [{ ...EMPTY_ITEM }],
   }));
   const [notesByKind, setNotesByKind] = useState<Record<Kind, string>>({
     receita: "",
     exame: "",
     atestado: "",
+    apac: "",
   });
   const items = itemsByKind[kind];
   const notes = notesByKind[kind];
@@ -136,6 +139,33 @@ export default function PrescriptionPanel({
   useEffect(() => {
     loadCustomExams();
   }, []);
+  /** Laudo de APAC: dados extras do paciente + procedimentos já usados. */
+  const [apacExtra, setApacExtra] = useState({ cns: "", motherName: "", sex: "", address: "", cep: "", cid: "", cid2: "" });
+  const [apacProcs, setApacProcs] = useState<string[]>([]);
+  const apacLoaded = useRef(false);
+  useEffect(() => {
+    if (!open || kind !== "apac" || apacLoaded.current) return;
+    apacLoaded.current = true;
+    fetch(`/api/doctor/appointments/${appointmentId}/apac`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d) return;
+        setApacProcs(Array.isArray(d.procedures) ? d.procedures : []);
+        if (d.patient) {
+          setApacExtra((prev) => ({
+            ...prev,
+            cns: d.patient.cns ?? "",
+            motherName: d.patient.mother_name ?? "",
+            sex: d.patient.sex ?? "",
+            address: d.patient.address ?? "",
+            cep: d.patient.cep ?? "",
+          }));
+        }
+      })
+      .catch(() => {
+        apacLoaded.current = false;
+      });
+  }, [open, kind, appointmentId]);
 
   async function loadTemplates() {
     const res = await fetch("/api/doctor/modelos").catch(() => null);
@@ -222,8 +252,9 @@ export default function PrescriptionPanel({
       receita: [{ ...EMPTY_ITEM }],
       exame: [{ ...EMPTY_ITEM }],
       atestado: [{ ...EMPTY_ITEM }],
+    apac: [{ ...EMPTY_ITEM }],
     });
-    setNotesByKind({ receita: "", exame: "", atestado: "" });
+    setNotesByKind({ receita: "", exame: "", atestado: "", apac: "" });
     setError(null);
     setTemplateMsg(null);
     setPhase("edit");
@@ -394,6 +425,7 @@ export default function PrescriptionPanel({
               kind: k,
               items: k === "atestado" ? [] : clean,
               notes: notesByKind[k],
+              apac: k === "apac" ? apacExtra : undefined,
             }),
           },
         ).catch(() => null);
@@ -511,6 +543,13 @@ export default function PrescriptionPanel({
           className={`${btn} border border-zinc-300 text-brand-navy hover:bg-zinc-50`}
         >
           Atestado
+        </button>
+        <button
+          type="button"
+          onClick={() => openModal("apac")}
+          className={`${btn} col-span-3 border border-zinc-300 text-brand-navy hover:bg-zinc-50`}
+        >
+          Laudo APAC
         </button>
       </div>
       {last && (
@@ -741,7 +780,98 @@ export default function PrescriptionPanel({
                     </button>
                     {templateMsg && <span className="text-[11px] text-zinc-500">{templateMsg}</span>}
                   </div>
-                  {kind === "atestado" ? (
+                  {kind === "apac" ? (
+                    <div className="space-y-3">
+                      <p className="text-[11px] text-zinc-500">
+                        Laudo para solicitação de APAC (modelo padrão SUS). Campos com * são obrigatórios; o cadastro do paciente é atualizado ao emitir.
+                      </p>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {(
+                          [
+                            ["cns", "CNS (Cartão SUS) *"],
+                            ["motherName", "Nome da mãe *"],
+                            ["address", "Endereço *"],
+                            ["cep", "CEP"],
+                          ] as const
+                        ).map(([f, label]) => (
+                          <label key={f} className="block text-xs">
+                            <span className="mb-1 block font-medium text-zinc-600">{label}</span>
+                            <input
+                              value={apacExtra[f]}
+                              onChange={(e) => setApacExtra((prev) => ({ ...prev, [f]: e.target.value }))}
+                              className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                            />
+                          </label>
+                        ))}
+                        <label className="block text-xs">
+                          <span className="mb-1 block font-medium text-zinc-600">Sexo</span>
+                          <select
+                            value={apacExtra.sex}
+                            onChange={(e) => setApacExtra((prev) => ({ ...prev, sex: e.target.value }))}
+                            className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                          >
+                            <option value="">—</option>
+                            <option value="Feminino">Feminino</option>
+                            <option value="Masculino">Masculino</option>
+                          </select>
+                        </label>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-[1fr_8rem]">
+                        <label className="block text-xs">
+                          <span className="mb-1 block font-medium text-zinc-600">Procedimento solicitado *</span>
+                          <input
+                            list="apac-procedimentos"
+                            value={items[0]?.name ?? ""}
+                            onChange={(e) => updateItem(0, { name: e.target.value })}
+                            placeholder="Digite o nome ou escolha um já usado"
+                            className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                          />
+                          <datalist id="apac-procedimentos">
+                            {apacProcs.map((n) => (
+                              <option key={n} value={n} />
+                            ))}
+                          </datalist>
+                        </label>
+                        <label className="block text-xs">
+                          <span className="mb-1 block font-medium text-zinc-600">Quantidade</span>
+                          <input
+                            value={items[0]?.quantity ?? ""}
+                            onChange={(e) => updateItem(0, { quantity: e.target.value })}
+                            placeholder="1"
+                            className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                          />
+                        </label>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <label className="block text-xs">
+                          <span className="mb-1 block font-medium text-zinc-600">CID-10 principal *</span>
+                          <input
+                            value={apacExtra.cid}
+                            onChange={(e) => setApacExtra((prev) => ({ ...prev, cid: e.target.value }))}
+                            placeholder="Ex.: I50.9"
+                            className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                          />
+                        </label>
+                        <label className="block text-xs">
+                          <span className="mb-1 block font-medium text-zinc-600">CID-10 secundário</span>
+                          <input
+                            value={apacExtra.cid2}
+                            onChange={(e) => setApacExtra((prev) => ({ ...prev, cid2: e.target.value }))}
+                            className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                          />
+                        </label>
+                      </div>
+                      <label className="block text-xs">
+                        <span className="mb-1 block font-medium text-zinc-600">Justificativa clínica (quadro clínico) *</span>
+                        <textarea
+                          value={notes}
+                          onChange={(e) => setNotes(e.target.value)}
+                          rows={5}
+                          className="w-full rounded-md border border-zinc-300 p-2 text-sm outline-none focus:border-brand-teal-dark"
+                        />
+                      </label>
+                    </div>
+                  ) : kind === "atestado" ? (
                     <label className="block text-xs">
                       <span className="mb-1 block font-medium text-zinc-600">
                         Texto do atestado
