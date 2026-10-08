@@ -24,20 +24,33 @@ export async function POST(req: NextRequest) {
   const name = String(formData.get("name") ?? "").trim();
   const crm = String(formData.get("crm") ?? "").trim();
   const crmUf = String(formData.get("crmUf") ?? "").trim().toUpperCase();
+  const clip = (k: string, max = 200) => {
+    const v = formData.get(k);
+    return typeof v === "string" && v.trim() !== "" ? v.trim().slice(0, max) : null;
+  };
+  const num = (k: string) => {
+    const v = String(formData.get(k) ?? "").trim().replace(",", ".");
+    const n = v === "" ? null : Number(v);
+    return n !== null && Number.isFinite(n) && n >= 0 ? n : null;
+  };
+  const careModeRaw = String(formData.get("careMode") ?? "").trim();
+  const careMode = ["consulta", "plantao", "ambos"].includes(careModeRaw) ? careModeRaw : null;
+  const hasRqeRaw = String(formData.get("hasRqe") ?? "").trim();
+  const hasRqe = hasRqeRaw === "sim" ? true : hasRqeRaw === "nao" ? false : null;
   const specialty = String(formData.get("specialty") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim();
   const whatsapp = String(formData.get("whatsapp") ?? "").trim();
   const city = String(formData.get("city") ?? "").trim();
   const state = String(formData.get("state") ?? "").trim().toUpperCase();
 
-  if (!name || !crm || !crmUf || !specialty || !email || !whatsapp || !city || !state) {
+  if (!name || !specialty || !email || !whatsapp || !city || !state) {
     return NextResponse.json({ error: "Preencha todos os campos obrigatorios" }, { status: 400 });
   }
 
   if (!(BRAZIL_STATES as readonly string[]).includes(state)) {
     return NextResponse.json({ error: "Estado invalido" }, { status: 400 });
   }
-  if (!(BRAZIL_STATES as readonly string[]).includes(crmUf)) {
+  if (crmUf && !(BRAZIL_STATES as readonly string[]).includes(crmUf)) {
     return NextResponse.json({ error: "UF do CRM invalida" }, { status: 400 });
   }
   if (!EMAIL_REGEX.test(email)) {
@@ -50,11 +63,8 @@ export async function POST(req: NextRequest) {
       ? Number(experienceYearsRaw)
       : null;
 
-  const consultPriceRaw = formData.get("consultPrice");
-  const consultPrice =
-    typeof consultPriceRaw === "string" && consultPriceRaw.trim() !== ""
-      ? Number(consultPriceRaw)
-      : null;
+  const consultPrice = num("consultPrice");
+  const shiftPrice = num("shiftPrice");
 
   const availableDays = formData.getAll("availableDays").map((v) => String(v));
   const availableShifts = formData.getAll("availableShifts").map((v) => String(v));
@@ -82,8 +92,8 @@ export async function POST(req: NextRequest) {
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("doctor_applications").insert({
     name,
-    crm,
-    crm_uf: crmUf,
+    crm: crm || null,
+    crm_uf: crmUf || null,
     specialty: normalizeSpecialty("Médico(a)", specialty),
     specializations: specializationsOf("Médico(a)", specialty),
     specialty_raw: specialty,
@@ -98,11 +108,38 @@ export async function POST(req: NextRequest) {
     presentation,
     photo_path: photoPath,
     status: "novo",
+    care_mode: careMode,
+    shift_price: shiftPrice,
+    has_rqe: hasRqe,
+    utm_source: clip("utmSource"),
+    utm_medium: clip("utmMedium"),
+    utm_campaign: clip("utmCampaign"),
+    utm_content: clip("utmContent"),
+    utm_term: clip("utmTerm"),
+    referrer: clip("referrer", 300),
+    device: clip("device", 20),
+    session_id: clip("sessionId", 64),
   });
 
   if (error) {
     console.error("Erro ao salvar candidatura:", error);
     return NextResponse.json({ error: "Falha ao enviar seu cadastro" }, { status: 500 });
+  }
+
+  // Envio contado no servidor (confiável, não depende do navegador).
+  const sessionId = clip("sessionId", 64);
+  if (sessionId) {
+    await supabase.from("captacao_events").insert({
+      session_id: sessionId,
+      event: "submit",
+      utm_source: clip("utmSource"),
+      utm_medium: clip("utmMedium"),
+      utm_campaign: clip("utmCampaign"),
+      utm_content: clip("utmContent"),
+      utm_term: clip("utmTerm"),
+      referrer: clip("referrer", 300),
+      device: clip("device", 20),
+    });
   }
 
   return NextResponse.json({ ok: true });
