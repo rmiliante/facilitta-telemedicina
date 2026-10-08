@@ -10,7 +10,7 @@ export interface TimelineDoc {
   path: string;
   name: string;
   uploaded_at: string;
-  kind?: "receita" | "exame" | "atestado";
+  kind?: "receita" | "exame" | "atestado" | "apac";
   signed?: boolean;
   author?: string;
   appointment_id?: string;
