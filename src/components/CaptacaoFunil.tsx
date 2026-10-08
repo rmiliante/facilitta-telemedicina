@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { APPLICATION_STATUSES, SHIFTS, type ApplicationStatus } from "@/lib/doctorApplications";
+import CaptacaoRelatorio from "@/components/CaptacaoRelatorio";
 
 /**
  * Captação de profissionais: funil do candidato até o primeiro atendimento,
@@ -38,6 +39,12 @@ interface Application {
   available_days: string[] | null;
   available_shifts: string[] | null;
   presentation: string | null;
+  care_mode?: string | null;
+  shift_price?: number | null;
+  has_rqe?: boolean | null;
+  utm_source?: string | null;
+  utm_campaign?: string | null;
+  device?: string | null;
   photo_url: string | null;
   status: ApplicationStatus;
   reviewed_at?: string | null;
@@ -253,6 +260,7 @@ export default function CaptacaoFunil() {
   const [importing, setImporting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const [showChecklist, setShowChecklist] = useState(false);
+  const [view, setView] = useState<"funil" | "relatorio">("funil");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -410,6 +418,24 @@ export default function CaptacaoFunil() {
 
   return (
     <div className="space-y-5">
+      <div className="flex gap-2">
+        {(["funil", "relatorio"] as const).map((v) => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => setView(v)}
+            className={`rounded-md border px-3.5 py-1.5 text-xs font-semibold ${
+              view === v ? "border-brand-navy bg-brand-navy text-white" : "border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-50"
+            }`}
+          >
+            {v === "funil" ? "Funil" : "Relatório"}
+          </button>
+        ))}
+      </div>
+      {view === "relatorio" ? (
+        <CaptacaoRelatorio />
+      ) : (
+        <>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-zinc-500">
           {apps.length} candidatos · {semResposta} sem resposta há 7+ dias
@@ -679,6 +705,8 @@ export default function CaptacaoFunil() {
           }}
         />
       )}
+        </>
+      )}
     </div>
   );
 }
@@ -737,6 +765,10 @@ function Ficha({
     ["Recebido em", new Date(app.received_at ?? app.created_at).toLocaleString("pt-BR")],
     ["Disponibilidade", [days, shifts].filter(Boolean).join(" · ") || null],
     ["Valor pretendido", app.consult_price != null ? `R$ ${app.consult_price.toLocaleString("pt-BR")}` : null],
+    ["Preferência", app.care_mode ? ({ consulta: "Por consulta", plantao: "Plantão", ambos: "Consulta e plantão" } as Record<string, string>)[app.care_mode] ?? app.care_mode : null],
+    ["Valor do plantão (8h)", app.shift_price != null ? `R$ ${app.shift_price.toLocaleString("pt-BR")}` : null],
+    ["Possui RQE", app.has_rqe == null ? null : app.has_rqe ? "Sim" : "Não"],
+    ["Campanha", app.utm_source || app.utm_campaign ? [app.utm_source, app.utm_campaign].filter(Boolean).join(" · ") : null],
   ];
 
   return (
