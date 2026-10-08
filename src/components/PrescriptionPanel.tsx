@@ -1272,7 +1272,7 @@ function ExamInput({
   const [active, setActive] = useState(-1);
   const [picked, setPicked] = useState<string | null>(null);
   const listId = useId();
-  const suggestions =
+  const suggestions: ExamHit[] =
     value.trim() && value !== picked
       ? [
           ...searchExams(value, 8),
@@ -1282,7 +1282,7 @@ function ExamInput({
               return strip(n).includes(strip(value.trim())) && strip(n) !== strip(value.trim());
             })
             .slice(0, 5)
-            .map((name) => ({ name, group: "Outros" as ExamHit["group"] })),
+            .map((name) => ({ name, group: "Outros" }) as unknown as ExamHit),
         ].slice(0, 10)
       : [];
 
