@@ -5,7 +5,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf
  * assinatura — a assinatura ICP-Brasil é aplicada depois pela Prescreve).
  */
 
-export type PrescriptionKind = "receita" | "exame" | "atestado";
+export type PrescriptionKind = "receita" | "exame" | "atestado" | "apac";
 
 export interface PrescriptionItem {
   name: string;
@@ -33,6 +33,17 @@ export interface PrescriptionPdfInput {
   };
   items: PrescriptionItem[];
   notes?: string;
+  /** Dados extras do laudo de APAC (kind = "apac"). */
+  apac?: {
+    cns: string;
+    motherName: string;
+    sex: string;
+    address: string;
+    cep: string;
+    cid: string;
+    cid2: string;
+    phone?: string | null;
+  };
   issuedAt: Date;
 }
 
@@ -40,6 +51,7 @@ export const KIND_TITLES: Record<PrescriptionKind, string> = {
   receita: "RECEITUÁRIO",
   exame: "SOLICITAÇÃO DE EXAMES",
   atestado: "ATESTADO MÉDICO",
+  apac: "LAUDO PARA SOLICITAÇÃO DE APAC",
 };
 
 const NAVY = rgb(0x15 / 255, 0x00 / 255, 0x4d / 255);
@@ -197,7 +209,43 @@ export async function buildPrescriptionPdf(input: PrescriptionPdfInput): Promise
   y -= 34;
 
   // Corpo
-  if (input.kind === "atestado") {
+  if (input.kind === "apac" && input.apac) {
+    const a = input.apac;
+    const field = (label: string, value?: string | null) => {
+      const v = (value ?? "").trim();
+      if (!v) return;
+      const head = `${label}: `;
+      const hw = bold.widthOfTextAtSize(safe(bold, head), 10);
+      wrap(regular, safe(regular, v), 10, contentWidth - hw).forEach((l, i) => {
+        newPageIfNeeded(15);
+        if (i === 0) text(head, MARGIN, y, 10, bold);
+        text(l, MARGIN + hw, y, 10);
+        y -= 14;
+      });
+    };
+    const section = (title: string) => {
+      newPageIfNeeded(40);
+      y -= 8;
+      text(title, MARGIN, y, 10.5, bold, NAVY);
+      y -= 5;
+      page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y }, thickness: 0.6, color: LINE });
+      y -= 14;
+    };
+    section("Dados complementares do paciente");
+    field("CNS (Cartão SUS)", a.cns.replace(/(\d{3})(\d{4})(\d{4})(\d{4})/, "$1 $2 $3 $4"));
+    field("Nome da mãe", a.motherName);
+    field("Sexo", a.sex);
+    field("Endereço", [a.address, a.cep ? `CEP ${a.cep}` : ""].filter(Boolean).join(" · "));
+    field("Telefone", a.phone);
+    section("Procedimento solicitado");
+    const proc = input.items[0];
+    field("Procedimento", proc?.name);
+    field("Quantidade", proc?.quantity?.trim() || "1");
+    section("Justificativa clínica");
+    field("CID-10 principal", a.cid);
+    field("CID-10 secundário", a.cid2);
+    field("Descrição do quadro clínico", input.notes);
+  } else if (input.kind === "atestado") {
     for (const line of wrap(regular, safe(regular, input.notes ?? ""), 11, contentWidth)) {
       newPageIfNeeded(16);
       text(line, MARGIN, y, 11);
