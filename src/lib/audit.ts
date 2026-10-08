@@ -13,6 +13,8 @@ export const AUDIT_ACTIONS = {
   login_ok: "Login",
   login_falhou: "Login recusado",
   login_bloqueado: "Login bloqueado (muitas tentativas)",
+  troca_senha: "Troca de senha",
+  troca_senha_falhou: "Troca de senha recusada (senha atual incorreta)",
   ver_paciente: "Abriu cadastro do paciente",
   ver_historico: "Abriu histórico do paciente",
   ver_documentos: "Abriu documentos do paciente",
