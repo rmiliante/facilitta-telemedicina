@@ -267,7 +267,11 @@ export default function CaptacaoFunil() {
 
   useEffect(() => {
     const t = setTimeout(load, 0);
-    return () => clearTimeout(t);
+    const iv = setInterval(load, 5 * 60 * 1000);
+    return () => {
+      clearTimeout(t);
+      clearInterval(iv);
+    };
   }, [load]);
 
   const originOf = (a: Application) => (a.origin === "organico" ? "organico" : "pago");
@@ -411,6 +415,14 @@ export default function CaptacaoFunil() {
           {apps.length} candidatos · {semResposta} sem resposta há 7+ dias
         </p>
         <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading}
+            className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+          >
+            {loading ? "Atualizando..." : "Atualizar"}
+          </button>
           <button
             type="button"
             onClick={() => setShowChecklist((v) => !v)}
