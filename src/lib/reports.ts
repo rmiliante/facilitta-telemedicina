@@ -12,6 +12,8 @@ import { billing, BILLING_RULE_LABEL, CONTRACT_START_MONTH } from "@/lib/contrac
 
 interface Row {
   id: string;
+  scheduled_at: string;
+  patients: { full_name: string } | null;
   status: string;
   patient_id: string;
   specialty_id: string;
@@ -47,7 +49,7 @@ export async function monthlyReport(month: string) {
   const { start, end } = monthRange(month);
   const since90 = new Date(new Date(end).getTime() - 90 * 86400000).toISOString();
 
-  const apptCols = "id, status, patient_id, specialty_id, doctor_id, called_at, finished_at, specialties(name), doctors(name)";
+  const apptCols = "id, scheduled_at, status, patient_id, specialty_id, doctor_id, called_at, finished_at, patients(full_name), specialties(name), doctors(name)";
   const appts = (cols: string) => supabase.from("appointments").select(cols).gte("scheduled_at", start).lt("scheduled_at", end);
   const [apptFirst, specRes, faltasRes, docRes] = await Promise.all([
     appts(`${apptCols}, contract_fee`),
@@ -78,19 +80,28 @@ export async function monthlyReport(month: string) {
   const rows = (apptRes.data ?? []) as unknown as Row[];
   const specs = (specRes.data ?? []) as { id: string; name: string; monthly_quota: number }[];
   const count = (list: Row[], status: string) => list.filter((r) => r.status === status).length;
+  // O agendamento gera a cobrança: presente = concluído; ausente = faltou ou agendado que já passou
+  // sem acontecer; a realizar = agendado para hoje em diante.
+  const hoje = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+  const aberta = (r: Row) => r.status === "agendado" || r.status === "em_andamento";
+  const isAusente = (r: Row) => r.status === "faltou" || (aberta(r) && r.scheduled_at.slice(0, 10) < hoje);
+  const isARealizar = (r: Row) => aberta(r) && r.scheduled_at.slice(0, 10) >= hoje;
+  const ausentesDe = (list: Row[]) => list.filter(isAusente).length;
 
   const especialidades = specs
     .map((s) => {
       const list = rows.filter((r) => r.specialty_id === s.id);
       const naoCancelados = list.filter((r) => r.status !== "cancelado").length;
       const realizados = count(list, "concluido");
-      const faltas = count(list, "faltou");
+      const faltas = ausentesDe(list);
+      const aRealizar = list.filter(isARealizar).length;
       const ref = refFees.get(s.id);
       const fat = billing(
         month,
         list.filter((r) => r.status === "concluido").map((r) => toFee(r.contract_fee)),
         s.monthly_quota,
-        ref?.length ? ref.reduce((a, b) => a + b, 0) / ref.length : null
+        ref?.length ? ref.reduce((a, b) => a + b, 0) / ref.length : null,
+        faltas + aRealizar
       );
       return {
         id: s.id,
@@ -106,6 +117,7 @@ export async function monthlyReport(month: string) {
         usoCota: pct(naoCancelados, s.monthly_quota),
         realizados,
         faltas,
+        aRealizar,
         cancelados: count(list, "cancelado"),
         taxaFaltas: faltaTaxa(realizados, faltas),
         duracaoMedia: avg(list.map(duration).filter((m): m is number => m !== null)),
@@ -121,7 +133,7 @@ export async function monthlyReport(month: string) {
   const medicos = [...byDoctor.entries()]
     .map(([id, list]) => {
       const realizados = count(list, "concluido");
-      const faltas = count(list, "faltou");
+      const faltas = ausentesDe(list);
       return {
         id,
         name: list[0].doctors?.name ?? "—",
@@ -134,11 +146,12 @@ export async function monthlyReport(month: string) {
     .sort((a, b) => b.realizados - a.realizados);
 
   const realizados = count(rows, "concluido");
-  const faltas = count(rows, "faltou");
+  const faltas = ausentesDe(rows);
   const totais = {
     agendamentos: rows.filter((r) => r.status !== "cancelado").length,
     realizados,
     faltas,
+    aRealizar: rows.filter(isARealizar).length,
     cancelados: count(rows, "cancelado"),
     taxaFaltas: faltaTaxa(realizados, faltas),
     pacientesAtendidos: new Set(rows.filter((r) => r.status === "concluido").map((r) => r.patient_id)).size,
@@ -166,12 +179,25 @@ export async function monthlyReport(month: string) {
     .map(([id, v]) => ({ id, ...v }))
     .sort((a, b) => b.faltas - a.faltas || b.ultima.localeCompare(a.ultima));
 
+  // Lista por paciente (presentes x ausentes) — só sai para quem pode ver pacientes.
+  const detalhe = rows
+    .filter((r) => r.status !== "cancelado")
+    .map((r) => ({
+      date: r.scheduled_at.slice(0, 10),
+      patient: r.patients?.full_name ?? "—",
+      specialty: r.specialties?.name ?? "—",
+      doctor: r.doctors?.name ?? null,
+      situacao: r.status === "concluido" ? "presente" : isAusente(r) ? "ausente" : "a_realizar",
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.patient.localeCompare(b.patient));
+
   return {
     month,
     totais,
     especialidades,
     medicos,
     faltososRecorrentes,
+    detalhe,
     faturamento: {
       disponivel: valorDisponivel,
       inicioContrato: CONTRACT_START_MONTH,
