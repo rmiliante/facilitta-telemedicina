@@ -7,6 +7,7 @@ import { buildPrescriptionPdf, KIND_TITLES, type PrescriptionItem, type Prescrip
 import { downloadSigned, PrescreveError, signPdf } from "@/lib/prescreve";
 import { checkPrescription } from "@/lib/controlledMeds";
 import { audit } from "@/lib/audit";
+import { saveCustomExams } from "@/lib/customExams";
 
 // Assinar + baixar o PDF pode levar alguns segundos.
 export const maxDuration = 60;
@@ -148,6 +149,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       needs_print: true,
     });
     const [withUrl] = await signPatientDocuments([doc]);
+    if (kind === "exame") await saveCustomExams(items.map((it) => it.name), doctor.id);
     await audit("doctor", {
       action: "emitir_documento",
       entity: "documento",
