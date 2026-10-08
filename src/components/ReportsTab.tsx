@@ -233,7 +233,7 @@ export default function ReportsTab() {
                     : data.faturamento.antesDoContrato
                       ? "Mês anterior ao início do contrato: sem faturamento."
                       : data.faturamento.primeiroMes
-                        ? "Primeiro mês do contrato: cobrado por todas as consultas agendadas no período (presentes e ausentes). Presentes valem o combinado com o médico que atendeu; ausentes valem a média."
+                        ? ""
                         : "Mínimo da cota contratada por especialidade; acima da cota, cobra-se cada consulta agendada (presentes e ausentes). Presentes valem o combinado com o médico que atendeu; ausentes e as que completam a cota valem a média."}
                 </p>
               </div>
