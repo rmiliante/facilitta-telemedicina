@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BRAZIL_STATES, SHIFTS, SPECIALTIES, WEEKDAYS } from "@/lib/doctorApplications";
 
 const inputClass =
@@ -32,50 +32,100 @@ function Pill({
   );
 }
 
-/** Reduz a imagem pra no máximo 1600px (JPEG), mantendo a proporção. Se não der, devolve a original. */
-async function shrinkImage(file: File): Promise<File> {
-  if (!file.type.startsWith("image/") || file.size < 1024 * 1024) return file;
+const NO_RQE = ["Clínico Geral", "Psicologia", "Nutrição", "Outra"];
+const CARE_MODES = [
+  { key: "consulta", label: "Por consulta" },
+  { key: "plantao", label: "Plantão" },
+  { key: "ambos", label: "Ambos" },
+] as const;
+
+const UTM_KEYS = ["utmSource", "utmMedium", "utmCampaign", "utmContent", "utmTerm"] as const;
+
+function readTracking() {
+  const params = new URLSearchParams(window.location.search);
+  const t: Record<string, string> = {
+    utmSource: params.get("utm_source") ?? "",
+    utmMedium: params.get("utm_medium") ?? "",
+    utmCampaign: params.get("utm_campaign") ?? "",
+    utmContent: params.get("utm_content") ?? "",
+    utmTerm: params.get("utm_term") ?? "",
+    referrer: document.referrer ?? "",
+  };
+  // Cliques de anúncios sem UTM: marca a origem pelo identificador do clique.
+  if (!t.utmSource && params.get("fbclid")) t.utmSource = "facebook";
+  if (!t.utmSource && params.get("gclid")) t.utmSource = "google";
+  const ua = navigator.userAgent;
+  t.device = /iPad|Tablet/i.test(ua) ? "tablet" : /Mobi|Android|iPhone/i.test(ua) ? "celular" : "computador";
+  let sid = "";
   try {
-    const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(bitmap.width * scale);
-    canvas.height = Math.round(bitmap.height * scale);
-    canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
-    if (!blob) return file;
-    const baseName = file.name.replace(/\.[^.]+$/, "") || "foto";
-    return new File([blob], `${baseName}.jpg`, { type: "image/jpeg" });
+    sid = sessionStorage.getItem("cap_sid") ?? "";
+    if (!sid) {
+      sid = crypto.randomUUID();
+      sessionStorage.setItem("cap_sid", sid);
+    }
   } catch {
-    return file;
+    sid = crypto.randomUUID();
   }
+  t.sessionId = sid;
+  return t;
+}
+
+function sendEvent(event: "view" | "start", t: Record<string, string>) {
+  void fetch("/api/public/captacao-events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ event, ...t }),
+    keepalive: true,
+  }).catch(() => {});
 }
 
 export default function DoctorApplicationPage() {
   const [days, setDays] = useState<string[]>([]);
   const [shifts, setShifts] = useState<string[]>([]);
-  const [photoName, setPhotoName] = useState<string | null>(null);
+  const [specialty, setSpecialty] = useState("");
+  const [careMode, setCareMode] = useState<string>("");
+  const [hasRqe, setHasRqe] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const tracking = useRef<Record<string, string>>({});
+  const started = useRef(false);
+
+  useEffect(() => {
+    tracking.current = readTracking();
+    sendEvent("view", tracking.current);
+  }, []);
+
+  function markStarted() {
+    if (started.current) return;
+    started.current = true;
+    sendEvent("start", tracking.current);
+  }
 
   function toggle(list: string[], setList: (v: string[]) => void, key: string) {
+    markStarted();
     setList(list.includes(key) ? list.filter((k) => k !== key) : [...list, key]);
   }
+
+  const askRqe = specialty !== "" && !NO_RQE.includes(specialty);
+  const showConsult = careMode === "consulta" || careMode === "ambos";
+  const showShift = careMode === "plantao" || careMode === "ambos";
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
     try {
       const formData = new FormData(e.currentTarget);
-      // Fotos de celular costumam ter 5-10 MB, acima do limite de envio
-      // da hospedagem (~4,5 MB): reduz no navegador antes de enviar.
-      const photo = formData.get("photo");
-      if (photo instanceof File && photo.size > 0) {
-        formData.set("photo", await shrinkImage(photo));
-      }
       days.forEach((d) => formData.append("availableDays", d));
       shifts.forEach((s) => formData.append("availableShifts", s));
+      formData.set("careMode", careMode);
+      formData.set("hasRqe", askRqe ? hasRqe : "");
+      if (!showConsult) formData.delete("consultPrice");
+      if (!showShift) formData.delete("shiftPrice");
+      for (const k of [...UTM_KEYS, "referrer", "device", "sessionId"]) {
+        formData.set(k, tracking.current[k] ?? "");
+      }
 
       const res = await fetch("/api/public/doctor-applications", {
         method: "POST",
@@ -145,6 +195,7 @@ export default function DoctorApplicationPage() {
 
         <form
           onSubmit={handleSubmit}
+          onChange={markStarted}
           className="mt-8 space-y-5 rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm"
         >
           {/* Honeypot anti-spam, invisível pra gente e pro leitor de tela */}
@@ -161,54 +212,14 @@ export default function DoctorApplicationPage() {
             <span className={labelClass}>Nome completo</span>
             <input required name="name" className={inputClass} placeholder="Dra. Ana Paula Ribeiro" />
           </label>
-          <div className="grid grid-cols-[2fr_1fr] gap-4">
-            <label className="block">
-              <span className={labelClass}>CRM</span>
-              <input required name="crm" className={inputClass} placeholder="45231" />
-            </label>
-            <label className="block">
-              <span className={labelClass}>UF do CRM</span>
-              <select required name="crmUf" defaultValue="" className={inputClass}>
-                <option value="" disabled>
-                  —
-                </option>
-                {BRAZIL_STATES.map((uf) => (
-                  <option key={uf} value={uf}>
-                    {uf}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <div className="grid grid-cols-[2fr_1fr] gap-4">
-            <label className="block">
-              <span className={labelClass}>Especialidade principal</span>
-              <select required name="specialty" defaultValue="" className={inputClass}>
-                <option value="" disabled>
-                  —
-                </option>
-                {SPECIALTIES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block">
-              <span className={labelClass}>Anos de experiência</span>
-              <input type="number" min={0} name="experienceYears" className={inputClass} />
-            </label>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <label className="block">
-              <span className={labelClass}>E-mail</span>
-              <input required type="email" name="email" className={inputClass} placeholder="voce@email.com" />
-            </label>
+          <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className={labelClass}>WhatsApp</span>
               <input required type="tel" name="whatsapp" className={inputClass} placeholder="(11) 98421-3390" />
+            </label>
+            <label className="block">
+              <span className={labelClass}>E-mail</span>
+              <input required type="email" name="email" className={inputClass} placeholder="voce@email.com" />
             </label>
           </div>
           <div className="grid grid-cols-[2fr_1fr] gap-4">
@@ -231,10 +242,99 @@ export default function DoctorApplicationPage() {
             </label>
           </div>
 
-          <label className="block max-w-[220px]">
-            <span className={labelClass}>Valor pretendido por consulta (R$)</span>
-            <input type="number" min={0} step="0.01" name="consultPrice" className={inputClass} />
+          <label className="block">
+            <span className={labelClass}>Especialidade principal</span>
+            <select
+              required
+              name="specialty"
+              value={specialty}
+              onChange={(e) => {
+                setSpecialty(e.target.value);
+                setHasRqe("");
+              }}
+              className={inputClass}
+            >
+              <option value="" disabled>
+                —
+              </option>
+              {SPECIALTIES.map((sp) => (
+                <option key={sp} value={sp}>
+                  {sp}
+                </option>
+              ))}
+            </select>
           </label>
+
+          {askRqe && (
+            <div className="flex items-center justify-between gap-3 rounded-lg bg-brand-teal/10 px-4 py-3">
+              <span className="text-sm font-medium text-zinc-700">Possui RQE?</span>
+              <div role="group" className="flex gap-2">
+                <Pill selected={hasRqe === "sim"} onClick={() => setHasRqe("sim")}>
+                  Sim
+                </Pill>
+                <Pill selected={hasRqe === "nao"} onClick={() => setHasRqe("nao")}>
+                  Não
+                </Pill>
+              </div>
+            </div>
+          )}
+
+          <label className="block max-w-[220px]">
+            <span className={labelClass}>Anos de experiência</span>
+            <input type="number" min={0} name="experienceYears" className={inputClass} />
+          </label>
+
+          <div>
+            <span className={labelClass}>Como prefere atuar?</span>
+            <div role="group" className="flex flex-wrap gap-2">
+              {CARE_MODES.map((m) => (
+                <Pill
+                  key={m.key}
+                  selected={careMode === m.key}
+                  onClick={() => {
+                    markStarted();
+                    setCareMode(m.key);
+                  }}
+                >
+                  {m.label}
+                </Pill>
+              ))}
+            </div>
+          </div>
+
+          {(showConsult || showShift) && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {showConsult && (
+                <label className="block">
+                  <span className={labelClass}>Valor por consulta (R$)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    name="consultPrice"
+                    className={inputClass}
+                    placeholder="Ex.: 60"
+                  />
+                </label>
+              )}
+              {showShift && (
+                <label className="block">
+                  <span className={labelClass}>Plantão de 8 horas (R$)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    name="shiftPrice"
+                    className={inputClass}
+                    placeholder="Ex.: 500"
+                  />
+                </label>
+              )}
+              <p className="text-xs text-zinc-500 sm:col-span-2">
+                Pode deixar em branco se preferir combinar o valor com a nossa equipe.
+              </p>
+            </div>
+          )}
 
           <div>
             <span className={labelClass}>Dias disponíveis</span>
@@ -254,45 +354,17 @@ export default function DoctorApplicationPage() {
           <div>
             <span className={labelClass}>Turno disponível</span>
             <div role="group" className="flex flex-wrap gap-2">
-              {SHIFTS.map((s) => (
+              {SHIFTS.map((sh) => (
                 <Pill
-                  key={s.key}
-                  selected={shifts.includes(s.key)}
-                  onClick={() => toggle(shifts, setShifts, s.key)}
+                  key={sh.key}
+                  selected={shifts.includes(sh.key)}
+                  onClick={() => toggle(shifts, setShifts, sh.key)}
                 >
-                  {s.label}
+                  {sh.label}
                 </Pill>
               ))}
             </div>
           </div>
-          <label className="block">
-            <span className={labelClass}>Foto de perfil (opcional)</span>
-            <div className="relative flex items-center gap-3 rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-4 py-4 text-sm">
-              <span className="flex-1 truncate text-zinc-600">
-                {photoName ?? "Nenhum arquivo selecionado"}
-              </span>
-              <span className="shrink-0 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700">
-                Escolher arquivo
-              </span>
-              <input
-                type="file"
-                name="photo"
-                accept="image/*"
-                onChange={(e) => setPhotoName(e.target.files?.[0]?.name ?? null)}
-                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-              />
-            </div>
-          </label>
-
-          <label className="block">
-            <span className={labelClass}>Breve apresentação</span>
-            <textarea
-              name="presentation"
-              rows={3}
-              className={`${inputClass} resize-none`}
-              placeholder="Conte um pouco da sua experiência e área de atuação"
-            />
-          </label>
 
           <label className="flex items-start gap-2.5 text-xs leading-relaxed text-zinc-600">
             <input required type="checkbox" className="mt-0.5" />
