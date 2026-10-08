@@ -126,6 +126,16 @@ export default function PrescriptionPanel({
   /** Modelos salvos pelo médico (ex.: "Hipertensão padrão"). */
   const [templates, setTemplates] = useState<Template[]>([]);
   const [templateMsg, setTemplateMsg] = useState<string | null>(null);
+  /** Exames digitados à mão por qualquer médico e salvos pra sugerir de novo. */
+  const [customExams, setCustomExams] = useState<string[]>([]);
+  async function loadCustomExams() {
+    const res = await fetch("/api/doctor/exames-personalizados").catch(() => null);
+    const data = res?.ok ? await res.json().catch(() => ({})) : {};
+    if (Array.isArray(data.names)) setCustomExams(data.names);
+  }
+  useEffect(() => {
+    loadCustomExams();
+  }, []);
 
   async function loadTemplates() {
     const res = await fetch("/api/doctor/modelos").catch(() => null);
@@ -399,6 +409,7 @@ export default function PrescriptionPanel({
           setItemsByKind((all) => ({ ...all, [k]: [{ ...EMPTY_ITEM }] }));
           setNotesByKind((all) => ({ ...all, [k]: "" }));
           ok = true;
+          if (k === "exame") loadCustomExams();
         } else if (res?.status === 409 && data.needsSession && attempt === 0) {
           setSigning((st) => (st ? { ...st, status: "none" } : st));
           // pede nova autorização e tenta de novo
@@ -787,6 +798,7 @@ export default function PrescriptionPanel({
                                 />
                               ) : (
                                 <ExamInput
+                                  custom={customExams}
                                   value={it.name}
                                   onChange={(name) => updateItem(i, { name })}
                                   onPick={(hit) =>
@@ -1119,7 +1131,9 @@ function ExamInput({
   value,
   onChange,
   onPick,
+  custom = [],
 }: {
+  custom?: string[];
   value: string;
   onChange: (v: string) => void;
   onPick: (hit: ExamHit) => void;
@@ -1129,7 +1143,18 @@ function ExamInput({
   const [picked, setPicked] = useState<string | null>(null);
   const listId = useId();
   const suggestions =
-    value.trim() && value !== picked ? searchExams(value, 8) : [];
+    value.trim() && value !== picked
+      ? [
+          ...searchExams(value, 8),
+          ...custom
+            .filter((n) => {
+              const strip = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+              return strip(n).includes(strip(value.trim())) && strip(n) !== strip(value.trim());
+            })
+            .slice(0, 5)
+            .map((name) => ({ name, group: "Outros" as ExamHit["group"] })),
+        ].slice(0, 10)
+      : [];
 
   function pick(hit: ExamHit) {
     setPicked(hit.name);
