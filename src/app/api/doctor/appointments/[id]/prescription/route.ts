@@ -8,15 +8,17 @@ import { downloadSigned, PrescreveError, signPdf } from "@/lib/prescreve";
 import { checkPrescription } from "@/lib/controlledMeds";
 import { audit } from "@/lib/audit";
 import { saveCustomExams } from "@/lib/customExams";
+import { cleanApac, saveApacProcedure, savePatientApacData, validateApac } from "@/lib/apacProcedures";
 
 // Assinar + baixar o PDF pode levar alguns segundos.
 export const maxDuration = 60;
 
-const KINDS: PrescriptionKind[] = ["receita", "exame", "atestado"];
+const KINDS: PrescriptionKind[] = ["receita", "exame", "atestado", "apac"];
 const FILE_PREFIX: Record<PrescriptionKind, string> = {
   receita: "Receita",
   exame: "Pedido de exame",
   atestado: "Atestado",
+  apac: "Laudo APAC",
 };
 
 function cleanItems(raw: unknown): PrescriptionItem[] {
@@ -57,6 +59,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const items = cleanItems(body?.items);
   const notes = typeof body?.notes === "string" ? body.notes.trim().slice(0, 5000) : "";
 
+  const apac = kind === "apac" ? cleanApac(body?.apac) : null;
+  if (apac) {
+    const problem = validateApac(apac, items[0]?.name ?? "", notes);
+    if (problem) return NextResponse.json({ error: problem }, { status: 400 });
+  }
   if (kind === "atestado" && !notes) {
     return NextResponse.json({ error: "Escreva o texto do atestado" }, { status: 400 });
   }
@@ -112,6 +119,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       },
       items,
       notes,
+      apac: apac ? { ...apac, phone: patient.phone } : undefined,
       issuedAt: new Date(),
     });
 
@@ -150,6 +158,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
     const [withUrl] = await signPatientDocuments([doc]);
     if (kind === "exame") await saveCustomExams(items.map((it) => it.name), doctor.id);
+    if (kind === "apac" && apac) {
+      await savePatientApacData(patient.id, apac);
+      await saveApacProcedure(items[0].name, doctor.id);
+    }
     await audit("doctor", {
       action: "emitir_documento",
       entity: "documento",
