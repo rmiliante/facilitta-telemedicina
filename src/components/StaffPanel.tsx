@@ -28,7 +28,7 @@ interface DocFile {
   path: string;
   name: string;
   uploaded_at: string;
-  kind?: "receita" | "exame" | "atestado";
+  kind?: "receita" | "exame" | "atestado" | "apac";
   signed?: boolean;
   author?: string;
   needs_print?: boolean;
@@ -43,7 +43,7 @@ interface PrintItem {
   name: string;
   uploaded_at: string;
   url: string | null;
-  kind?: "receita" | "exame" | "atestado";
+  kind?: "receita" | "exame" | "atestado" | "apac";
   author?: string;
 }
 
