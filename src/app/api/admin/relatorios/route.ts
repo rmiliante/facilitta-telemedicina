@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   try {
     const report = await monthlyReport(month);
     if (!canSeePatients(await currentStaffRole())) {
-      return NextResponse.json({ ...report, faltososRecorrentes: null });
+      return NextResponse.json({ ...report, faltososRecorrentes: null, detalhe: null });
     }
     return NextResponse.json(report);
   } catch (err) {
