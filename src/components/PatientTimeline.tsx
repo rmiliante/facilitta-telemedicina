@@ -12,6 +12,7 @@ const KIND_LABEL = {
   receita: "Receita",
   exame: "Pedido de exame",
   atestado: "Atestado",
+  apac: "Laudo APAC",
 } as const;
 const STATUS_LABEL: Record<string, string> = {
   agendado: "Agendada",
