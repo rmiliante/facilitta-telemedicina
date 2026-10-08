@@ -34,7 +34,7 @@ interface DocFile {
   needs_print?: boolean;
 }
 
-const DOC_KIND_LABELS = { receita: "Receita", exame: "Exame", atestado: "Atestado" } as const;
+const DOC_KIND_LABELS = { receita: "Receita", exame: "Exame", atestado: "Atestado", apac: "Laudo APAC" } as const;
 
 interface PrintItem {
   patientId: string;
