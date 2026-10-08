@@ -36,15 +36,34 @@ const LABELS: Record<string, keyof InRow> = {
   comentarios: "comments",
   comentários: "comments",
   "ideia inovadora": "idea",
+  "enviado em": "receivedAt",
 };
+
+/** Corpo de e-mail em HTML -> texto com uma linha por campo. */
+function htmlToText(v: string): string {
+  if (!/<[a-z!/][^>]*>/i.test(v)) return v;
+  return v
+    .replace(/<(style|script)[\s\S]*?<\/\1>/gi, "")
+    .replace(/<\s*(br|\/p|\/div|\/tr|\/li|\/h\d)[^>]*>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
+const EMPTY = /^[—–-]+$/;
 
 function parseText(text: string): InRow {
   const row: InRow = {};
-  for (const line of text.split(/\r?\n/)) {
+  for (const line of htmlToText(text).split(/\r?\n/)) {
     const m = line.match(/^\s*([^:]{2,40}):\s*(.+)$/);
     if (!m) continue;
     const key = LABELS[m[1].trim().toLowerCase().replace(/[_]/g, " ")];
-    if (key && !row[key]) row[key] = m[2].trim();
+    const val = m[2].trim();
+    if (key && !row[key] && !EMPTY.test(val)) row[key] = val;
   }
   return row;
 }
