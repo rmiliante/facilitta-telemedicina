@@ -11,6 +11,16 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Link curto para o portal do cliente na nova plataforma.
+  async redirects() {
+    return [
+      {
+        source: "/cliente",
+        destination: "https://facilitta.bemestar.1norte.tech/beneficiary/dashboard",
+        permanent: false,
+      },
+    ];
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
