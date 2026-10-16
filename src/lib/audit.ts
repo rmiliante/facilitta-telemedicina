@@ -45,6 +45,10 @@ export const AUDIT_ACTIONS = {
   desfazer_pagamento: "Desfez pagamento",
   anexar_comprovante: "Anexou comprovante de pagamento",
   anexar_nf: "Anexou nota fiscal",
+  dp_cadastrar_colaborador: "DP: cadastrou colaborador",
+  dp_alterar_colaborador: "DP: alterou colaborador",
+  dp_admissao_item: "DP: item do checklist de admissão",
+  dp_alterar_config: "DP: alterou configuração",
 } as const;
 
 export type AuditAction = keyof typeof AUDIT_ACTIONS;
