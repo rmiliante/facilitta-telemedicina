@@ -86,7 +86,7 @@ export const digits = (s: string | null | undefined) => (s ?? "").replace(/\D/g,
 const isoDate = (s: string | null | undefined) => {
   const v = (s ?? "").trim();
   if (/^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
-  const m = v.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/); // aceita também DD/MM/AAAA
+  const m = v.match(/^(\d{1,2})[/.-]?(\d{1,2})[/.-]?(\d{4})$/); // aceita também DD/MM/AAAA
   return m ? `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}` : "";
 };
 const money = (v: number | string | null | undefined) => {
