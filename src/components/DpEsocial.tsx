@@ -30,6 +30,8 @@ const STATUS_LABEL: Record<string, { t: string; c: string }> = {
   rejeitado: { t: "Rejeitado", c: "bg-red-100 text-red-700" },
   erro: { t: "Erro no envio", c: "bg-red-100 text-red-700" },
 };
+const MOT_AFAST: [string, string][] = [["01","Acidente/doença do trabalho"],["03","Acidente/doença não relacionada ao trabalho"],["04","Novo afastamento do mesmo acidente/doença não relacionado ao trabalho (até 60 dias)"],["05","Licença prevista em regime próprio (estatuto), sem remuneração"],["06","Aposentadoria por invalidez"],["07","Acompanhamento de membro da família enfermo"],["08","Conselho Curador do FGTS"],["10","Licença prevista em regime próprio (estatuto), com remuneração"],["11","Cárcere"],["12","Candidato a cargo eletivo (Lei 7.664/1988) – celetistas"],["13","Candidato a cargo eletivo (LC 64/1990) – servidor público"],["14","Cessão / Requisição"],["15","Férias ou recesso"],["16","Licença remunerada (lei, liberalidade da empresa ou acordo/convenção coletiva)"],["17","Licença-maternidade – 120 dias e prorrogações"],["18","Licença-maternidade – 121 a 180 dias (Empresa Cidadã)"],["19","Licença-maternidade – aborto não criminoso"],["20","Licença-maternidade – adoção ou guarda judicial"],["21","Licença não remunerada ou sem vencimento"],["22","Mandato eleitoral, sem remuneração"],["23","Mandato eleitoral, com remuneração"],["24","Mandato sindical"],["25","Mulher vítima de violência (Lei Maria da Penha)"],["26","Participação no CNPS"],["27","Qualificação (suspensão do contrato, art. 476-A da CLT)"],["28","Representante sindical em organismo internacional"],["29","Serviço militar obrigatório"],["30","Suspensão disciplinar (CLT, art. 474)"],["31","Servidor público em disponibilidade"],["33","Licença-maternidade – 180 dias (Lei 13.301/2016)"],["34","Inatividade de trabalhador avulso (mais de 90 dias)"]];
+
 const TIPO_LABEL: Record<string, string> = {
   "S-1000": "S-1000 · Empregador",
   "S-1005": "S-1005 · Estabelecimento",
@@ -441,7 +443,7 @@ export function EsocialFichaTab({ emp, onChanged }: { emp: DpEmployee; onChanged
               {(p.modo ?? "inicio") === "inicio" ? (
                 <>
                   {pin("dtIniAfast", "Data de início", "date")}
-                  {pin("codMotAfast", "Motivo (Tabela 18; 15 = férias)")}
+                  <label className="block text-xs"><span className="mb-1 block font-medium text-zinc-600">Motivo do afastamento (Tabela 18)</span><select value={p.codMotAfast ?? ""} onChange={(e) => sp("codMotAfast", e.target.value)} className="w-full max-w-xs rounded-md border border-zinc-300 px-3 py-2 text-sm"><option value="">Selecione…</option>{MOT_AFAST.map(([cod, d]) => (<option key={cod} value={cod}>{cod} – {d}</option>))}</select></label>
                   {p.codMotAfast === "15" && (<>{pin("perAquisInicio", "Início do período aquisitivo", "date")}{pin("perAquisFim", "Fim do período aquisitivo (opcional)", "date")}</>)}
                   {p.codMotAfast === "21" && pin("observacao", "Observação")}
                 </>
