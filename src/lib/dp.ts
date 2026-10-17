@@ -28,6 +28,7 @@ export interface DpEmployee {
   aso_due: string | null;
   terminated_at: string | null;
   notes: string | null;
+  esocial?: Record<string, string> | null;
 }
 
 export interface DpAdmissionItem {
