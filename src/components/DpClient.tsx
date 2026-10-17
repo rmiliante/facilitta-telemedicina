@@ -11,8 +11,9 @@ import {
   type DpEmployee,
   type DpStatus,
 } from "@/lib/dp";
+import { EsocialEmpresa, EsocialFichaTab } from "@/components/DpEsocial";
 
-type View = "dashboard" | "colaboradores" | "admissoes" | "ficha";
+type View = "dashboard" | "colaboradores" | "admissoes" | "esocial" | "ficha";
 
 const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const brl0 = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
@@ -30,6 +31,7 @@ const NAV: { key: View | "soon"; label: string; soon?: boolean }[] = [
   { key: "dashboard", label: "Dashboard DP" },
   { key: "colaboradores", label: "Colaboradores" },
   { key: "admissoes", label: "Admissões" },
+  { key: "esocial", label: "eSocial · Empresa" },
   { key: "soon", label: "Férias e ausências", soon: true },
   { key: "soon", label: "Documentos e ASO", soon: true },
   { key: "soon", label: "Folha e custos", soon: true },
@@ -143,6 +145,8 @@ export default function DpClient() {
           <Dashboard employees={employees} pending={pending} total={total} receita={receita} onReceita={setReceita} onOpen={openFicha} onNew={() => setShowNew(true)} />
         ) : view === "colaboradores" ? (
           <Colaboradores employees={employees} pending={pending} onOpen={openFicha} onNew={() => setShowNew(true)} />
+        ) : view === "esocial" ? (
+          <EsocialEmpresa />
         ) : view === "admissoes" ? (
           <Admissoes employees={employees} pending={pending} total={total} onOpen={openFicha} onNew={() => setShowNew(true)} />
         ) : openId ? (
@@ -356,7 +360,7 @@ function Admissoes({ employees, pending, total, onOpen, onNew }: { employees: Dp
 function Ficha({ id, receita, employees, onBack, onChanged }: { id: string; receita: number | null; employees: DpEmployee[]; onBack: () => void; onChanged: () => Promise<void> }) {
   const [emp, setEmp] = useState<DpEmployee | null>(null);
   const [items, setItems] = useState<DpAdmissionItem[]>([]);
-  const [tab, setTab] = useState<"admissao" | "dados">("admissao");
+  const [tab, setTab] = useState<"admissao" | "dados" | "esocial">("admissao");
   const [form, setForm] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
@@ -425,7 +429,7 @@ function Ficha({ id, receita, employees, onBack, onChanged }: { id: string; rece
         <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_STYLE[emp.status]}`}>{DP_STATUS_LABEL[emp.status]}</span>
       </div>
       <div className="mb-4 flex gap-5 border-b border-zinc-200 text-sm">
-        {([["admissao", "Admissão"], ["dados", "Dados e vencimentos"]] as const).map(([k, l]) => (
+        {([["admissao", "Admissão"], ["dados", "Dados e vencimentos"], ["esocial", "eSocial"]] as const).map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} className={`pb-2 font-semibold ${tab === k ? "border-b-2 border-teal-500 text-[#0b1f3a]" : "text-zinc-400"}`}>{l}</button>
         ))}
         {["Documentos", "Férias e ausências", "Histórico"].map((l) => (
@@ -457,7 +461,7 @@ function Ficha({ id, receita, employees, onBack, onChanged }: { id: string; rece
                 </ul>
               </>
             )}
-            <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">O envio ao eSocial continua sendo feito por você ou pelo contador. O sistema controla o status e os prazos.</p>
+            <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">O envio ao eSocial é feito na aba “eSocial” (ambiente de testes por enquanto). O sistema controla o status e os prazos.</p>
           </div>
           <div className="space-y-4">
             <div className="rounded-xl border border-zinc-200 bg-white p-5">
@@ -478,6 +482,8 @@ function Ficha({ id, receita, employees, onBack, onChanged }: { id: string; rece
             </div>
           </div>
         </div>
+      ) : tab === "esocial" ? (
+        <EsocialFichaTab emp={emp} onChanged={async () => { await load(); await onChanged(); }} />
       ) : (
         <div className="rounded-xl border border-zinc-200 bg-white p-5">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
