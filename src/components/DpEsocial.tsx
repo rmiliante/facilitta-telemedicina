@@ -82,12 +82,16 @@ function Eventos({ query, refresh, onChanged }: { query: string; refresh: number
   const [items, setItems] = useState<Evento[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [xml, setXml] = useState<{ id: string; text: string } | null>(null);
+  const [aberto, setAberto] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const r = await fetch(`/api/admin/dp/esocial/events?${query}`);
     const d = await r.json().catch(() => ({}));
-    if (r.ok) setItems(d.eventos ?? []);
+    if (r.ok) {
+      setItems(d.eventos ?? []);
+      if (["assinado", "enviado", "erro"].includes(d.eventos?.[0]?.status)) setAberto(true);
+    }
   }, [query]);
   useEffect(() => {
     load();
@@ -117,10 +121,24 @@ function Eventos({ query, refresh, onChanged }: { query: string; refresh: number
   }
 
   if (items.length === 0) return <p className="text-sm text-zinc-500">Nenhum evento gerado ainda.</p>;
+  const stU = STATUS_LABEL[items[0].status] ?? { t: items[0].status, c: "bg-zinc-100 text-zinc-700" };
   return (
     <div className="space-y-3">
       {msg && <p className="rounded-md bg-red-50 p-2 text-sm text-red-700">{msg}</p>}
-      {items.map((ev) => {
+      <button
+        type="button"
+        onClick={() => setAberto((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-left text-sm font-semibold text-zinc-700 hover:bg-zinc-100"
+      >
+        <span>
+          Histórico <span className="ml-1 rounded-full bg-white px-2 py-0.5 text-xs font-medium text-zinc-500">{items.length}</span>
+        </span>
+        <span className="flex items-center gap-2 text-xs font-normal text-zinc-500">
+          Último: <span className={`rounded-full px-2 py-0.5 font-semibold ${stU.c}`}>{stU.t}</span>
+          <span>{aberto ? "▲" : "▼"}</span>
+        </span>
+      </button>
+      {aberto && items.map((ev) => {
         const st = STATUS_LABEL[ev.status] ?? { t: ev.status, c: "bg-zinc-100" };
         const res = ev.resposta?.resumo;
         const meu = res?.eventos?.[0];
