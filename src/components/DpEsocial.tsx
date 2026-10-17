@@ -318,7 +318,7 @@ const ESOCIAL_FIELDS: { k: string; label: string; ph?: string }[] = [
   { k: "racaCor", label: "Raça/cor (1 branca, 2 preta, 3 parda, 4 amarela, 5 indígena, 6 não informada)" },
   { k: "estCiv", label: "Estado civil (1 solteiro, 2 casado, 3 divorciado, 4 separado, 5 viúvo)" },
   { k: "grauInstr", label: "Grau de instrução (01 a 12; 09 = superior completo)" },
-  { k: "dtNascto", label: "Data de nascimento (AAAA-MM-DD)" },
+  { k: "dtNascto", label: "Data de nascimento (DD/MM/AAAA)" },
   { k: "dscLograd", label: "Logradouro" },
   { k: "nrLograd", label: "Número" },
   { k: "complemento", label: "Complemento" },
