@@ -147,7 +147,7 @@ export function buildEvent(
     if (missing.length) return { ok: false, missing };
     const cadastro = g(
       "infoCadastro",
-      x("classTrib", e.classTrib) + x("indDesFolha", e.indDesFolha || "0") + x("indPorte", e.indPorte) + x("indOptRegEletron", e.indOptRegEletron || "0"),
+      x("classTrib", e.classTrib) + x("indCoop", "0") + x("indConstr", "0") + x("indDesFolha", e.indDesFolha || "0") + x("indOptRegEletron", e.indOptRegEletron || "0") + x("indEntEd", "N") + x("indEtt", "N"),
     );
     const periodo = g("idePeriodo", x("iniValid", e.iniValid));
     const op = (ctx.operacao ?? "inclusao") === "alteracao" ? "alteracao" : "inclusao";
