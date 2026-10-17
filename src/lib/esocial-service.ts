@@ -41,7 +41,7 @@ export async function gerarEvento(
 
   const supabase = getSupabaseAdmin();
   let emp: Colaborador | undefined;
-  if (tipo !== "S-1000") {
+  if (tipo !== "S-1000" && tipo !== "S-1005") {
     if (!opts.employeeId) return { ok: false, status: 400, error: "Colaborador não informado" };
     const { data } = await supabase
       .from("dp_employees")
