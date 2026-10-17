@@ -139,3 +139,112 @@ export function diagnosticoCertificado(cfg: EsocialConfig) {
   }
   return d;
 }
+
+/* ------------------------------------------------------------------ */
+/* Envio de lote e consulta de resultado (SOMENTE produção restrita)   */
+/* ------------------------------------------------------------------ */
+
+const PATH_ENVIO = "/servicos/empregador/enviarloteeventos/WsEnviarLoteEventos.svc";
+const ACTION_ENVIO =
+  "http://www.esocial.gov.br/servicos/empregador/lote/eventos/envio/v1_1_0/ServicoEnviarLoteEventos/EnviarLoteEventos";
+
+function soapPost(cfg: EsocialConfig, path: string, action: string, body: string): Promise<{ httpStatus: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    if (!cfg.pfx || !cfg.senha) return reject(new Error("Certificado ou senha não configurados"));
+    if (cfg.ambiente !== "2") return reject(new Error("Só é permitido enviar em produção restrita (ESOCIAL_AMBIENTE=2)"));
+    const req = https.request(
+      {
+        host: HOST_RESTRITA,
+        path,
+        method: "POST",
+        pfx: cfg.pfx,
+        passphrase: cfg.senha,
+        minVersion: "TLSv1.2",
+        timeout: 60000,
+        headers: { "Content-Type": "text/xml; charset=utf-8", SOAPAction: action, "Content-Length": Buffer.byteLength(body) },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c: Buffer) => chunks.push(c));
+        res.on("end", () => resolve({ httpStatus: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") }));
+      },
+    );
+    req.on("timeout", () => {
+      req.destroy();
+      reject(new Error("Tempo esgotado ao falar com o eSocial"));
+    });
+    req.on("error", (e) => reject(e));
+    req.write(body);
+    req.end();
+  });
+}
+
+const SOAP_OPEN = `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v1="http://www.esocial.gov.br/servicos/empregador/lote/eventos/envio/v1_1_0"><soapenv:Header/><soapenv:Body>`;
+const SOAP_CLOSE = `</soapenv:Body></soapenv:Envelope>`;
+
+export async function enviarLote(cfg: EsocialConfig, loteXml: string) {
+  const body = `${SOAP_OPEN}<v1:EnviarLoteEventos><v1:loteEventos>${loteXml}</v1:loteEventos></v1:EnviarLoteEventos>${SOAP_CLOSE}`;
+  if (Buffer.byteLength(body) > 750 * 1024) throw new Error("Lote acima do limite de 750 KB");
+  return soapPost(cfg, PATH_ENVIO, ACTION_ENVIO, body);
+}
+
+export async function consultarLote(cfg: EsocialConfig, protocolo: string) {
+  if (!/^[\d.]+$/.test(protocolo)) throw new Error("Protocolo inválido");
+  const body =
+    `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v1="http://www.esocial.gov.br/servicos/empregador/lote/eventos/envio/consulta/retornoProcessamento/v1_1_0">` +
+    `<soapenv:Header/><soapenv:Body><v1:ConsultarLoteEventos><v1:consulta>` +
+    `<eSocial xmlns="http://www.esocial.gov.br/schema/lote/eventos/envio/consulta/retornoProcessamento/v1_0_0"><consultaLoteEventos><protocoloEnvio>${protocolo}</protocoloEnvio></consultaLoteEventos></eSocial>` +
+    `</v1:consulta></v1:ConsultarLoteEventos></soapenv:Body></soapenv:Envelope>`;
+  return soapPost(cfg, PATH_CONSULTA, SOAP_ACTION, body);
+}
+
+const unesc = (s: string) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+const first = (xml: string, tag: string) => {
+  const m = xml.match(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</${tag}>`));
+  return m ? unesc(m[1].trim()) : null;
+};
+
+export interface RetornoResumo {
+  cdResposta: string | null;
+  descResposta: string | null;
+  protocoloEnvio: string | null;
+  eventos: {
+    id: string;
+    cdResposta: string | null;
+    descResposta: string | null;
+    recibo: string | null;
+    ocorrencias: { tipo: string | null; codigo: string | null; descricao: string | null; localizacao: string | null }[];
+  }[];
+  fault: string | null;
+}
+
+/** Resume a resposta SOAP do eSocial (envio ou consulta) em campos simples. */
+export function resumirRetorno(xml: string): RetornoResumo {
+  const fault = /<(?:\w+:)?Fault[\s>]/.test(xml) ? first(xml, "faultstring") ?? "Falha SOAP" : null;
+  const status = first(xml, "status") ?? "";
+  const eventos: RetornoResumo["eventos"] = [];
+  for (const m of xml.matchAll(/<evento\s+Id="([^"]+)"[^>]*>([\s\S]*?)<\/evento>/g)) {
+    const blk = m[2];
+    const proc = first(blk, "processamento") ?? blk;
+    const ocorrencias = [...proc.matchAll(/<ocorrencia>([\s\S]*?)<\/ocorrencia>/g)].map((o) => ({
+      tipo: first(o[1], "tipo"),
+      codigo: first(o[1], "codigo"),
+      descricao: first(o[1], "descricao"),
+      localizacao: first(o[1], "localizacao"),
+    }));
+    eventos.push({
+      id: m[1],
+      cdResposta: first(proc, "cdResposta"),
+      descResposta: first(proc, "descResposta"),
+      recibo: first(blk, "nrRecibo"),
+      ocorrencias,
+    });
+  }
+  return {
+    cdResposta: first(status, "cdResposta"),
+    descResposta: first(status, "descResposta"),
+    protocoloEnvio: first(xml, "protocoloEnvio"),
+    eventos,
+    fault,
+  };
+}
