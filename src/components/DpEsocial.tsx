@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import type { DpEmployee } from "@/lib/dp";
 
 /* eSocial no Departamento Pessoal — SOMENTE ambiente de testes (produção restrita). */
@@ -88,10 +88,7 @@ function Eventos({ query, refresh, onChanged }: { query: string; refresh: number
   const load = useCallback(async () => {
     const r = await fetch(`/api/admin/dp/esocial/events?${query}`);
     const d = await r.json().catch(() => ({}));
-    if (r.ok) {
-      setItems(d.eventos ?? []);
-      if (["assinado", "enviado", "erro"].includes(d.eventos?.[0]?.status)) setAberto(true);
-    }
+    if (r.ok) setItems(d.eventos ?? []);
   }, [query]);
   useEffect(() => {
     load();
@@ -121,30 +118,18 @@ function Eventos({ query, refresh, onChanged }: { query: string; refresh: number
   }
 
   if (items.length === 0) return <p className="text-sm text-zinc-500">Nenhum evento gerado ainda.</p>;
-  const stU = STATUS_LABEL[items[0].status] ?? { t: items[0].status, c: "bg-zinc-100 text-zinc-700" };
   return (
     <div className="space-y-3">
       {msg && <p className="rounded-md bg-red-50 p-2 text-sm text-red-700">{msg}</p>}
-      <button
-        type="button"
-        onClick={() => setAberto((v) => !v)}
-        className="flex w-full items-center justify-between gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-left text-sm font-semibold text-zinc-700 hover:bg-zinc-100"
-      >
-        <span>
-          Histórico <span className="ml-1 rounded-full bg-white px-2 py-0.5 text-xs font-medium text-zinc-500">{items.length}</span>
-        </span>
-        <span className="flex items-center gap-2 text-xs font-normal text-zinc-500">
-          Último: <span className={`rounded-full px-2 py-0.5 font-semibold ${stU.c}`}>{stU.t}</span>
-          <span>{aberto ? "▲" : "▼"}</span>
-        </span>
-      </button>
-      {aberto && items.map((ev) => {
+      {items.map((ev, idx) => {
+        if (idx > 0 && !aberto) return null;
         const st = STATUS_LABEL[ev.status] ?? { t: ev.status, c: "bg-zinc-100" };
         const res = ev.resposta?.resumo;
         const meu = res?.eventos?.[0];
         const ocs = meu?.ocorrencias ?? [];
         return (
-          <div key={ev.id} className="rounded-lg border border-zinc-200 p-3 text-sm">
+          <Fragment key={ev.id}>
+          <div className="rounded-lg border border-zinc-200 p-3 text-sm">
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-semibold">{TIPO_LABEL[ev.tipo] ?? ev.tipo}</span>
               <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${st.c}`}>{st.t}</span>
@@ -181,6 +166,19 @@ function Eventos({ query, refresh, onChanged }: { query: string; refresh: number
             </div>
             {xml?.id === ev.id && <pre className="mt-2 max-h-64 overflow-auto rounded bg-zinc-50 p-2 text-[10px] leading-snug">{xml.text}</pre>}
           </div>
+          {idx === 0 && items.length > 1 && (
+            <button
+              type="button"
+              onClick={() => setAberto((v) => !v)}
+              className="flex w-full items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-left text-sm font-semibold text-zinc-700 hover:bg-zinc-100"
+            >
+              <span>
+                Histórico <span className="ml-1 rounded-full bg-white px-2 py-0.5 text-xs font-medium text-zinc-500">{items.length - 1}</span>
+              </span>
+              <span className="text-xs font-normal text-zinc-500">{aberto ? "Ocultar anteriores ▲" : "Ver anteriores ▼"}</span>
+            </button>
+          )}
+          </Fragment>
         );
       })}
     </div>
