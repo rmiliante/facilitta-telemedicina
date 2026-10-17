@@ -49,14 +49,16 @@ export function carregarCredencial(pfx: Buffer, senha: string): Credencial {
 const sha256b64 = (s: string) => createHash("sha256").update(s, "utf8").digest("base64");
 
 /** Assina um evento. `evtXml` = <evtX Id="...">...</evtX>. Devolve <eSocial xmlns="...">evento + Signature</eSocial>. */
-export function assinarEvento(evtXml: string, tag: string, id: string, cred: Credencial): string {
+export function assinarEvento(evtXml: string, tag: string, _id: string, cred: Credencial): string {
   const ns = evtNamespace(tag);
-  const digestInput = evtXml.replace(`<${tag} `, `<${tag} xmlns="${ns}" `);
+  // Reference URI="" (exigência do eSocial): o digest cobre o documento inteiro, sem a Signature (enveloped)
+  void tag;
+  const digestInput = `<eSocial xmlns="${ns}">${evtXml}</eSocial>`;
   const digest = sha256b64(digestInput);
   const signedInfoInner =
     `<CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"></CanonicalizationMethod>` +
     `<SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"></SignatureMethod>` +
-    `<Reference URI="#${id}"><Transforms>` +
+    `<Reference URI=""><Transforms>` +
     `<Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"></Transform>` +
     `<Transform Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"></Transform>` +
     `</Transforms><DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"></DigestMethod>` +
