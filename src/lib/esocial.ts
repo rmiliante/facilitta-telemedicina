@@ -9,6 +9,8 @@ import type { TLSSocket } from "node:tls";
  */
 
 const HOST_RESTRITA = "webservices.producaorestrita.esocial.gov.br";
+const HOST_PRODUCAO = "webservices.esocial.gov.br";
+const hostDe = (cfg: { ambiente: string | null }) => (cfg.ambiente === "1" ? HOST_PRODUCAO : HOST_RESTRITA);
 const PATH_CONSULTA = "/servicos/empregador/consultarloteeventos/WsConsultarLoteEventos.svc";
 const SOAP_ACTION =
   "http://www.esocial.gov.br/servicos/empregador/lote/eventos/envio/consulta/retornoProcessamento/v1_1_0/ServicoConsultarLoteEventos/ConsultarLoteEventos";
@@ -63,7 +65,7 @@ export function probeConsulta(cfg: EsocialConfig): Promise<ProbeResult> {
     try {
       const req = https.request(
         {
-          host: HOST_RESTRITA,
+          host: hostDe(cfg),
           path: PATH_CONSULTA,
           method: "POST",
           pfx: cfg.pfx,
@@ -151,10 +153,10 @@ const ACTION_ENVIO =
 function soapPost(cfg: EsocialConfig, path: string, action: string, body: string): Promise<{ httpStatus: number; body: string }> {
   return new Promise((resolve, reject) => {
     if (!cfg.pfx || !cfg.senha) return reject(new Error("Certificado ou senha não configurados"));
-    if (cfg.ambiente !== "2") return reject(new Error("Só é permitido enviar em produção restrita (ESOCIAL_AMBIENTE=2)"));
+    if (cfg.ambiente !== "1" && cfg.ambiente !== "2") return reject(new Error("ESOCIAL_AMBIENTE deve ser 1 (produção) ou 2 (produção restrita/testes)"));
     const req = https.request(
       {
-        host: HOST_RESTRITA,
+        host: hostDe(cfg),
         path,
         method: "POST",
         pfx: cfg.pfx,
