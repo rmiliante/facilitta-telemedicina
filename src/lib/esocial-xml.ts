@@ -180,7 +180,7 @@ export function buildEvent(
     const dados = g(
       "dadosEstab",
       x("cnaePrep", cnae) +
-        (simples ? "" : g("aliqGilrat", x("aliqRat", e.aliqRat))),
+        g("aliqGilrat", x("aliqRat", e.aliqRat || "1") + x("fap", "1.0000")),
     );
     return { ok: true, tag: meta.tag, id, grupo: meta.grupo, xml: wrap(ideEvento(ctx, false) + ideEmpregador(ctx) + g("infoEstab", g(op, ide + dados))) };
   }
