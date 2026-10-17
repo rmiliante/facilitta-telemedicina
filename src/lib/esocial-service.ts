@@ -28,7 +28,7 @@ export async function gerarEvento(
 ): Promise<GerarResult> {
   if (!(tipo in TIPOS)) return { ok: false, status: 400, error: "Tipo de evento inválido" };
   const cfg = esocialConfig();
-  if (cfg.ambiente !== "2") return { ok: false, status: 409, error: "Só é permitido em produção restrita (ESOCIAL_AMBIENTE=2)." };
+  if (cfg.ambiente !== "1" && cfg.ambiente !== "2") return { ok: false, status: 409, error: "ESOCIAL_AMBIENTE deve ser 1 (produção) ou 2 (testes)." };
   if (!cfg.pfx || !cfg.senha || !cfg.cnpj) return { ok: false, status: 409, error: "Certificado, senha ou CNPJ não configurados." };
 
   let cred;
@@ -56,7 +56,7 @@ export async function gerarEvento(
   const empresa = await loadEmpresa();
   const built = buildEvent(
     tipo,
-    { cnpj: cfg.cnpj, now: new Date(), seq: (count ?? 0) + 1, tpAmb: "2", empresa, operacao: opts.operacao },
+    { cnpj: cfg.cnpj, now: new Date(), seq: (count ?? 0) + 1, tpAmb: cfg.ambiente === "1" ? "1" : "2", empresa, operacao: opts.operacao },
     emp,
     opts.params ?? {},
   );
@@ -70,7 +70,7 @@ export async function gerarEvento(
       tipo,
       grupo: built.grupo,
       status: "assinado",
-      ambiente: "2",
+      ambiente: cfg.ambiente,
       event_id: built.id,
       params: { ...(opts.params ?? {}), ...(opts.operacao ? { operacao: opts.operacao } : {}) },
       xml: signed,
@@ -82,7 +82,7 @@ export async function gerarEvento(
     action: "dp_esocial_gerar",
     entity: "dp_esocial_events",
     entityId: (row as { id: string }).id,
-    details: { tipo, eventId: built.id, colaborador: emp?.full_name ?? null, ambiente: "2" },
+    details: { tipo, eventId: built.id, colaborador: emp?.full_name ?? null, ambiente: cfg.ambiente },
   });
   return { ok: true, evento: row as Record<string, unknown> };
 }
