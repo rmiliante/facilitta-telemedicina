@@ -49,6 +49,10 @@ export const AUDIT_ACTIONS = {
   dp_alterar_colaborador: "DP: alterou colaborador",
   dp_admissao_item: "DP: item do checklist de admissão",
   dp_alterar_config: "DP: alterou configuração",
+  dp_esocial_gerar: "DP: gerou evento eSocial",
+  dp_esocial_enviar: "DP: enviou evento ao eSocial",
+  dp_esocial_consultar: "DP: consultou retorno do eSocial",
+  dp_esocial_empresa: "DP: alterou dados eSocial da empresa",
 } as const;
 
 export type AuditAction = keyof typeof AUDIT_ACTIONS;
