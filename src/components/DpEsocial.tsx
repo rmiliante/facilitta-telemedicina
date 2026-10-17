@@ -32,6 +32,7 @@ const STATUS_LABEL: Record<string, { t: string; c: string }> = {
 };
 const TIPO_LABEL: Record<string, string> = {
   "S-1000": "S-1000 · Empregador",
+  "S-1005": "S-1005 · Estabelecimento",
   "S-2200": "S-2200 · Admissão",
   "S-2206": "S-2206 · Alteração contratual",
   "S-2230": "S-2230 · Afastamento / férias",
@@ -239,6 +240,17 @@ export function EsocialEmpresa() {
     } else setRefresh((n) => n + 1);
   }
 
+  async function gerarS1005() {
+    if (!confirm(`Gerar e assinar o S-1005 (${operacao === "alteracao" ? "alteração" : "inclusão"})? Nada será enviado ainda.`)) return;
+    setErr(null);
+    setMiss(null);
+    const r = await gerar({ tipo: "S-1005", operacao });
+    if (!r.ok) {
+      setErr(r.error ?? "Falha");
+      setMiss(r.missing ?? null);
+    } else setRefresh((n) => n + 1);
+  }
+
   const cert = status?.certificate;
   const venc = cert?.daysToExpire ?? null;
   return (
@@ -284,6 +296,8 @@ export function EsocialEmpresa() {
           {inp("indOptRegEletron", "Registro eletrônico de empregados", "0")}
           {inp("iniValid", "Início da validade (AAAA-MM)", "2026-01")}
           {inp("cnpjSind", "CNPJ do sindicato da categoria (14 dígitos)")}
+          {inp("cnaePrep", "CNAE preponderante (7 dígitos) — S-1005", "ex.: 8630504")}
+          {inp("aliqRat", "Alíquota RAT (1, 2 ou 3) — só se não for Simples", "")}
         </div>
         <div className="mt-3 flex items-center gap-3">
           <button className={btn} onClick={save} disabled={saving}>{saving ? "Salvando…" : "Salvar dados"}</button>
@@ -304,6 +318,15 @@ export function EsocialEmpresa() {
         <div className="mt-4">
           <Eventos query="tipo=S-1000" refresh={refresh} onChanged={() => setRefresh((n) => n + 1)} />
         </div>
+      </div>
+
+      <div className="mt-5 rounded-xl border border-zinc-200 bg-white p-5">
+        <h2 className="mb-1 text-sm font-semibold text-[#0b1f3a]">S-1005 · Estabelecimento</h2>
+        <p className="mb-3 text-xs text-zinc-500">Obrigatório antes da admissão (S-2200): cadastra o estabelecimento onde o colaborador trabalha. Usa o CNAE informado acima.</p>
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+          <button className={btn} onClick={gerarS1005}>Gerar e assinar S-1005</button>
+        </div>
+        <Eventos query="tipo=S-1005" refresh={refresh} onChanged={() => setRefresh((n) => n + 1)} />
       </div>
     </>
   );
