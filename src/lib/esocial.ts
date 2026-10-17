@@ -9,8 +9,10 @@ import type { TLSSocket } from "node:tls";
  */
 
 const HOST_RESTRITA = "webservices.producaorestrita.esocial.gov.br";
-const HOST_PRODUCAO = "webservices.esocial.gov.br";
-const hostDe = (cfg: { ambiente: string | null }) => (cfg.ambiente === "1" ? HOST_PRODUCAO : HOST_RESTRITA);
+const HOST_PROD_ENVIO = "webservices.envio.esocial.gov.br";
+const HOST_PROD_CONSULTA = "webservices.consulta.esocial.gov.br";
+const hostDe = (cfg: { ambiente: string | null }, tipo: "envio" | "consulta") =>
+  cfg.ambiente === "1" ? (tipo === "envio" ? HOST_PROD_ENVIO : HOST_PROD_CONSULTA) : HOST_RESTRITA;
 const PATH_CONSULTA = "/servicos/empregador/consultarloteeventos/WsConsultarLoteEventos.svc";
 const SOAP_ACTION =
   "http://www.esocial.gov.br/servicos/empregador/lote/eventos/envio/consulta/retornoProcessamento/v1_1_0/ServicoConsultarLoteEventos/ConsultarLoteEventos";
@@ -65,7 +67,7 @@ export function probeConsulta(cfg: EsocialConfig): Promise<ProbeResult> {
     try {
       const req = https.request(
         {
-          host: hostDe(cfg),
+          host: hostDe(cfg, "consulta"),
           path: PATH_CONSULTA,
           method: "POST",
           pfx: cfg.pfx,
@@ -156,7 +158,7 @@ function soapPost(cfg: EsocialConfig, path: string, action: string, body: string
     if (cfg.ambiente !== "1" && cfg.ambiente !== "2") return reject(new Error("ESOCIAL_AMBIENTE deve ser 1 (produção) ou 2 (produção restrita/testes)"));
     const req = https.request(
       {
-        host: hostDe(cfg),
+        host: hostDe(cfg, path === PATH_ENVIO ? "envio" : "consulta"),
         path,
         method: "POST",
         pfx: cfg.pfx,
