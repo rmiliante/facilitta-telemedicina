@@ -12,8 +12,9 @@ import {
   type DpStatus,
 } from "@/lib/dp";
 import { EsocialEmpresa, EsocialFichaTab } from "@/components/DpEsocial";
+import DpFerias from "@/components/DpFerias";
 
-type View = "dashboard" | "colaboradores" | "admissoes" | "esocial" | "ficha";
+type View = "dashboard" | "colaboradores" | "admissoes" | "esocial" | "ferias" | "ficha";
 
 const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const brl0 = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
@@ -32,7 +33,7 @@ const NAV: { key: View | "soon"; label: string; soon?: boolean }[] = [
   { key: "colaboradores", label: "Colaboradores" },
   { key: "admissoes", label: "Admissões" },
   { key: "esocial", label: "eSocial · Empresa" },
-  { key: "soon", label: "Férias e ausências", soon: true },
+  { key: "ferias", label: "Férias e ausências" },
   { key: "soon", label: "Documentos e ASO", soon: true },
   { key: "soon", label: "Folha e custos", soon: true },
   { key: "soon", label: "Relatórios", soon: true },
@@ -145,6 +146,8 @@ export default function DpClient() {
           <Dashboard employees={employees} pending={pending} total={total} receita={receita} onReceita={setReceita} onOpen={openFicha} onNew={() => setShowNew(true)} />
         ) : view === "colaboradores" ? (
           <Colaboradores employees={employees} pending={pending} onOpen={openFicha} onNew={() => setShowNew(true)} />
+        ) : view === "ferias" ? (
+          <DpFerias employees={employees} />
         ) : view === "esocial" ? (
           <EsocialEmpresa />
         ) : view === "admissoes" ? (
