@@ -17,6 +17,7 @@ interface Evento {
   tipo: string;
   status: string;
   event_id: string;
+  ambiente?: string | null;
   protocolo: string | null;
   resposta: { httpStatus?: number; resumo?: Resumo } | null;
   created_at: string;
@@ -71,11 +72,11 @@ function Eventos({ query, refresh, onChanged }: { query: string; refresh: number
   }, [load, refresh]);
 
   async function act(ev: Evento, action: "enviar" | "consultar") {
-    if (action === "enviar" && !confirm(`Enviar ${TIPO_LABEL[ev.tipo] ?? ev.tipo} ao eSocial (AMBIENTE DE TESTES)?\n\nID do evento: ${ev.event_id}`)) return;
+    if (action === "enviar" && !confirm(ev.ambiente === "1" ? `ATENÇÃO — PRODUÇÃO (valor legal)!\n\nEnviar ${TIPO_LABEL[ev.tipo] ?? ev.tipo} ao eSocial REAL?\n\nID do evento: ${ev.event_id}` : `Enviar ${TIPO_LABEL[ev.tipo] ?? ev.tipo} ao eSocial (AMBIENTE DE TESTES)?\n\nID do evento: ${ev.event_id}`)) return;
     setBusy(ev.id);
     setMsg(null);
     try {
-      const r = await fetch(`/api/admin/dp/esocial/events/${ev.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, confirm: true }) });
+      const r = await fetch(`/api/admin/dp/esocial/events/${ev.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, confirm: true, confirmProducao: true }) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) setMsg(d.error ?? "Falha na operação");
       else if (d.resumo?.fault) setMsg(`eSocial: ${d.resumo.fault}`);
@@ -288,7 +289,8 @@ export function EsocialEmpresa() {
         ) : (
           <p className="text-sm text-red-700">Sem conexão: {status.error ?? "erro desconhecido"}</p>
         )}
-        <p className="mt-2 text-[11px] text-zinc-400">Ambiente: {info.ambiente === "2" ? "produção restrita (testes)" : info.ambiente ?? "não configurado"} · CNPJ {info.cnpj ?? "—"}</p>
+        <p className="mt-2 text-[11px] text-zinc-400">Ambiente: {info.ambiente === "2" ? "produção restrita (testes)" : info.ambiente === "1" ? "PRODUÇÃO (valor legal)" : info.ambiente ?? "não configurado"} · CNPJ {info.cnpj ?? "—"}</p>
+        {info.ambiente === "1" && <p className="mt-2 rounded-md border border-red-300 bg-red-50 p-2 text-xs font-semibold text-red-700">AMBIENTE DE PRODUÇÃO — os envios têm valor legal no eSocial.</p>}
       </div>
 
       <div className="mb-5 rounded-xl border border-zinc-200 bg-white p-5">
