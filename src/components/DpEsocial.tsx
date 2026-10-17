@@ -57,9 +57,17 @@ function TestBanner() {
   }, []);
   if (amb === "1") {
     return (
-      <p className="mb-4 rounded-md border border-red-300 bg-red-50 p-2 text-xs font-semibold text-red-700">
-        AMBIENTE DE PRODUÇÃO — os envios têm valor legal no eSocial. Cada envio pede a sua confirmação.
-      </p>
+      <div className="mb-4 flex items-center gap-3 rounded-xl border border-rose-200 bg-gradient-to-r from-rose-50 via-white to-rose-50 px-4 py-3 shadow-sm">
+        <span className="relative flex h-3 w-3 shrink-0">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
+          <span className="relative inline-flex h-3 w-3 rounded-full bg-rose-600" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-bold tracking-wide text-rose-700">AMBIENTE DE PRODUÇÃO</p>
+          <p className="text-xs text-rose-700/80">eSocial oficial — os envios têm valor legal. Cada envio pede a sua confirmação.</p>
+        </div>
+        <span className="shrink-0 rounded-full bg-rose-600 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-white">Ao vivo</span>
+      </div>
     );
   }
   return (
