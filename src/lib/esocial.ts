@@ -1,4 +1,5 @@
 import https from "node:https";
+import { createSecureContext } from "node:tls";
 import type { TLSSocket } from "node:tls";
 
 /**
@@ -111,4 +112,30 @@ export function probeConsulta(cfg: EsocialConfig): Promise<ProbeResult> {
       done({ ok: false, error: e instanceof Error ? e.message : "Falha ao conectar" });
     }
   });
+}
+
+/** Diagnóstico sem segredos: tamanho, formato e se o Node consegue abrir o certificado com a senha. */
+export function diagnosticoCertificado(cfg: EsocialConfig) {
+  const bruto = process.env.ESOCIAL_CERT_PFX_BASE64 ?? "";
+  const semEspaco = bruto.replace(/\s+/g, "");
+  const senhaBruta = process.env.ESOCIAL_CERT_SENHA ?? "";
+  const d: Record<string, unknown> = {
+    caracteresNoValor: bruto.length,
+    caracteresInvalidosBase64: (semEspaco.match(/[^A-Za-z0-9+/=]/g) ?? []).length,
+    comecaComAspas: /^["'\u201c\u2018]/.test(bruto.trim()),
+    primeiros3: semEspaco.slice(0, 3),
+    bytesDecodificados: cfg.pfx ? cfg.pfx.length : 0,
+    inicioHex: cfg.pfx ? cfg.pfx.subarray(0, 4).toString("hex") : null,
+    senhaTamanho: senhaBruta.length,
+    senhaTemEspacoNasPontas: senhaBruta !== senhaBruta.trim(),
+  };
+  try {
+    if (!cfg.pfx) throw new Error("sem certificado");
+    createSecureContext({ pfx: cfg.pfx, passphrase: cfg.senha ?? "" });
+    d.abreComSenha = true;
+  } catch (e) {
+    d.abreComSenha = false;
+    d.erroAoAbrir = e instanceof Error ? e.message : String(e);
+  }
+  return d;
 }
