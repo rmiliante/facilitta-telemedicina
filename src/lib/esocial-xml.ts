@@ -174,7 +174,7 @@ export function buildEvent(
       ["Endereço — CEP", digits(d.cep)],
       ["Endereço — código do município (IBGE)", d.codMunic],
       ["Endereço — UF", d.uf],
-      ["CNPJ do sindicato da categoria", digits(d.cnpjSind || ctx.empresa.cnpjSind)],
+      ["CNPJ do sindicato da categoria", digits(d.cnpjSind || ctx.empresa.cnpjSind || ctx.cnpj)],
       ["Data de opção do FGTS", isoDate(d.dtOpcFGTS) || isoDate(emp.admitted_at)],
     ];
     for (const [label, v] of need) if (!v) missing.push(label);
@@ -219,7 +219,7 @@ export function buildEvent(
                   x("indAdmissao", "1") +
                   x("tpRegJor", d.tpRegJor || "1") +
                   x("natAtividade", d.natAtividade || "1") +
-                  x("cnpjSindCategProf", digits(d.cnpjSind || ctx.empresa.cnpjSind)) +
+                  x("cnpjSindCategProf", digits(d.cnpjSind || ctx.empresa.cnpjSind || ctx.cnpj)) +
                   g("FGTS", x("dtOpcFGTS", isoDate(d.dtOpcFGTS) || isoDate(emp.admitted_at))),
               ),
             ) +
@@ -233,7 +233,7 @@ export function buildEvent(
     if (!dtAlt) missing.push("Data da alteração");
     if (!money(emp.salary)) missing.push("Salário base");
     if (!digits(d.cbo)) missing.push("CBO do cargo");
-    if (!digits(d.cnpjSind || ctx.empresa.cnpjSind)) missing.push("CNPJ do sindicato da categoria");
+    if (!digits(d.cnpjSind || ctx.empresa.cnpjSind || ctx.cnpj)) missing.push("CNPJ do sindicato da categoria");
     if (missing.length) return { ok: false, missing };
     const alt = g(
       "altContratual",
@@ -244,7 +244,7 @@ export function buildEvent(
           x("tpRegPrev", "1") +
             g(
               "infoRegimeTrab",
-              g("infoCeletista", x("tpRegJor", d.tpRegJor || "1") + x("natAtividade", d.natAtividade || "1") + x("cnpjSindCategProf", digits(d.cnpjSind || ctx.empresa.cnpjSind))),
+              g("infoCeletista", x("tpRegJor", d.tpRegJor || "1") + x("natAtividade", d.natAtividade || "1") + x("cnpjSindCategProf", digits(d.cnpjSind || ctx.empresa.cnpjSind || ctx.cnpj))),
             ) +
             dadosContrato(emp, ctx, d),
         ),
