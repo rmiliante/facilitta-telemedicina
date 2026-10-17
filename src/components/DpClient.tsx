@@ -467,7 +467,7 @@ function Ficha({ id, receita, employees, onBack, onChanged }: { id: string; rece
                 </ul>
               </>
             )}
-            <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">O envio ao eSocial é feito na aba “eSocial” (ambiente de testes por enquanto). O sistema controla o status e os prazos.</p>
+            <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">O envio ao eSocial é feito na aba “eSocial” (o ambiente — testes ou produção — aparece lá). O sistema controla o status e os prazos.</p>
           </div>
           <div className="space-y-4">
             <div className="rounded-xl border border-zinc-200 bg-white p-5">
