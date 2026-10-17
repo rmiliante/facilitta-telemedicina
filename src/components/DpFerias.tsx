@@ -157,10 +157,10 @@ export default function DpFerias({ employees }: { employees: DpEmployee[] }) {
     await load();
   }
   async function agir(evId: string, action: "enviar" | "consultar") {
-    if (action === "enviar" && !confirm("Enviar este evento ao eSocial (AMBIENTE DE TESTES)?")) return;
+    if (action === "enviar" && !confirm("Enviar este evento ao eSocial?\n\nSe o sistema estiver em PRODUÇÃO, o envio tem valor legal.")) return;
     setBusy(evId);
     setMsg(null);
-    const r = await post(`/api/admin/dp/esocial/events/${evId}`, { action, confirm: true });
+    const r = await post(`/api/admin/dp/esocial/events/${evId}`, { action, confirm: true, confirmProducao: true });
     setBusy(null);
     if (!r.ok) setMsg(r.d.error ?? "Falha na operação");
     else if (r.d.resumo?.fault) setMsg(`eSocial: ${r.d.resumo.fault}`);
