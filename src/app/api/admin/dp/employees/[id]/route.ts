@@ -10,8 +10,14 @@ async function masterOnly() {
   return role === "master" || role === null;
 }
 
+const ESOCIAL_KEYS = [
+  "sexo", "racaCor", "estCiv", "grauInstr", "dtNascto", "paisNascto", "paisNac", "tpLograd", "dscLograd", "nrLograd",
+  "complemento", "bairro", "cep", "codMunic", "uf", "fonePrinc", "emailPrinc", "matricula", "cbo", "codCateg",
+  "tpAdmissao", "tpRegJor", "natAtividade", "cnpjSind", "dtOpcFGTS", "tpJornada", "qtdHrsSem", "dscJorn",
+] as const;
+
 const FIELDS =
-  "id, full_name, cpf, role_title, department, admitted_at, salary, status, experience_end, vacation_due, vacation_return, aso_due, terminated_at, notes";
+  "id, full_name, cpf, role_title, department, admitted_at, salary, status, experience_end, vacation_due, vacation_return, aso_due, terminated_at, notes, esocial";
 
 /** GET /api/admin/dp/employees/[id] — ficha + checklist de admissão. */
 export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -55,6 +61,14 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     const s = body.salary === "" || body.salary == null ? null : Number(body.salary);
     if (s !== null && (!Number.isFinite(s) || s < 0)) return NextResponse.json({ error: "Salário inválido" }, { status: 400 });
     patch.salary = s;
+  }
+  if (body.esocial && typeof body.esocial === "object") {
+    const e: Record<string, string> = {};
+    for (const k of ESOCIAL_KEYS) {
+      const v = (body.esocial as Record<string, unknown>)[k];
+      if (typeof v === "string" && v.trim()) e[k] = v.trim().slice(0, 120);
+    }
+    patch.esocial = e;
   }
   if ("status" in body) {
     if (!DP_STATUSES.includes(body.status)) return NextResponse.json({ error: "Status inválido" }, { status: 400 });
