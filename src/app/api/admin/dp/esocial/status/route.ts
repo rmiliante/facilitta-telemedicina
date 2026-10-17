@@ -18,11 +18,11 @@ export async function GET() {
     ESOCIAL_CERT_PFX_BASE64: cfg.hasPfx ? "definida" : "FALTA",
     ESOCIAL_CERT_SENHA: cfg.hasSenha ? "definida" : "FALTA",
   };
-  if (cfg.ambiente !== "2") {
+  if (cfg.ambiente !== "1" && cfg.ambiente !== "2") {
     return NextResponse.json({
       ok: false,
       config,
-      error: "Nesta etapa só funciona em produção restrita: ESOCIAL_AMBIENTE deve ser 2.",
+      error: "ESOCIAL_AMBIENTE deve ser 1 (produção) ou 2 (testes).",
     });
   }
   const diagnostico = diagnosticoCertificado(cfg);
