@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { normalizeRole, STAFF_ROLE_HEADER } from "@/lib/permissions";
-import { esocialConfig, probeConsulta } from "@/lib/esocial";
+import { diagnosticoCertificado, esocialConfig, probeConsulta } from "@/lib/esocial";
 
 /**
  * GET /api/admin/dp/esocial/status — confere variáveis e conexão com o eSocial
@@ -25,6 +25,7 @@ export async function GET() {
       error: "Nesta etapa só funciona em produção restrita: ESOCIAL_AMBIENTE deve ser 2.",
     });
   }
+  const diagnostico = diagnosticoCertificado(cfg);
   const probe = await probeConsulta(cfg);
-  return NextResponse.json({ config, ...probe });
+  return NextResponse.json({ config, diagnostico, ...probe });
 }
