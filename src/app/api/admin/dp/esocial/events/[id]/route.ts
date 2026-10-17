@@ -18,7 +18,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 
 /**
  * POST — { action: "enviar" | "consultar", confirm: true }
- * Só produção restrita (ambiente de testes do eSocial, sem valor legal).
+ * Ambiente 2 = testes (sem valor legal); ambiente 1 = PRODUÇÃO (exige confirmProducao).
  */
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   if (!(await masterOnly())) return NextResponse.json({ error: "Acesso negado" }, { status: 403 });
@@ -29,7 +29,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const { data: ev } = await supabase.from("dp_esocial_events").select(COLS).eq("id", id).maybeSingle();
   if (!ev) return NextResponse.json({ error: "Evento não encontrado" }, { status: 404 });
   const cfg = esocialConfig();
-  if (cfg.ambiente !== "2") return NextResponse.json({ error: "Só é permitido em produção restrita." }, { status: 409 });
+  if (cfg.ambiente !== "1" && cfg.ambiente !== "2") return NextResponse.json({ error: "ESOCIAL_AMBIENTE inválido." }, { status: 409 });
+  if (ev.ambiente !== cfg.ambiente) return NextResponse.json({ error: `Este evento foi gerado para o ambiente ${ev.ambiente === "1" ? "de PRODUÇÃO" : "de TESTES"}, mas o sistema está no ambiente ${cfg.ambiente === "1" ? "de PRODUÇÃO" : "de TESTES"}. Gere um novo evento.` }, { status: 409 });
+  if (cfg.ambiente === "1" && body.action === "enviar" && body.confirmProducao !== true) return NextResponse.json({ error: "Envio em PRODUÇÃO exige confirmação explícita." }, { status: 400 });
   const now = new Date().toISOString();
 
   try {
@@ -53,7 +55,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         action: "dp_esocial_enviar",
         entity: "dp_esocial_events",
         entityId: id,
-        details: { tipo: ev.tipo, eventId: ev.event_id, status: patch.status, cdResposta: resumo.cdResposta, ambiente: "2" },
+        details: { tipo: ev.tipo, eventId: ev.event_id, status: patch.status, cdResposta: resumo.cdResposta, ambiente: cfg.ambiente },
       });
       return NextResponse.json({ status: patch.status, resumo });
     }
