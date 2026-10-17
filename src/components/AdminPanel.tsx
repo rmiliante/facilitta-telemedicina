@@ -289,6 +289,17 @@ function AdminSidebar({
               )}
             </li>
           ))}
+          {role === "master" && (
+            <li>
+              <a
+                href="/admin/dp"
+                className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-50"
+              >
+                <IconUsers />
+                Dep. Pessoal
+              </a>
+            </li>
+          )}
           {/* Mesmo visual dos outros itens, mas em vez de abrir uma tela
               mostra os links logo abaixo. Só para o Master. */}
           {role === "master" && (
