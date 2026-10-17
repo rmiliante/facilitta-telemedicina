@@ -29,6 +29,8 @@ export async function PATCH(req: NextRequest) {
     indOptRegEletron: "indOptRegEletron" in b ? s(b.indOptRegEletron, 1) : atual.indOptRegEletron,
     iniValid: "iniValid" in b ? s(b.iniValid, 7) : atual.iniValid,
     cnpjSind: "cnpjSind" in b ? digits(s(b.cnpjSind, 20)) : atual.cnpjSind,
+    cnaePrep: "cnaePrep" in b ? digits(s(b.cnaePrep, 12)).slice(0, 7) : atual.cnaePrep,
+    aliqRat: "aliqRat" in b ? (["1", "2", "3"].includes(s(b.aliqRat, 1)) ? s(b.aliqRat, 1) : "") : atual.aliqRat,
   };
   if (!/^\d{4}-\d{2}$/.test(novo.iniValid)) return NextResponse.json({ error: "Início da validade deve ser AAAA-MM" }, { status: 400 });
   if (novo.cnpjSind && novo.cnpjSind.length !== 14) return NextResponse.json({ error: "CNPJ do sindicato deve ter 14 dígitos" }, { status: 400 });
