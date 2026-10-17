@@ -48,9 +48,23 @@ const btn = "rounded-lg bg-teal-500 px-4 py-2 text-sm font-semibold text-[#06231
 const btn2 = "rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-semibold hover:bg-zinc-50 disabled:opacity-50";
 
 function TestBanner() {
+  const [amb, setAmb] = useState<string | null>(null);
+  useEffect(() => {
+    fetch("/api/admin/dp/esocial/empresa")
+      .then((r) => r.json())
+      .then((d) => setAmb(d.ambiente ?? null))
+      .catch(() => {});
+  }, []);
+  if (amb === "1") {
+    return (
+      <p className="mb-4 rounded-md border border-red-300 bg-red-50 p-2 text-xs font-semibold text-red-700">
+        AMBIENTE DE PRODUÇÃO — os envios têm valor legal no eSocial. Cada envio pede a sua confirmação.
+      </p>
+    );
+  }
   return (
     <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
-      <b>Ambiente de TESTES do eSocial (produção restrita).</b> O que for enviado aqui não tem valor legal. O envio real só será liberado depois, com a sua confirmação.
+      <b>Ambiente de TESTES do eSocial (produção restrita).</b> O que for enviado aqui não tem valor legal.
     </p>
   );
 }
@@ -290,7 +304,6 @@ export function EsocialEmpresa() {
           <p className="text-sm text-red-700">Sem conexão: {status.error ?? "erro desconhecido"}</p>
         )}
         <p className="mt-2 text-[11px] text-zinc-400">Ambiente: {info.ambiente === "2" ? "produção restrita (testes)" : info.ambiente === "1" ? "PRODUÇÃO (valor legal)" : info.ambiente ?? "não configurado"} · CNPJ {info.cnpj ?? "—"}</p>
-        {info.ambiente === "1" && <p className="mt-2 rounded-md border border-red-300 bg-red-50 p-2 text-xs font-semibold text-red-700">AMBIENTE DE PRODUÇÃO — os envios têm valor legal no eSocial.</p>}
       </div>
 
       <div className="mb-5 rounded-xl border border-zinc-200 bg-white p-5">
