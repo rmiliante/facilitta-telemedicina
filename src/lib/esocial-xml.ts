@@ -5,12 +5,13 @@
  * Gera XML compacto (sem espaços entre tags) para a assinatura canônica bater.
  */
 
-export type EsocialTipo = "S-1000" | "S-2200" | "S-2206" | "S-2230" | "S-2299";
+export type EsocialTipo = "S-1000" | "S-1005" | "S-2200" | "S-2206" | "S-2230" | "S-2299";
 
 export const SCHEMA_VERSION = "v_S_01_03_00";
 
 export const TIPOS: Record<EsocialTipo, { tag: string; grupo: 1 | 2; label: string }> = {
   "S-1000": { tag: "evtInfoEmpregador", grupo: 1, label: "Informações do empregador" },
+  "S-1005": { tag: "evtTabEstab", grupo: 1, label: "Tabela de estabelecimentos" },
   "S-2200": { tag: "evtAdmissao", grupo: 2, label: "Admissão" },
   "S-2206": { tag: "evtAltContratual", grupo: 2, label: "Alteração contratual" },
   "S-2230": { tag: "evtAfastTemp", grupo: 2, label: "Afastamento / férias" },
@@ -32,6 +33,10 @@ export interface Empresa {
   iniValid: string;
   /** CNPJ do sindicato da categoria (padrão para os empregados) */
   cnpjSind: string;
+  /** CNAE preponderante do estabelecimento (7 dígitos) — S-1005 */
+  cnaePrep: string;
+  /** Alíquota RAT (1, 2 ou 3) — só para quem não é do Simples Nacional */
+  aliqRat: string;
 }
 
 export const EMPRESA_PADRAO: Empresa = {
@@ -41,6 +46,8 @@ export const EMPRESA_PADRAO: Empresa = {
   indOptRegEletron: "0",
   iniValid: "2026-01",
   cnpjSind: "",
+  cnaePrep: "",
+  aliqRat: "",
 };
 
 export interface Colaborador {
@@ -160,6 +167,25 @@ export function buildEvent(
     return { ok: true, tag: meta.tag, id, grupo: meta.grupo, xml: body };
   }
 
+  if (tipo === "S-1005") {
+    const e = ctx.empresa;
+    const cnae = digits(e.cnaePrep);
+    if (!/^\d{4}-\d{2}$/.test(e.iniValid)) missing.push("Início da validade (AAAA-MM)");
+    if (cnae.length !== 7) missing.push("CNAE preponderante (7 dígitos)");
+    const simples = e.classTrib === "01";
+    if (!simples && !["1", "2", "3"].includes(e.aliqRat)) missing.push("Alíquota RAT (1, 2 ou 3)");
+    if (missing.length) return { ok: false, missing };
+    const op = (ctx.operacao ?? "inclusao") === "alteracao" ? "alteracao" : "inclusao";
+    const ide = g("ideEstab", x("tpInsc", "1") + x("nrInsc", digits(ctx.cnpj)) + x("iniValid", e.iniValid));
+    const dados = g(
+      "dadosEstab",
+      x("cnaePrep", cnae) +
+        (simples ? "" : g("aliqGilrat", x("aliqRat", e.aliqRat))) +
+        g("infoTrab", x("regPt", "0") + g("infoApr", x("contApr", "0")) + g("infoPCD", x("contPCD", "0"))),
+    );
+    return { ok: true, tag: meta.tag, id, grupo: meta.grupo, xml: wrap(ideEvento(ctx, false) + ideEmpregador(ctx) + g("infoEstab", g(op, ide + dados))) };
+  }
+
   if (!emp) return { ok: false, missing: [...missing, "Colaborador"] };
   if (digits(emp.cpf).length !== 11) missing.push("CPF (11 dígitos)");
 
@@ -224,8 +250,7 @@ export function buildEvent(
                   x("indAdmissao", "1") +
                   x("tpRegJor", d.tpRegJor || "1") +
                   x("natAtividade", d.natAtividade || "1") +
-                  x("cnpjSindCategProf", digits(d.cnpjSind || ctx.empresa.cnpjSind || ctx.cnpj)) +
-                  g("FGTS", x("dtOpcFGTS", isoDate(d.dtOpcFGTS) || isoDate(emp.admitted_at))),
+                  x("cnpjSindCategProf", digits(d.cnpjSind || ctx.empresa.cnpjSind || ctx.cnpj)),
               ),
             ) +
             dadosContrato(emp, ctx, d),
