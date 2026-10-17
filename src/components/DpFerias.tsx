@@ -191,7 +191,7 @@ export default function DpFerias({ employees }: { employees: DpEmployee[] }) {
   return (
     <div className="space-y-4">
       <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
-        <b>Ambiente de TESTES do eSocial.</b> Os eventos gerados aqui não têm valor legal; nada é enviado sem o seu clique em “Enviar (teste)”.
+        <b>eSocial.</b> Em ambiente de TESTES os eventos não têm valor legal; em PRODUÇÃO têm. Nada é enviado sem o seu clique em “Enviar”.
       </p>
       {msg && <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">{msg}</p>}
 
