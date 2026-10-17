@@ -181,7 +181,7 @@ export function buildEvent(
       "dadosEstab",
       x("cnaePrep", cnae) +
         (simples ? "" : g("aliqGilrat", x("aliqRat", e.aliqRat))) +
-        g("infoTrab", x("regPt", "0") + g("infoApr", x("contApr", "0")) + g("infoPCD", x("contPCD", "0"))),
+        g("infoTrab", g("infoApr", x("contApr", "0")) + g("infoPCD", x("contPCD", "0"))),
     );
     return { ok: true, tag: meta.tag, id, grupo: meta.grupo, xml: wrap(ideEvento(ctx, false) + ideEmpregador(ctx) + g("infoEstab", g(op, ide + dados))) };
   }
