@@ -33,6 +33,12 @@ export async function PATCH(
   let doctorChanged = false;
   if ("doctorId" in body) {
     const newDoctorId = typeof body.doctorId === "string" && body.doctorId ? body.doctorId : null;
+    if (newDoctorId) {
+      const { data: doc } = await getSupabaseAdmin().from("doctors").select("active").eq("id", newDoctorId).maybeSingle();
+      if (doc && doc.active === false) {
+        return NextResponse.json({ error: "Esse médico está inativo e não pode receber consultas." }, { status: 409 });
+      }
+    }
     update.doctor_id = newDoctorId;
     doctorChanged = true;
   }
