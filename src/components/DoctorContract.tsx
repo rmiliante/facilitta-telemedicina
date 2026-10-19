@@ -201,6 +201,23 @@ export default function DoctorContract({ doctors, initialId, onClose }: { doctor
         }),
       0,
     );
+    // Dados da empresa (PJ) salvos no cadastro do médico têm prioridade sobre o rascunho do navegador.
+    fetch(`/api/admin/doctors/${doc.id}/empresa`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        const e = j?.empresa;
+        if (!e) return;
+        setD((x) => ({
+          ...x,
+          razao: e.pj_razao || x.razao,
+          cnpj: e.pj_cnpj || x.cnpj,
+          cep: e.pj_cep || x.cep,
+          endereco: e.pj_endereco || x.endereco,
+          repNome: e.pj_rep_nome || x.repNome,
+          repCpf: e.pj_rep_cpf || x.repCpf,
+        }));
+      })
+      .catch(() => {});
     return () => clearTimeout(t);
   }, [doc]);
 
