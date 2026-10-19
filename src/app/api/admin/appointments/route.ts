@@ -115,6 +115,12 @@ export async function POST(req: NextRequest) {
   }
 
   const finalDoctorId = typeof doctorId === "string" && doctorId ? doctorId : null;
+  if (finalDoctorId) {
+    const { data: doc } = await supabase.from("doctors").select("active").eq("id", finalDoctorId).maybeSingle();
+    if (doc && doc.active === false) {
+      return NextResponse.json({ error: "Esse médico está inativo e não pode receber consultas." }, { status: 409 });
+    }
+  }
   let queuePosition: number | null = null;
 
   if (finalDoctorId) {
