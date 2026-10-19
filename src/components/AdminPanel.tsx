@@ -12,6 +12,7 @@ import ReportsTab, { QuotaBar } from "./ReportsTab";
 import AuditTab from "./AuditTab";
 import AttendanceHistoryTab from "./AttendanceHistoryTab";
 import DoctorContract from "./DoctorContract";
+import DoctorCompany from "./DoctorCompany";
 import { printFile } from "@/lib/printPdf";
 import type { TimelineDoc } from "@/lib/patientTimeline";
 import { publicOrigin } from "@/lib/format";
@@ -1469,6 +1470,9 @@ function DoctorsTab() {
                   />
                   <span className="mt-1 block text-[11px] text-zinc-400">O médico também pode preencher em Meu cadastro.</span>
                 </label>
+              </div>
+              <div className="sm:col-span-2">
+                <DoctorCompany doctorId={d.id} />
               </div>
               <div className="flex gap-2 sm:col-span-2">
                 <button
