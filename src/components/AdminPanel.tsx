@@ -1062,7 +1062,7 @@ function DoctorsTab() {
   const [form, setForm] = useState({ name: "", email: "", password: "", specialtyId: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "", consultFee: "", contractFee: "", pixKey: "" });
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", email: "", specialtyId: "", password: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "", consultFee: "", contractFee: "", pixKey: "" });
+  const [editForm, setEditForm] = useState({ name: "", email: "", specialtyId: "", password: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "", consultFee: "", contractFee: "", pixKey: "", active: true });
   const [editSaving, setEditSaving] = useState(false);
   const [contractId, setContractId] = useState<string | null>(null);
 
@@ -1127,6 +1127,7 @@ function DoctorsTab() {
       consultFee: feeInput(d.consult_fee),
       contractFee: feeInput(d.contract_fee),
       pixKey: d.pix_key ?? "",
+      active: d.active,
     });
   }
 
@@ -1156,6 +1157,7 @@ function DoctorsTab() {
         consultFee: editForm.consultFee,
         contractFee: editForm.contractFee,
         pixKey: editForm.pixKey,
+        active: editForm.active,
       };
       if (editForm.password) body.password = editForm.password;
       const res = await fetch(`/api/admin/doctors/${id}`, {
@@ -1443,6 +1445,18 @@ function DoctorsTab() {
                     className="w-full max-w-xs rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
                   />
                   <span className="mt-1 block text-[11px] text-zinc-400">Pago pela prefeitura; entra no faturamento dos Relatórios. Só aparece aqui no admin — o médico não vê.</span>
+                </label>
+                <label className="flex items-start gap-2 rounded-md border border-zinc-200 bg-zinc-50 p-2.5 text-xs sm:col-span-4">
+                  <input
+                    type="checkbox"
+                    checked={editForm.active}
+                    onChange={(e) => setEditForm((f) => ({ ...f, active: e.target.checked }))}
+                    className="mt-0.5 h-4 w-4 accent-[#009594]"
+                  />
+                  <span>
+                    <span className="block font-medium text-zinc-700">Médico ativo</span>
+                    <span className="block text-zinc-500">Só médicos ativos aparecem para agendar consultas e conseguem entrar no sistema. Desmarcado = não recebe novas consultas.</span>
+                  </span>
                 </label>
                 <label className="text-xs sm:col-span-2">
                   <span className="mb-1 block font-medium text-zinc-600">Chave PIX (repasse)</span>
