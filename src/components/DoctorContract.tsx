@@ -92,7 +92,7 @@ export function montarContratoHtml(doc: Doc, d: Dados, logoUrl: string, destaque
   const esp = especialidadeDe(doc);
   const espLower = esp.toLowerCase();
   const falta = (v: string, rotulo: string) =>
-    v.trim() ? `<b>${esc(v.trim())}</b>` : destaque ? `<span class="falta">[${rotulo}]</span>` : `<b>[${rotulo}]</b>`;
+    v.trim() ? `<b>${esc(v.trim())}</b>` : destaque ? `<span style="background:#fef08a;color:#854d0e;">[${rotulo}]</span>` : `<b>[${rotulo}]</b>`;
   const valorNum = parseValor(d.valor);
   const valorTxt = valorNum > 0 ? `${fmtBRL(valorNum)} (${valorExtenso(valorNum)})` : "R$ ____";
   const crm = doc.crm ? `CRM/${doc.crm_uf || "__"} nº ${doc.crm}` : "CRM nº ____";
@@ -116,54 +116,42 @@ export function montarContratoHtml(doc: Doc, d: Dados, logoUrl: string, destaque
   const preambulo1 = `Pelo presente instrumento particular, de um lado, <b>${CONTRATANTE.nome}</b>, pessoa jurídica de direito privado, inscrita no CNPJ/MF sob o nº ${CONTRATANTE.cnpj}, com sede na ${CONTRATANTE.sede}, neste ato representada na forma de seu contrato social, doravante denominada simplesmente <b>CONTRATANTE</b>;`;
   const preambulo2 = `e, de outro lado, ${falta(d.razao, "razão social")}, pessoa jurídica de direito privado, inscrita no CNPJ/MF sob o nº ${falta(d.cnpj, "CNPJ")}, com sede na ${falta(d.endereco, "endereço da sede")}${d.cep.trim() ? `, CEP ${esc(d.cep.trim())}` : ""}, neste ato representada por ${falta(d.repNome, "representante")}${d.repCpf.trim() ? `, CPF nº ${esc(d.repCpf.trim())}` : ""}, doravante denominada simplesmente <b>CONTRATADA</b>;`;
 
+  const FONT = "font-family:Arial,Helvetica,sans-serif;";
+  const sP = `${FONT}font-size:10pt;line-height:1.5;color:#111827;text-align:justify;margin:0 0 6px 0;`;
+  const sH2 = `${FONT}font-size:10pt;font-weight:bold;color:#15004d;text-align:center;margin:18px 0 6px 0;page-break-after:avoid;`;
   const clausulas = CONTRATO_MINUTA.clauses
-    .map((c) => `<h2>${esc(c.h)}</h2>${c.p.map((p) => `<p>${subst(p)}</p>`).join("")}`)
+    .map((c) => `<h2 style="${sH2}">${esc(c.h)}</h2>${c.p.map((p) => `<p style="${sP}">${subst(p)}</p>`).join("")}`)
     .join("");
 
   const assin = (titulo: string, nome: string, extra: string) =>
-    `<div class="ass"><div class="linha"></div><b>${titulo}</b><br>${nome}<br><span class="peq">${extra}</span></div>`;
+    `<td width="48%" valign="top" align="center" style="${FONT}font-size:9pt;color:#111827;border-top:1px solid #111827;padding-top:4px;text-align:center;"><b>${titulo}</b><br>${nome}<br><span style="font-size:8pt;color:#475569;">${extra}</span></td>`;
+  const test = (n: number) =>
+    `<td width="48%" valign="top" style="${FONT}font-size:9pt;color:#111827;border-top:1px solid #111827;padding-top:4px;">Testemunha ${n}<br>Nome:<br>CPF:</td>`;
+  const gap = `<td width="4%">&nbsp;</td>`;
 
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(titulo)}</title>
 <style>
 @page { size: A4; margin: 22mm 20mm 20mm 20mm;
   @bottom-left { content: "Facilitta Saúde e Tecnologia Ltda. · Contrato de Prestação de Serviços Médicos"; font: 7.5pt Arial, sans-serif; color: #64748b; }
   @bottom-right { content: "Página " counter(page) " de " counter(pages); font: 7.5pt Arial, sans-serif; color: #64748b; } }
-* { box-sizing: border-box; }
-body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; line-height: 1.5; color: #111827; margin: 0; }
-.cab { display: flex; align-items: center; gap: 12px; border-bottom: 2.5px solid #00e2c3; padding-bottom: 10px; margin-bottom: 20px; }
-.cab img { width: 52px; height: 52px; border-radius: 10px; }
-.cab .marca { font-size: 22pt; font-weight: bold; color: #15004d; line-height: 1; }
-.cab .marca span { color: #009594; }
-.cab .sub { font-size: 8pt; color: #64748b; margin-top: 4px; }
-h1 { text-align: center; font-size: 13pt; color: #15004d; margin: 0 0 18px; letter-spacing: .3px; }
-h2 { text-align: center; font-size: 10pt; color: #15004d; margin: 18px 0 6px; page-break-after: avoid; }
-p { text-align: justify; margin: 0 0 6px; }
-.falta { background: #fef08a; color: #854d0e; padding: 0 2px; }
-.data { margin: 22px 0 8px; }
-.assinaturas { display: flex; gap: 40px; margin-top: 46px; page-break-inside: avoid; }
-.testemunhas { display: flex; gap: 40px; margin-top: 40px; page-break-inside: avoid; }
-.ass { flex: 1; text-align: center; font-size: 9pt; }
-.ass .linha { border-top: 1px solid #111827; margin-bottom: 4px; }
-.peq { font-size: 8pt; color: #475569; }
-.test { flex: 1; font-size: 9pt; }
-.test .linha { border-top: 1px solid #111827; margin-bottom: 4px; }
-</style></head><body>
-<div class="cab"><img src="${logoUrl}" alt="Facilitta"><div><div class="marca">facilitta <span>saúde</span></div><div class="sub">${CONTRATANTE.nome} · CNPJ ${CONTRATANTE.cnpj}</div></div></div>
-<h1>${esc(titulo)}</h1>
-<p>${preambulo1}</p>
-<p>${preambulo2}</p>
-<p>${esc(CONTRATO_MINUTA.intro3)}</p>
+</style></head><body bgcolor="#ffffff" style="background:#ffffff;margin:0;${FONT}color:#111827;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-bottom:2.5px solid #00e2c3;margin-bottom:20px;"><tr>
+<td width="66" valign="middle" style="padding-bottom:10px;"><img src="${logoUrl}" alt="Facilitta" width="52" height="52" style="width:52px;height:52px;border-radius:10px;"></td>
+<td valign="middle" style="padding-bottom:10px;"><div style="${FONT}font-size:22pt;font-weight:bold;color:#15004d;line-height:1.1;">facilitta <span style="color:#009594;">saúde</span></div><div style="${FONT}font-size:8pt;color:#64748b;margin-top:4px;">${CONTRATANTE.nome} · CNPJ ${CONTRATANTE.cnpj}</div></td>
+</tr></table>
+<h1 style="${FONT}font-size:13pt;font-weight:bold;color:#15004d;text-align:center;margin:0 0 18px 0;">${esc(titulo)}</h1>
+<p style="${sP}">${preambulo1}</p>
+<p style="${sP}">${preambulo2}</p>
+<p style="${sP}">${esc(CONTRATO_MINUTA.intro3)}</p>
 ${clausulas}
-<p class="data">E, por estarem justas e contratadas, as partes assinam o presente instrumento, por meio físico ou eletrônico, juntamente com duas testemunhas.</p>
-<p class="data">${esc(cidade)}, ${esc(dataTxt)}.</p>
-<div class="assinaturas">
-${assin("CONTRATANTE", CONTRATANTE.nome, "CNPJ " + CONTRATANTE.cnpj)}
-${assin("CONTRATADA", d.razao.trim() ? esc(d.razao.trim()) : "[razão social]", "CNPJ " + (d.cnpj.trim() ? esc(d.cnpj.trim()) : "[CNPJ]") + (d.repNome.trim() ? "<br>p. " + esc(d.repNome.trim()) : ""))}
-</div>
-<div class="testemunhas">
-<div class="test"><div class="linha"></div>Testemunha 1<br>Nome:<br>CPF:</div>
-<div class="test"><div class="linha"></div>Testemunha 2<br>Nome:<br>CPF:</div>
-</div>
+<p style="${sP}margin-top:22px;">E, por estarem justas e contratadas, as partes assinam o presente instrumento, por meio físico ou eletrônico, juntamente com duas testemunhas.</p>
+<p style="${sP}">${esc(cidade)}, ${esc(dataTxt)}.</p>
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:46px;page-break-inside:avoid;"><tr>
+${assin("CONTRATANTE", CONTRATANTE.nome, "CNPJ " + CONTRATANTE.cnpj)}${gap}${assin("CONTRATADA", d.razao.trim() ? esc(d.razao.trim()) : "[razão social]", "CNPJ " + (d.cnpj.trim() ? esc(d.cnpj.trim()) : "[CNPJ]") + (d.repNome.trim() ? "<br>p. " + esc(d.repNome.trim()) : ""))}
+</tr></table>
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:40px;page-break-inside:avoid;"><tr>
+${test(1)}${gap}${test(2)}
+</tr></table>
 </body></html>`;
 }
 
