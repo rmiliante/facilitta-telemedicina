@@ -5,13 +5,17 @@
  * Gera XML compacto (sem espaços entre tags) para a assinatura canônica bater.
  */
 
-export type EsocialTipo = "S-1000" | "S-1005" | "S-2200" | "S-2206" | "S-2230" | "S-2299";
+export type EsocialTipo = "S-1000" | "S-1005" | "S-1010" | "S-1020" | "S-1200" | "S-1299" | "S-2200" | "S-2206" | "S-2230" | "S-2299";
 
 export const SCHEMA_VERSION = "v_S_01_03_00";
 
-export const TIPOS: Record<EsocialTipo, { tag: string; grupo: 1 | 2; label: string }> = {
+export const TIPOS: Record<EsocialTipo, { tag: string; grupo: 1 | 2 | 3; label: string }> = {
   "S-1000": { tag: "evtInfoEmpregador", grupo: 1, label: "Informações do empregador" },
   "S-1005": { tag: "evtTabEstab", grupo: 1, label: "Tabela de estabelecimentos" },
+  "S-1010": { tag: "evtTabRubrica", grupo: 1, label: "Tabela de rubricas" },
+  "S-1020": { tag: "evtTabLotacao", grupo: 1, label: "Tabela de lotações tributárias" },
+  "S-1200": { tag: "evtRemun", grupo: 3, label: "Remuneração do trabalhador" },
+  "S-1299": { tag: "evtFechaEvPer", grupo: 3, label: "Fechamento dos eventos periódicos" },
   "S-2200": { tag: "evtAdmissao", grupo: 2, label: "Admissão" },
   "S-2206": { tag: "evtAltContratual", grupo: 2, label: "Alteração contratual" },
   "S-2230": { tag: "evtAfastTemp", grupo: 2, label: "Afastamento / férias" },
@@ -71,10 +75,19 @@ export interface BuildCtx {
 }
 
 export type BuildResult =
-  | { ok: true; tag: string; id: string; grupo: 1 | 2; xml: string }
+  | { ok: true; tag: string; id: string; grupo: 1 | 2 | 3; xml: string }
   | { ok: false; missing: string[] };
 
 const VER_PROC = "facilitta-1.0";
+
+/** Rubricas da folha (S-1010). Natureza: Tabela 03 do eSocial. Confirmar com o contador. */
+export const TAB_RUBR = "TAB01";
+export const COD_LOT = "LOT01";
+export const RUBRICAS: Record<string, { cod: string; dsc: string; nat: string }> = {
+  SAL: { cod: "SAL001", dsc: "Salario", nat: "1000" },
+  COM: { cod: "COM001", dsc: "Comissoes", nat: "1207" },
+  DSR: { cod: "DSR001", dsc: "DSR sobre comissoes", nat: "1012" },
+};
 
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/\r/g, "");
@@ -185,8 +198,73 @@ export function buildEvent(
     return { ok: true, tag: meta.tag, id, grupo: meta.grupo, xml: wrap(ideEvento(ctx, false) + ideEmpregador(ctx) + g("infoEstab", g(op, ide + dados))) };
   }
 
+  const perApur = /^\d{4}-(0[1-9]|1[0-2])$/.test(params.perApur ?? "") ? (params.perApur as string) : "";
+  const op2 = (ctx.operacao ?? "inclusao") === "alteracao" ? "alteracao" : "inclusao";
+
+  if (tipo === "S-1010") {
+    const R = RUBRICAS[params.rubrica ?? ""];
+    if (!R) missing.push("Rubrica (SAL, COM ou DSR)");
+    if (!/^\d{4}-\d{2}$/.test(ctx.empresa.iniValid)) missing.push("Início da validade (AAAA-MM)");
+    if (missing.length || !R) return { ok: false, missing };
+    const ide = g("ideRubrica", x("codRubr", R.cod) + x("ideTabRubr", TAB_RUBR) + x("iniValid", ctx.empresa.iniValid));
+    const dados = g(
+      "dadosRubrica",
+      x("dscRubr", R.dsc) + x("natRubr", R.nat) + x("tpRubr", "1") + x("codIncCP", "11") + x("codIncIRRF", "11") + x("codIncFGTS", "11") + x("codIncCPRP", "00") + x("codIncPisPasep", "00") + x("tetoRemun", "N"),
+    );
+    return { ok: true, tag: meta.tag, id, grupo: meta.grupo, xml: wrap(ideEvento(ctx, false) + ideEmpregador(ctx) + g("infoRubrica", g(op2, ide + dados))) };
+  }
+
+  if (tipo === "S-1020") {
+    const fpas = digits(params.fpas);
+    if (fpas.length !== 3) missing.push("FPAS (3 dígitos, Tabela 04)");
+    if (!/^\d{4}-\d{2}$/.test(ctx.empresa.iniValid)) missing.push("Início da validade (AAAA-MM)");
+    if (missing.length) return { ok: false, missing };
+    const ide = g("ideLotacao", x("codLotacao", COD_LOT) + x("iniValid", ctx.empresa.iniValid));
+    const dados = g("dadosLotacao", x("tpLotacao", "01") + g("fpasLotacao", x("fpas", fpas) + x("codTercs", "0000")));
+    return { ok: true, tag: meta.tag, id, grupo: meta.grupo, xml: wrap(ideEvento(ctx, false) + ideEmpregador(ctx) + g("infoLotacao", g(op2, ide + dados))) };
+  }
+
+  if (tipo === "S-1299") {
+    if (!perApur) missing.push("Competência (AAAA-MM)");
+    if (missing.length) return { ok: false, missing };
+    const info = g(
+      "infoFech",
+      x("evtRemun", params.evtRemun === "N" ? "N" : "S") +
+        x("evtPgtos", params.evtPgtos === "S" ? "S" : "N") +
+        x("evtComProd", "N") +
+        x("evtContratAvNP", "N") +
+        x("evtInfoComplPer", "N") +
+        x("transDCTFWeb", params.transDCTFWeb === "N" ? "N" : "S"),
+    );
+    const ev = g("ideEvento", x("indApuracao", "1") + x("perApur", perApur) + x("tpAmb", ctx.tpAmb) + x("procEmi", "1") + x("verProc", VER_PROC));
+    return { ok: true, tag: meta.tag, id, grupo: meta.grupo, xml: wrap(ev + ideEmpregador(ctx) + info) };
+  }
+
   if (!emp) return { ok: false, missing: [...missing, "Colaborador"] };
   if (digits(emp.cpf).length !== 11) missing.push("CPF (11 dígitos)");
+
+  if (tipo === "S-1200") {
+    if (!perApur) missing.push("Competência (AAAA-MM)");
+    if (!emp.full_name) missing.push("Nome completo");
+    if (!isoDate(d.dtNascto)) missing.push("Data de nascimento");
+    const itens = (["SAL", "COM", "DSR"] as const)
+      .map((k) => [k, money(params["vr" + k[0] + k.slice(1).toLowerCase()])] as const)
+      .filter(([, v]) => v !== "");
+    if (!itens.length) missing.push("Valores da remuneração (salário/comissão)");
+    if (missing.length) return { ok: false, missing };
+    const itensXml = itens
+      .map(([k, v]) => g("itensRemun", x("codRubr", RUBRICAS[k].cod) + x("ideTabRubr", TAB_RUBR) + x("vrRubr", v) + x("indApurIR", "0")))
+      .join("");
+    const dm = g(
+      "dmDev",
+      x("ideDmDev", perApur.replace("-", "") + "01") +
+        x("codCateg", d.codCateg || "101") +
+        g("infoPerApur", g("ideEstabLot", x("tpInsc", "1") + x("nrInsc", digits(ctx.cnpj)) + x("codLotacao", COD_LOT) + g("remunPerApur", x("matricula", matricula) + itensXml))),
+    );
+    const ev = g("ideEvento", x("indRetif", "1") + x("indApuracao", "1") + x("perApur", perApur) + x("tpAmb", ctx.tpAmb) + x("procEmi", "1") + x("verProc", VER_PROC));
+    const trab = g("ideTrabalhador", x("cpfTrab", digits(emp.cpf)) + x("nmTrab", emp.full_name) + x("dtNascto", isoDate(d.dtNascto)));
+    return { ok: true, tag: meta.tag, id, grupo: meta.grupo, xml: wrap(ev + ideEmpregador(ctx) + trab + dm) };
+  }
 
   if (tipo === "S-2200") {
     const need: [string, string | null | undefined][] = [
@@ -325,7 +403,7 @@ export function buildEvent(
 }
 
 /** Lote de envio (grupo 1 = tabelas, 2 = não periódicos). `eventosAssinados`: [{id, xml}] já assinados. */
-export function buildLote(cnpj14: string, grupo: 1 | 2, eventosAssinados: { id: string; xml: string }[]): string {
+export function buildLote(cnpj14: string, grupo: 1 | 2 | 3, eventosAssinados: { id: string; xml: string }[]): string {
   const c = digits(cnpj14);
   return (
     `<eSocial xmlns="http://www.esocial.gov.br/schema/lote/eventos/envio/v1_1_1">` +
