@@ -11,6 +11,7 @@ import FinanceTab from "./FinanceTab";
 import ReportsTab, { QuotaBar } from "./ReportsTab";
 import AuditTab from "./AuditTab";
 import AttendanceHistoryTab from "./AttendanceHistoryTab";
+import DoctorContract from "./DoctorContract";
 import { printFile } from "@/lib/printPdf";
 import type { TimelineDoc } from "@/lib/patientTimeline";
 import { publicOrigin } from "@/lib/format";
@@ -1063,6 +1064,7 @@ function DoctorsTab() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", email: "", specialtyId: "", password: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "", consultFee: "", contractFee: "", pixKey: "" });
   const [editSaving, setEditSaving] = useState(false);
+  const [contractId, setContractId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [dRes, sRes] = await Promise.all([
@@ -1497,6 +1499,13 @@ function DoctorsTab() {
                 )}
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                <button
+                  onClick={() => setContractId(d.id)}
+                  className="rounded-md border border-brand-teal-dark/40 px-2.5 py-1 text-[10px] font-medium text-brand-teal-dark hover:bg-brand-teal/10"
+                >
+                  Contrato
+                </button>
+                {contractId === d.id && <DoctorContract doctors={doctors} initialId={d.id} onClose={() => setContractId(null)} />}
                 <button
                   onClick={() => startEdit(d)}
                   className="rounded-md border border-zinc-300 px-2.5 py-1 text-[10px] font-medium text-zinc-600 hover:bg-zinc-50"
