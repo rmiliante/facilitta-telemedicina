@@ -398,7 +398,7 @@ function FilaTab() {
       fetch("/api/admin/patients"),
     ]);
     if (dRes.ok) {
-      const data = (await dRes.json()).doctors as Doctor[];
+      const data = ((await dRes.json()).doctors as Doctor[]).filter((d) => d.active);
       setDoctors(data);
       if (!doctorId && data.length > 0) {
         setDoctorId(data[0].id);
