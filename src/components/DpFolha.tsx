@@ -75,7 +75,7 @@ function baixarCsv(nome: string, linhas: (string | number)[][]) {
 }
 
 export default function DpFolha({ employees }: { employees: DpEmployee[] }) {
-  const [tab, setTab] = useState<"passivo" | "guias">("passivo");
+  const [tab, setTab] = useState<"folha" | "passivo" | "guias">("passivo");
   const [comissoes, setComissoes] = useState<Comissao[]>([]);
   const [guias, setGuias] = useState<Guia[]>([]);
   const [err, setErr] = useState<string | null>(null);
@@ -97,12 +97,14 @@ export default function DpFolha({ employees }: { employees: DpEmployee[] }) {
         <p className="text-sm text-zinc-500">Estimativas de apoio ao contador. Esta tela não envia nada ao governo; os valores finais são do contador.</p>
       </div>
       <div className="flex gap-2">
-        {([["passivo", "Regularização / passivo"], ["guias", "Guias e vencimentos"]] as const).map(([k, l]) => (
+        {([["folha", "Folha mensal"], ["passivo", "Regularização / passivo"], ["guias", "Guias e vencimentos"]] as const).map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} className={`rounded-full px-4 py-1.5 text-sm font-medium ${tab === k ? "bg-[#0b1f3a] text-white" : "border border-zinc-300 bg-white text-zinc-700"}`}>{l}</button>
         ))}
       </div>
       {err && <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">{err}</p>}
-      {loading ? <p className="text-sm text-zinc-400">Carregando…</p> : tab === "passivo" ? (
+      {loading ? <p className="text-sm text-zinc-400">Carregando…</p> : tab === "folha" ? (
+        <FolhaMensal employees={employees} comissoes={comissoes} />
+      ) : tab === "passivo" ? (
         <Passivo employees={employees} comissoes={comissoes} onSaved={load} />
       ) : (
         <Guias employees={employees} comissoes={comissoes} guias={guias} onSaved={load} />
@@ -269,6 +271,172 @@ function Guias({ employees, comissoes, guias, onSaved }: { employees: DpEmployee
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+/* ───────────── Folha mensal: S-1010 · S-1020 · S-1200 · S-1299 ───────────── */
+
+interface Ocor { tipo: string | null; codigo: string | null; descricao: string | null; localizacao: string | null }
+interface Ev {
+  id: string;
+  employee_id: string | null;
+  tipo: string;
+  status: string;
+  ambiente: string | null;
+  params: Record<string, string> | null;
+  resposta: { resumo?: { fault?: string | null; eventos?: { recibo: string | null; descResposta: string | null; ocorrencias: Ocor[] }[] } } | null;
+  created_at: string;
+}
+const TIPOS_FOLHA = ["S-1010", "S-1020", "S-1200", "S-1299"] as const;
+const ST_STYLE: Record<string, string> = {
+  assinado: "bg-amber-100 text-amber-800",
+  enviado: "bg-sky-100 text-sky-800",
+  processado: "bg-emerald-100 text-emerald-800",
+  rejeitado: "bg-red-100 text-red-700",
+  erro: "bg-red-100 text-red-700",
+};
+const ST_LABEL: Record<string, string> = { assinado: "gerado (não enviado)", enviado: "enviado · aguardando", processado: "processado", rejeitado: "rejeitado", erro: "erro no envio" };
+const btnL = "rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs font-semibold hover:bg-zinc-50 disabled:opacity-40";
+const btnEnviar = "rounded-md bg-amber-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-amber-500 disabled:opacity-40";
+
+function FolhaMensal({ employees, comissoes }: { employees: DpEmployee[]; comissoes: Comissao[] }) {
+  const [evs, setEvs] = useState<Ev[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [xml, setXml] = useState<{ titulo: string; xml: string } | null>(null);
+  const [fpas, setFpas] = useState("515");
+  const [dctf, setDctf] = useState(true);
+
+  const carregar = useCallback(async () => {
+    const todos = await Promise.all(TIPOS_FOLHA.map((t) => fetch(`/api/admin/dp/esocial/events?tipo=${t}`).then((r) => r.json().catch(() => ({})))));
+    setEvs(todos.flatMap((d) => (d.eventos ?? []) as Ev[]));
+  }, []);
+  useEffect(() => { void carregar(); }, [carregar]);
+
+  const ativos = useMemo(() => employees.filter((e) => e.admitted_at && e.salary), [employees]);
+  const porFunc = useMemo(() => {
+    const out: Record<string, Record<string, Mes>> = {};
+    for (const e of ativos) {
+      const comis = Object.fromEntries(comissoes.filter((c) => c.employee_id === e.id).map((c) => [c.competencia, Number(c.valor)]));
+      out[e.id] = Object.fromEntries(calcMeses(e, comis, 0.08).map((m) => [m.ym, m]));
+    }
+    return out;
+  }, [ativos, comissoes]);
+  const comps = useMemo(() => [...new Set(Object.values(porFunc).flatMap((o) => Object.keys(o)))].sort(), [porFunc]);
+  const [comp, setComp] = useState("");
+  const cur = comp || comps[0] || "";
+
+  const ultimo = (tipo: string, f: (e: Ev) => boolean = () => true) => evs.filter((e) => e.tipo === tipo && f(e)).sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+  const evRub = (k: string) => ultimo("S-1010", (e) => e.params?.rubrica === k);
+  const ev1020 = ultimo("S-1020");
+  const evRem = (id: string) => ultimo("S-1200", (e) => e.employee_id === id && e.params?.perApur === cur);
+  const ev1299 = ultimo("S-1299", (e) => e.params?.perApur === cur);
+
+  async function gerar(chave: string, tipo: string, params: Record<string, string>, employee_id?: string) {
+    setBusy(chave); setMsg(null);
+    const r = await fetch("/api/admin/dp/esocial/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tipo, params, employee_id }) });
+    const d = await r.json().catch(() => ({}));
+    setMsg(r.ok ? `${tipo} gerado e assinado. Confira o XML antes de enviar.` : `${d.error ?? "Falha"}${d.missing ? ": " + d.missing.join(", ") : ""}`);
+    setBusy(null);
+    await carregar();
+  }
+  async function acao(ev: Ev, action: "enviar" | "consultar") {
+    if (action === "enviar" && !confirm(`ATENÇÃO — se o sistema estiver em PRODUÇÃO, o envio do ${ev.tipo} tem valor legal.\n\nConfirmar o envio ao eSocial?`)) return;
+    setBusy(ev.id); setMsg(null);
+    const r = await fetch(`/api/admin/dp/esocial/events/${ev.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, confirm: true, confirmProducao: true }) });
+    const d = await r.json().catch(() => ({}));
+    setMsg(r.ok ? (action === "enviar" ? `${ev.tipo} enviado (${d.status}). Clique em Consultar resultado.` : `${ev.tipo}: ${d.status}`) : (d.error ?? "Falha"));
+    setBusy(null);
+    await carregar();
+  }
+  async function verXml(ev: Ev) {
+    const r = await fetch(`/api/admin/dp/esocial/events/${ev.id}`);
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) setXml({ titulo: `${ev.tipo} · ${ev.id.slice(0, 8)}`, xml: d.evento.xml });
+  }
+
+  const ok = (e?: Ev) => e?.status === "processado";
+  const tabelasOk = ok(evRub("SAL")) && ok(ev1020);
+  const funcMes = ativos.filter((e) => porFunc[e.id]?.[cur]);
+  const todosRem = funcMes.length > 0 && funcMes.every((e) => ok(evRem(e.id)));
+
+  function Linha({ chave, titulo, detalhe, ev, bloqueio, onGerar }: { chave: string; titulo: string; detalhe?: string; ev?: Ev; bloqueio?: string | null; onGerar: () => void }) {
+    const rec = ev?.resposta?.resumo?.eventos?.[0];
+    const ocs = (rec?.ocorrencias ?? []).filter((o) => o.tipo === "1" || ev?.status === "rejeitado");
+    return (
+      <div className="border-t border-zinc-100 py-2 text-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="min-w-[200px] font-medium">{titulo}</span>
+          {detalhe && <span className="text-xs text-zinc-500">{detalhe}</span>}
+          <span className={`rounded-full px-2 py-0.5 text-xs ${ev ? ST_STYLE[ev.status] : "bg-zinc-100 text-zinc-600"}`}>{ev ? ST_LABEL[ev.status] ?? ev.status : "não gerado"}</span>
+          {ev?.status === "processado" && rec?.recibo && <span className="text-xs text-zinc-500">recibo {rec.recibo}</span>}
+          <span className="ml-auto flex flex-wrap gap-1">
+            {ev?.status !== "processado" && ev?.status !== "enviado" && <button className={btnL} disabled={!!bloqueio || busy === chave} title={bloqueio ?? ""} onClick={onGerar}>{ev ? "Gerar de novo" : "Gerar"}</button>}
+            {ev && <button className={btnL} onClick={() => void verXml(ev)}>Ver XML</button>}
+            {ev && (ev.status === "assinado" || ev.status === "erro") && <button className={btnEnviar} disabled={busy === ev.id} onClick={() => void acao(ev, "enviar")}>Enviar</button>}
+            {ev?.status === "enviado" && <button className={btnL} disabled={busy === ev.id} onClick={() => void acao(ev, "consultar")}>Consultar resultado</button>}
+          </span>
+        </div>
+        {bloqueio && !ev && <p className="mt-1 text-xs text-zinc-400">{bloqueio}</p>}
+        {ocs.length > 0 && (ev?.status === "rejeitado" || ev?.status === "erro") && (
+          <ul className="mt-1 list-disc pl-5 text-xs text-red-700">{ocs.map((o, i) => <li key={i}>{o.codigo ? `[${o.codigo}] ` : ""}{o.descricao}{o.localizacao ? ` (${o.localizacao})` : ""}</li>)}</ul>
+        )}
+      </div>
+    );
+  }
+
+  if (!comps.length) return <p className="text-sm text-zinc-500">Cadastre admissão e salário dos colaboradores para montar a folha.</p>;
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-green-300 bg-green-50 p-3 text-sm text-green-900">Cada envio ao eSocial pede confirmação e, em PRODUÇÃO, tem valor legal. Gerar não envia nada.</div>
+
+      <div className="rounded-xl border border-zinc-200 bg-white p-4">
+        <h2 className="text-sm font-semibold text-[#0b1f3a]">Passo 1 · Tabelas (uma vez só)</h2>
+        <p className="mb-1 text-xs text-zinc-500">Rubricas (S-1010) e lotação tributária (S-1020). Precisam estar processadas antes da folha.</p>
+        <Linha chave="r-SAL" titulo="Rubrica Salário (S-1010)" ev={evRub("SAL")} onGerar={() => void gerar("r-SAL", "S-1010", { rubrica: "SAL" })} />
+        <Linha chave="r-COM" titulo="Rubrica Comissões (S-1010)" ev={evRub("COM")} onGerar={() => void gerar("r-COM", "S-1010", { rubrica: "COM" })} />
+        <Linha chave="lot" titulo="Lotação tributária (S-1020)" detalhe={`FPAS ${fpas}`} ev={ev1020} onGerar={() => void gerar("lot", "S-1020", { fpas })} />
+        <label className="mt-2 flex items-center gap-2 text-xs text-zinc-500">FPAS (Tabela 04 — confirmar com o contador)<input className={`${inp} w-20`} value={fpas} onChange={(e) => setFpas(e.target.value.replace(/\D/g, "").slice(0, 3))} /></label>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        Competência:
+        <select className={inp} value={cur} onChange={(e) => setComp(e.target.value)}>{comps.map((c) => <option key={c} value={c}>{labelComp(c)}</option>)}</select>
+      </div>
+
+      <div className="rounded-xl border border-zinc-200 bg-white p-4">
+        <h2 className="text-sm font-semibold text-[#0b1f3a]">Passo 2 · Remuneração por colaborador (S-1200) · {labelComp(cur)}</h2>
+        {funcMes.map((e) => {
+          const m = porFunc[e.id][cur];
+          const temCom = comissoes.some((c) => c.employee_id === e.id && c.competencia === cur);
+          let bloqueio: string | null = null;
+          if (!tabelasOk) bloqueio = "Antes: S-1010 (Salário) e S-1020 precisam estar processados.";
+          else if (m.comissao > 0 && !ok(evRub("COM"))) bloqueio = "Antes: a rubrica de Comissões (S-1010) precisa estar processada.";
+          else if (m.aberto) bloqueio = "Mês em curso: gere depois que o mês terminar.";
+          else if (!temCom) bloqueio = "Informe a comissão do mês (0 se não houve) na aba Regularização / passivo.";
+          return (
+            <Linha key={e.id} chave={"rem" + e.id} titulo={e.full_name} detalhe={`salário ${brl(m.salario)} · comissão ${brl(m.comissao)} · INSS ${brl(m.inss)} · FGTS ${brl(m.fgts)}`} ev={evRem(e.id)} bloqueio={bloqueio}
+              onGerar={() => void gerar("rem" + e.id, "S-1200", { perApur: cur, vrSal: m.salario.toFixed(2), vrCom: m.comissao > 0 ? m.comissao.toFixed(2) : "" }, e.id)} />
+          );
+        })}
+      </div>
+
+      <div className="rounded-xl border border-zinc-200 bg-white p-4">
+        <h2 className="text-sm font-semibold text-[#0b1f3a]">Passo 3 · Fechamento da competência (S-1299) · {labelComp(cur)}</h2>
+        <p className="mb-1 text-xs text-zinc-500">Depois do fechamento, o FGTS Digital e a DCTFWeb recebem os dados e liberam as guias.</p>
+        <Linha chave="fecha" titulo={`Fechamento ${labelComp(cur)}`} ev={ev1299} bloqueio={todosRem ? null : "Libera quando todos os S-1200 do mês estiverem processados."}
+          onGerar={() => void gerar("fecha", "S-1299", { perApur: cur, transDCTFWeb: dctf ? "S" : "N" })} />
+        <label className="mt-2 flex items-center gap-2 text-xs text-zinc-500"><input type="checkbox" checked={dctf} onChange={(e) => setDctf(e.target.checked)} />Transmitir à DCTFWeb (gera o DARF do INSS)</label>
+      </div>
+
+      {msg && <p className="rounded-md bg-zinc-100 p-2 text-sm text-zinc-700">{msg}</p>}
+      {xml && (
+        <div className="rounded-xl border border-zinc-200 bg-white p-4">
+          <div className="mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold">XML assinado · {xml.titulo}</h3><button className={btnL} onClick={() => setXml(null)}>Fechar</button></div>
+          <textarea readOnly className="h-48 w-full rounded-md border border-zinc-300 p-2 font-mono text-xs" value={xml.xml} />
+        </div>
+      )}
     </div>
   );
 }
