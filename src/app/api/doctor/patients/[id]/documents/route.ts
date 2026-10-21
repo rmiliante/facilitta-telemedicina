@@ -37,7 +37,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const files = await signPatientDocuments((data.documents as PatientDocument[] | null) ?? []);
-  await audit("doctor", { action: "ver_documentos", entity: "paciente", entityId: id, patientId: id, patientName: await patientName(id) });
+  // ?poll=1 = atualização automática da tela do médico: não entra no log de auditoria.
+  if (!_req.nextUrl.searchParams.get("poll")) {
+    await audit("doctor", { action: "ver_documentos", entity: "paciente", entityId: id, patientId: id, patientName: await patientName(id) });
+  }
   return NextResponse.json({ files });
 }
 
