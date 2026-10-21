@@ -3,6 +3,7 @@
 import CaptacaoFunil from "@/components/CaptacaoFunil";
 import ManuaisTab, { ManuaisSubmenu, MANUAIS_CATEGORY_EVENT } from "@/components/ManuaisTab";
 import DashboardTabs from "./DashboardTabs";
+import LogoutButton from "./LogoutButton";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import VitalSignsPanel from "./VitalSigns";
 import TipoConsultaBadge, { TipoConsultaChoice, tipoSuffix } from "./TipoConsultaBadge";
@@ -422,6 +423,10 @@ export default function AdminPanel({ role }: { role: StaffRole }) {
           <h1 className="text-sm font-semibold text-white">
             Administração — Facilitta Telemedicina
           </h1>
+          <div className="ml-auto flex items-center gap-3">
+            <span className="hidden text-xs text-white/70 sm:inline">Acesso: {ROLE_LABEL[role]}</span>
+            <LogoutButton redirectTo="/equipe/login" />
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 print:overflow-visible print:p-0">
