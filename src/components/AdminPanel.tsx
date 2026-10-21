@@ -3,7 +3,7 @@
 import CaptacaoFunil from "@/components/CaptacaoFunil";
 import ManuaisTab, { ManuaisSubmenu, MANUAIS_CATEGORY_EVENT } from "@/components/ManuaisTab";
 import DashboardTabs from "./DashboardTabs";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import VitalSignsPanel from "./VitalSigns";
 import TipoConsultaBadge, { TipoConsultaChoice, tipoSuffix } from "./TipoConsultaBadge";
 import PatientTimeline from "./PatientTimeline";
@@ -53,6 +53,10 @@ interface Patient {
   state: string | null;
   /** Quantas vezes faltou (vem da lista de pacientes). */
   faltas?: number;
+  created_at?: string;
+  birth_date?: string | null;
+  /** Total de consultas já agendadas (vem da lista de pacientes). */
+  consultas?: number;
 }
 
 interface Appointment {
@@ -1741,6 +1745,87 @@ function PatientsTab() {
   const [editSaving, setEditSaving] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  // Filtros da lista (só na tela; não mexem no banco).
+  const FIL0 = { periodo: "", de: "", ate: "", cidade: "", cadastro: "", consultas: "", faixa: "", faltas: false };
+  const [fil, setFil] = useState(FIL0);
+  const [filOpen, setFilOpen] = useState(false);
+  const [ordem, setOrdem] = useState("nome");
+  const cidades = useMemo(
+    () => Array.from(new Set(patients.map((p) => (p.city ?? "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [patients]
+  );
+  const visible = useMemo(() => {
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    let de = fil.de ? new Date(fil.de + "T00:00:00") : null;
+    let ate = fil.ate ? new Date(fil.ate + "T23:59:59") : null;
+    if (fil.periodo === "hoje") de = hoje;
+    else if (fil.periodo === "7") de = new Date(hoje.getTime() - 7 * 864e5);
+    else if (fil.periodo === "30") de = new Date(hoje.getTime() - 30 * 864e5);
+    else if (fil.periodo === "mes") de = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+    if (fil.periodo) ate = null;
+    const idade = (b?: string | null) => {
+      if (!b) return null;
+      const d = new Date(b + "T00:00:00");
+      let a = hoje.getFullYear() - d.getFullYear();
+      const m = hoje.getMonth() - d.getMonth();
+      if (m < 0 || (m === 0 && hoje.getDate() < d.getDate())) a--;
+      return a;
+    };
+    const out = patients.filter((p) => {
+      const c = p.created_at ? new Date(p.created_at) : null;
+      if (de && (!c || c < de)) return false;
+      if (ate && (!c || c > ate)) return false;
+      if (fil.cidade && (p.city ?? "").trim() !== fil.cidade) return false;
+      if (fil.cadastro === "completo" && (!p.cpf || !p.phone)) return false;
+      if (fil.cadastro === "sem_cpf" && p.cpf) return false;
+      if (fil.cadastro === "sem_tel" && p.phone) return false;
+      if (fil.consultas === "com" && !(p.consultas ?? 0)) return false;
+      if (fil.consultas === "nunca" && (p.consultas ?? 0)) return false;
+      if (fil.faixa) {
+        const a = idade(p.birth_date);
+        if (a === null) return false;
+        if (fil.faixa === "menor" && a >= 18) return false;
+        if (fil.faixa === "adulto" && (a < 18 || a > 59)) return false;
+        if (fil.faixa === "idoso" && a < 60) return false;
+      }
+      if (fil.faltas && !(p.faltas ?? 0)) return false;
+      return true;
+    });
+    if (ordem === "recente") out.sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
+    else if (ordem === "antigo") out.sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""));
+    return out;
+  }, [patients, fil, ordem]);
+  const dmy = (iso: string) => iso.split("-").reverse().join("/");
+  const chips: { k: string; label: string; clear: () => void }[] = [];
+  if (fil.periodo) {
+    const rot: Record<string, string> = { hoje: "hoje", "7": "últimos 7 dias", "30": "últimos 30 dias", mes: "este mês" };
+    chips.push({ k: "p", label: `Cadastro: ${rot[fil.periodo]}`, clear: () => setFil((f) => ({ ...f, periodo: "" })) });
+  }
+  if (!fil.periodo && (fil.de || fil.ate))
+    chips.push({
+      k: "d",
+      label: `Cadastro: ${fil.de ? dmy(fil.de) : "…"} a ${fil.ate ? dmy(fil.ate) : "…"}`,
+      clear: () => setFil((f) => ({ ...f, de: "", ate: "" })),
+    });
+  if (fil.cidade) chips.push({ k: "c", label: `Cidade: ${fil.cidade}`, clear: () => setFil((f) => ({ ...f, cidade: "" })) });
+  if (fil.cadastro)
+    chips.push({
+      k: "r",
+      label: fil.cadastro === "completo" ? "Cadastro completo" : fil.cadastro === "sem_cpf" ? "Sem CPF" : "Sem telefone",
+      clear: () => setFil((f) => ({ ...f, cadastro: "" })),
+    });
+  if (fil.consultas)
+    chips.push({ k: "q", label: fil.consultas === "com" ? "Com consulta" : "Nunca atendido", clear: () => setFil((f) => ({ ...f, consultas: "" })) });
+  if (fil.faixa)
+    chips.push({
+      k: "f",
+      label: fil.faixa === "menor" ? "Menor de 18" : fil.faixa === "adulto" ? "18 a 59 anos" : "60+ anos",
+      clear: () => setFil((f) => ({ ...f, faixa: "" })),
+    });
+  if (fil.faltas) chips.push({ k: "t", label: "Com faltas", clear: () => setFil((f) => ({ ...f, faltas: false })) });
+  const nFil = chips.length;
+
   const load = useCallback(async (q?: string) => {
     const res = await fetch(`/api/admin/patients${q ? `?q=${encodeURIComponent(q)}` : ""}`);
     if (res.ok) setPatients((await res.json()).patients);
@@ -1897,7 +1982,7 @@ function PatientsTab() {
         </div>
       </form>
 
-      <div className="flex items-center gap-2">
+      <div className="relative flex flex-wrap items-center gap-2">
         <input
           value={search}
           onChange={(e) => {
@@ -1905,12 +1990,104 @@ function PatientsTab() {
             load(e.target.value);
           }}
           placeholder="Buscar por nome ou CPF..."
-          className="w-full max-w-sm rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+          className="w-full max-w-xs rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
         />
+        <button
+          type="button"
+          onClick={() => setFilOpen((o) => !o)}
+          className={`rounded-md border bg-white px-3 py-1.5 text-sm font-medium ${nFil ? "border-brand-teal-dark text-brand-teal-dark" : "border-zinc-300 text-zinc-600"}`}
+        >
+          Filtros
+          {nFil > 0 && <span className="ml-1.5 rounded-full bg-brand-teal-dark px-1.5 text-[11px] text-white">{nFil}</span>} ▾
+        </button>
+        <select
+          value={ordem}
+          onChange={(e) => setOrdem(e.target.value)}
+          className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm"
+        >
+          <option value="nome">Ordenar: Nome (A–Z)</option>
+          <option value="recente">Ordenar: Cadastro (mais recente)</option>
+          <option value="antigo">Ordenar: Cadastro (mais antigo)</option>
+        </select>
+        <span className="ml-auto text-xs text-zinc-500">
+          {visible.length} de {patients.length} pacientes
+        </span>
+        {filOpen && (
+          <div className="absolute left-0 top-full z-20 mt-2 w-full max-w-md space-y-3 rounded-xl border border-zinc-200 bg-white p-4 text-sm shadow-xl">
+            <div>
+              <p className="mb-1.5 text-xs font-semibold text-brand-navy">Data de cadastro</p>
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                <button type="button" onClick={() => setFil((f) => ({ ...f, periodo: f.periodo === "hoje" ? "" : "hoje", de: "", ate: "" }))} className={`rounded-md border px-2.5 py-1 text-xs ${fil.periodo === "hoje" ? "border-brand-navy bg-brand-navy text-white" : "border-zinc-300 text-zinc-700 hover:bg-zinc-50"}`}>Hoje</button>
+                <button type="button" onClick={() => setFil((f) => ({ ...f, periodo: f.periodo === "7" ? "" : "7", de: "", ate: "" }))} className={`rounded-md border px-2.5 py-1 text-xs ${fil.periodo === "7" ? "border-brand-navy bg-brand-navy text-white" : "border-zinc-300 text-zinc-700 hover:bg-zinc-50"}`}>7 dias</button>
+                <button type="button" onClick={() => setFil((f) => ({ ...f, periodo: f.periodo === "30" ? "" : "30", de: "", ate: "" }))} className={`rounded-md border px-2.5 py-1 text-xs ${fil.periodo === "30" ? "border-brand-navy bg-brand-navy text-white" : "border-zinc-300 text-zinc-700 hover:bg-zinc-50"}`}>30 dias</button>
+                <button type="button" onClick={() => setFil((f) => ({ ...f, periodo: f.periodo === "mes" ? "" : "mes", de: "", ate: "" }))} className={`rounded-md border px-2.5 py-1 text-xs ${fil.periodo === "mes" ? "border-brand-navy bg-brand-navy text-white" : "border-zinc-300 text-zinc-700 hover:bg-zinc-50"}`}>Este mês</button>
+              </div>
+              <div className="flex gap-2">
+                <input type="date" value={fil.de} onChange={(e) => setFil((f) => ({ ...f, periodo: "", de: e.target.value }))} className="w-full rounded-md border border-zinc-300 px-2 py-1 text-xs" />
+                <input type="date" value={fil.ate} onChange={(e) => setFil((f) => ({ ...f, periodo: "", ate: e.target.value }))} className="w-full rounded-md border border-zinc-300 px-2 py-1 text-xs" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="text-xs">
+                <span className="mb-1 block font-semibold text-brand-navy">Cidade</span>
+                <select value={fil.cidade} onChange={(e) => setFil((f) => ({ ...f, cidade: e.target.value }))} className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand-teal-dark">
+                  <option value="">Todas</option>
+                  {cidades.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-xs">
+                <span className="mb-1 block font-semibold text-brand-navy">Cadastro</span>
+                <select value={fil.cadastro} onChange={(e) => setFil((f) => ({ ...f, cadastro: e.target.value }))} className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand-teal-dark">
+                  <option value="">Todos</option>
+                  <option value="completo">Completo</option>
+                  <option value="sem_cpf">Sem CPF</option>
+                  <option value="sem_tel">Sem telefone</option>
+                </select>
+              </label>
+              <label className="text-xs">
+                <span className="mb-1 block font-semibold text-brand-navy">Consultas</span>
+                <select value={fil.consultas} onChange={(e) => setFil((f) => ({ ...f, consultas: e.target.value }))} className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand-teal-dark">
+                  <option value="">Todos</option>
+                  <option value="com">Com consulta</option>
+                  <option value="nunca">Nunca atendido</option>
+                </select>
+              </label>
+              <label className="text-xs">
+                <span className="mb-1 block font-semibold text-brand-navy">Faixa etária</span>
+                <select value={fil.faixa} onChange={(e) => setFil((f) => ({ ...f, faixa: e.target.value }))} className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand-teal-dark">
+                  <option value="">Todas</option>
+                  <option value="menor">Menor de 18</option>
+                  <option value="adulto">18 a 59</option>
+                  <option value="idoso">60+</option>
+                </select>
+              </label>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-zinc-700">
+              <input type="checkbox" checked={fil.faltas} onChange={(e) => setFil((f) => ({ ...f, faltas: e.target.checked }))} />
+              Só quem tem faltas
+            </label>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setFil(FIL0)} className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs text-zinc-700 hover:bg-zinc-50">Limpar</button>
+              <button type="button" onClick={() => setFilOpen(false)} className="rounded-md bg-brand-teal px-3 py-1 text-xs font-semibold text-brand-navy">Aplicar</button>
+            </div>
+          </div>
+        )}
       </div>
+      {nFil > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          {chips.map((c) => (
+            <button key={c.k} type="button" onClick={c.clear} className="rounded-full bg-brand-teal/15 px-2.5 py-0.5 text-brand-navy">
+              {c.label} ✕
+            </button>
+          ))}
+          <button type="button" onClick={() => setFil(FIL0)} className="px-1.5 text-zinc-500 underline">Limpar filtros</button>
+        </div>
+      )}
 
       <ul className="space-y-2">
-        {patients.map((p) =>
+        {visible.map((p) =>
           editingId === p.id ? (
             <li
               key={p.id}
@@ -1999,11 +2176,15 @@ function PatientsTab() {
                         {p.faltas} faltas
                       </span>
                     )}
+                    {!p.cpf && (
+                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">sem CPF</span>
+                    )}
                   </p>
                   <p className="text-xs text-zinc-500">
                     {p.cpf ? `CPF ${p.cpf} · ` : ""}
                     {p.phone ?? p.email ?? ""}
                     {p.city ? ` · ${p.city}${p.state ? `/${p.state}` : ""}` : ""}
+                    {p.created_at ? ` · cadastrado em ${new Date(p.created_at).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}` : ""}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
@@ -2042,7 +2223,7 @@ function PatientsTab() {
             </li>
           )
         )}
-        {patients.length === 0 && (
+        {visible.length === 0 && (
           <p className="text-xs text-zinc-400">Nenhum paciente encontrado.</p>
         )}
       </ul>
