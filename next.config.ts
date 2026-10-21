@@ -1,28 +1,21 @@
 import type { NextConfig } from "next";
 
-const securityHeaders = [
-  // Ninguém pode embutir as telas do sistema dentro de outro site (clickjacking).
-  { key: "X-Frame-Options", value: "DENY" },
-  { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
-  { key: "X-Content-Type-Options", value: "nosniff" },
-  // O link do paciente (/paciente/<token>) não vaza pra outros sites via Referer.
-  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Strict-Transport-Security", value: "max-age=63072000" },
-];
-
 const nextConfig: NextConfig = {
-  // Link curto para o portal do cliente na nova plataforma.
+  // Links curtos para o WhatsApp e a IA. Redirecionamento temporário (307),
+  // para poder trocar o destino quando precisar sem o navegador "guardar" o antigo.
   async redirects() {
     return [
       {
-        source: "/cliente",
-        destination: "https://facilitta.bemestar.1norte.tech/beneficiary/dashboard",
+        source: "/individual",
+        destination: "https://totem.facilittasaude.com.br/totem/checkout?seller=FM-7&product=25",
+        permanent: false,
+      },
+      {
+        source: "/familiar",
+        destination: "https://totem.facilittasaude.com.br/totem/checkout/light?seller=FM-7&product=26",
         permanent: false,
       },
     ];
-  },
-  async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
   },
 };
 
