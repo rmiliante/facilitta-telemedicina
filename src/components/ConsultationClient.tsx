@@ -253,6 +253,37 @@ export default function ConsultationClient({
     }));
   }
 
+  // Atualiza a lista de documentos sozinho: a atendente pode anexar durante a consulta.
+  useEffect(() => {
+    let stop = false;
+    async function refreshDocs() {
+      if (stop || document.hidden || uploadingDoc || !appointment.patient_id) return;
+      try {
+        const res = await fetch("/api/doctor/patients/" + appointment.patient_id + "/documents?poll=1", { cache: "no-store" });
+        if (!res.ok || stop) return;
+        const data = await res.json();
+        if (!Array.isArray(data.files)) return;
+        setPatientDocuments((prev) => {
+          const a = prev.map((f) => f.path).join("|");
+          const b = (data.files as { path: string }[]).map((f) => f.path).join("|");
+          return a === b ? prev : data.files;
+        });
+      } catch {
+        // sem conexão agora: tenta de novo no próximo ciclo
+      }
+    }
+    const t = setInterval(refreshDocs, 10000);
+    const onVisible = () => {
+      if (!document.hidden) refreshDocs();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      stop = true;
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [appointment.patient_id, uploadingDoc]);
+
   // Salva as anotações automaticamente a cada alguns segundos se mudou algo.
   useEffect(() => {
     if (
