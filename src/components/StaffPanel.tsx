@@ -71,7 +71,7 @@ interface QueueItem {
   called_at: string | null;
   booth_rejected_at: string | null;
   tipo_consulta?: string | null;
-  patients: { id: string; full_name: string; documents: DocFile[] } | null;
+  patients: { id: string; full_name: string; documents: DocFile[]; created_at?: string } | null;
   doctors: { id: string; name: string } | null;
   specialties: { id: string; name: string } | null;
 }
@@ -382,6 +382,40 @@ function FilaTab() {
   const [patientDropdownOpen, setPatientDropdownOpen] = useState(false);
   const [boothCopied, setBoothCopied] = useState(false);
   const [scheduledPatientIds, setScheduledPatientIds] = useState<Set<string>>(new Set());
+  // Filtros da fila (só na tela; não mudam a ordem nem o banco).
+  const FFIL0 = { q: "", status: "", docs: "", tipo: "", esp: "", novo: false };
+  const [ffil, setFfil] = useState(FFIL0);
+  const [ffilOpen, setFfilOpen] = useState(false);
+  const hojeSp = new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+  const normTxt = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const shown = queue
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => {
+      if (ffil.q && !normTxt(item.patients?.full_name ?? "").includes(normTxt(ffil.q))) return false;
+      if (ffil.status && item.status !== ffil.status) return false;
+      const nDocs = item.patients?.documents?.length ?? 0;
+      if (ffil.docs === "com" && nDocs === 0) return false;
+      if (ffil.docs === "sem" && nDocs > 0) return false;
+      if (ffil.tipo === "nenhum") {
+        if (item.tipo_consulta) return false;
+      } else if (ffil.tipo && item.tipo_consulta !== ffil.tipo) return false;
+      if (ffil.esp && (item.specialties?.name ?? "") !== ffil.esp) return false;
+      if (ffil.novo) {
+        const c = item.patients?.created_at;
+        if (!c || new Date(c).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }) !== hojeSp) return false;
+      }
+      return true;
+    });
+  const especialidadesFila = Array.from(new Set(queue.map((i) => i.specialties?.name ?? "").filter(Boolean)));
+  const ffChips: { k: string; label: string; clear: () => void }[] = [];
+  if (ffil.q) ffChips.push({ k: "q", label: "Busca: " + ffil.q, clear: () => setFfil((f) => ({ ...f, q: "" })) });
+  if (ffil.status) ffChips.push({ k: "s", label: "Status: " + (STATUS_LABELS[ffil.status] ?? ffil.status), clear: () => setFfil((f) => ({ ...f, status: "" })) });
+  if (ffil.docs) ffChips.push({ k: "d", label: ffil.docs === "com" ? "Com documentos" : "Sem documentos", clear: () => setFfil((f) => ({ ...f, docs: "" })) });
+  if (ffil.tipo) ffChips.push({ k: "t", label: ffil.tipo === "rotina" ? "Rotina" : ffil.tipo === "retorno" ? "Retorno" : "Tipo não informado", clear: () => setFfil((f) => ({ ...f, tipo: "" })) });
+  if (ffil.esp) ffChips.push({ k: "e", label: "Especialidade: " + ffil.esp, clear: () => setFfil((f) => ({ ...f, esp: "" })) });
+  if (ffil.novo) ffChips.push({ k: "n", label: "Paciente novo (hoje)", clear: () => setFfil((f) => ({ ...f, novo: false })) });
+  const filtrando = ffChips.length > 0;
+  const nFiltros = ffChips.filter((c) => c.k !== "q").length;
 
   function copyBoothLink() {
     const url = `${publicOrigin()}/atendimento`;
@@ -810,13 +844,101 @@ function FilaTab() {
           {new Date(`${date}T12:00:00.000Z`).toLocaleDateString("pt-BR", { timeZone: "UTC" })}
         </h2>
 
+        <div className="relative mb-3 flex flex-wrap items-center gap-2">
+          <input
+            value={ffil.q}
+            onChange={(e) => setFfil((f) => ({ ...f, q: e.target.value }))}
+            placeholder="Buscar paciente na fila..."
+            className="w-full max-w-[14rem] rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+          />
+          <button
+            type="button"
+            onClick={() => setFfilOpen((o) => !o)}
+            className={"rounded-md border bg-white px-3 py-1.5 text-sm font-medium " + (nFiltros ? "border-brand-teal-dark text-brand-teal-dark" : "border-zinc-300 text-zinc-600")}
+          >
+            Filtros
+            {nFiltros > 0 && <span className="ml-1.5 rounded-full bg-brand-teal-dark px-1.5 text-[11px] text-white">{nFiltros}</span>} ▾
+          </button>
+          {ffChips.map((c) => (
+            <button key={c.k} type="button" onClick={c.clear} className="rounded-full bg-brand-teal/15 px-2.5 py-0.5 text-xs text-brand-navy">
+              {c.label} ✕
+            </button>
+          ))}
+          {filtrando && (
+            <button type="button" onClick={() => setFfil(FFIL0)} className="px-1.5 text-xs text-zinc-500 underline">
+              Limpar
+            </button>
+          )}
+          <span className="ml-auto text-xs text-zinc-500">
+            {shown.length} de {queue.length} na fila
+          </span>
+          {ffilOpen && (
+            <div className="absolute left-0 top-full z-20 mt-2 w-full max-w-sm space-y-3 rounded-xl border border-zinc-200 bg-white p-4 text-sm shadow-xl">
+              <div className="grid grid-cols-2 gap-3">
+                <label className="text-xs">
+                  <span className="mb-1 block font-semibold text-brand-navy">Status</span>
+                  <select value={ffil.status} onChange={(e) => setFfil((f) => ({ ...f, status: e.target.value }))} className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand-teal-dark">
+                    <option value="">Todos</option>
+                    <option value="agendado">Aguardando</option>
+                    <option value="em_andamento">Em atendimento</option>
+                    <option value="concluido">Concluído</option>
+                    <option value="faltou">Faltou</option>
+                  </select>
+                </label>
+                <label className="text-xs">
+                  <span className="mb-1 block font-semibold text-brand-navy">Documentos</span>
+                  <select value={ffil.docs} onChange={(e) => setFfil((f) => ({ ...f, docs: e.target.value }))} className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand-teal-dark">
+                    <option value="">Todos</option>
+                    <option value="com">Com anexo</option>
+                    <option value="sem">Sem anexo</option>
+                  </select>
+                </label>
+                <label className="text-xs">
+                  <span className="mb-1 block font-semibold text-brand-navy">Tipo de consulta</span>
+                  <select value={ffil.tipo} onChange={(e) => setFfil((f) => ({ ...f, tipo: e.target.value }))} className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand-teal-dark">
+                    <option value="">Todos</option>
+                    <option value="rotina">Rotina</option>
+                    <option value="retorno">Retorno</option>
+                    <option value="nenhum">Não informado</option>
+                  </select>
+                </label>
+                <label className="text-xs">
+                  <span className="mb-1 block font-semibold text-brand-navy">Especialidade</span>
+                  <select value={ffil.esp} onChange={(e) => setFfil((f) => ({ ...f, esp: e.target.value }))} className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand-teal-dark">
+                    <option value="">Todas</option>
+                    {especialidadesFila.map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <label className="flex items-center gap-2 text-xs text-zinc-700">
+                <input type="checkbox" checked={ffil.novo} onChange={(e) => setFfil((f) => ({ ...f, novo: e.target.checked }))} />
+                Paciente novo (cadastrado hoje)
+              </label>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setFfil(FFIL0)} className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs text-zinc-700 hover:bg-zinc-50">
+                  Limpar
+                </button>
+                <button type="button" onClick={() => setFfilOpen(false)} className="rounded-md bg-brand-teal px-3 py-1 text-xs font-semibold text-brand-navy">
+                  Aplicar
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
         {loading ? (
           <p className="text-xs text-zinc-400">Carregando...</p>
         ) : queue.length === 0 ? (
           <p className="text-xs text-zinc-400">Nenhum paciente na fila desse dia ainda.</p>
+        ) : shown.length === 0 ? (
+          <p className="text-xs text-zinc-400">Nenhum paciente na fila com esses filtros.</p>
         ) : (
           <ul className="space-y-2">
-            {queue.map((item, index) => (
+            {shown.map(({ item, index }) => (
               <li
                 key={item.id}
                 className={`flex flex-wrap items-center justify-between gap-2 rounded-md border bg-white px-4 py-3 text-sm ${
@@ -892,7 +1014,7 @@ function FilaTab() {
                   </span>
                   <button
                     onClick={() => moveUp(index)}
-                    disabled={index === 0}
+                    disabled={index === 0 || filtrando}
                     className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50 disabled:opacity-30"
                     title="Mover pra cima"
                   >
@@ -900,7 +1022,7 @@ function FilaTab() {
                   </button>
                   <button
                     onClick={() => moveDown(index)}
-                    disabled={index === queue.length - 1}
+                    disabled={index === queue.length - 1 || filtrando}
                     className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50 disabled:opacity-30"
                     title="Mover pra baixo"
                   >
