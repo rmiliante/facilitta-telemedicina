@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
   const supabase = getSupabaseAdmin();
 
   const columns =
-    "id, scheduled_at, status, access_token, queue_position, called_at, booth_rejected_at, tipo_consulta, patients(id, full_name, cpf, documents), doctors(id, name), specialties(id, name)";
+    "id, scheduled_at, status, access_token, queue_position, called_at, booth_rejected_at, tipo_consulta, patients(id, full_name, cpf, created_at, documents), doctors(id, name), specialties(id, name)";
   const run = (cols: string) =>
     supabase
       .from("appointments")
