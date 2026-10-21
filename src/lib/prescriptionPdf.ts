@@ -179,20 +179,21 @@ export async function buildPrescriptionPdf(input: PrescriptionPdfInput): Promise
 
   drawHeader();
 
-  // Título
+  const p = input.patient;
+  const place = [p.city, p.state].filter(Boolean).join("/");
+
+  // Título + dados do paciente (repetidos em cada página de exame).
+  function drawTitleAndPatient() {
   const title = KIND_TITLES[input.kind];
   text(title, (PAGE_W - bold.widthOfTextAtSize(title, 15)) / 2, y, 15, bold, NAVY);
   y -= 30;
 
-  // Paciente
-  const p = input.patient;
   const patientFields: [string, string | null | undefined][] = [
     ["Paciente", p.name],
     ["CPF", formatCpf(p.cpf)],
     ["Nascimento", formatDateBR(p.birthDate)],
     ["Cidade", p.city ? `${p.city}${p.state ? `/${p.state}` : ""}` : null],
   ];
-  const place = [p.city, p.state].filter(Boolean).join("/");
   const colW = contentWidth / 2;
   patientFields
     .filter(([, v]) => v)
@@ -207,6 +208,8 @@ export async function buildPrescriptionPdf(input: PrescriptionPdfInput): Promise
   text("Local do atendimento: ", MARGIN, y, 10, bold);
   text(local, MARGIN + bold.widthOfTextAtSize("Local do atendimento: ", 10), y, 10);
   y -= 34;
+  }
+  drawTitleAndPatient();
 
   // Corpo
   if (input.kind === "apac" && input.apac) {
@@ -252,7 +255,7 @@ export async function buildPrescriptionPdf(input: PrescriptionPdfInput): Promise
       y -= 16;
     }
   } else {
-    input.items.forEach((item, idx) => {
+    const drawItem = (item: PrescriptionItem, idx: number) => {
       const head = `${idx + 1}. ${item.name}`;
       const qty = item.quantity?.trim() ? item.quantity.trim() : "";
       const headLines = wrap(bold, safe(bold, head), 11, contentWidth - (qty ? 130 : 0));
@@ -273,18 +276,38 @@ export async function buildPrescriptionPdf(input: PrescriptionPdfInput): Promise
         }
       }
       y -= 10;
-    });
+    };
 
-    if (input.notes?.trim()) {
-      newPageIfNeeded(40);
-      y -= 4;
-      text("Observações", MARGIN, y, 10, bold);
-      y -= 15;
-      for (const line of wrap(regular, safe(regular, input.notes.trim()), 10, contentWidth)) {
-        newPageIfNeeded(14);
-        text(line, MARGIN, y, 10, regular, MUTED);
-        y -= 14;
+    const drawNotes = () => {
+      if (input.notes?.trim()) {
+        newPageIfNeeded(40);
+        y -= 4;
+        text("Observações", MARGIN, y, 10, bold);
+        y -= 15;
+        for (const line of wrap(regular, safe(regular, input.notes.trim()), 10, contentWidth)) {
+          newPageIfNeeded(14);
+          text(line, MARGIN, y, 10, regular, MUTED);
+          y -= 14;
+        }
       }
+    };
+
+    if (input.kind === "exame") {
+      // Pedido de exames: um exame por página (cada página leva cabeçalho,
+      // paciente e observações), tudo no mesmo PDF = uma única assinatura.
+      input.items.forEach((item, idx) => {
+        if (idx > 0) {
+          page = pdf.addPage([PAGE_W, PAGE_H]);
+          y = PAGE_H - MARGIN;
+          drawHeader();
+          drawTitleAndPatient();
+        }
+        drawItem(item, idx);
+        drawNotes();
+      });
+    } else {
+      input.items.forEach(drawItem);
+      drawNotes();
     }
   }
 
