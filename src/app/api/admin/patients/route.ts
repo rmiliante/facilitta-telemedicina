@@ -37,7 +37,13 @@ export async function GET(req: NextRequest) {
   }
   // Faltas por paciente (lista do admin marca quem falta com frequência).
   const faltas = await faltasPorPaciente((data ?? []).map((p) => p.id));
-  return NextResponse.json({ patients: (data ?? []).map((p) => ({ ...p, faltas: faltas[p.id] ?? 0 })) });
+  // Total de consultas por paciente (usado no filtro "Com consulta / Nunca atendido").
+  const consultas: Record<string, number> = {};
+  const { data: apps } = await supabase.from("appointments").select("patient_id");
+  for (const a of (apps ?? []) as { patient_id: string }[]) consultas[a.patient_id] = (consultas[a.patient_id] ?? 0) + 1;
+  return NextResponse.json({
+    patients: (data ?? []).map((p) => ({ ...p, faltas: faltas[p.id] ?? 0, consultas: consultas[p.id] ?? 0 })),
+  });
 }
 
 export async function POST(req: NextRequest) {
