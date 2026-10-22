@@ -9,6 +9,7 @@ import { checkPrescription } from "@/lib/controlledMeds";
 import { audit } from "@/lib/audit";
 import { saveCustomExams } from "@/lib/customExams";
 import { cleanApac, saveApacProcedure, savePatientApacData, validateApac } from "@/lib/apacProcedures";
+import { enmgProcedureName } from "@/lib/enmgForm";
 
 // Assinar + baixar o PDF pode levar alguns segundos.
 export const maxDuration = 60;
@@ -56,10 +57,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!KINDS.includes(kind)) {
     return NextResponse.json({ error: "Tipo de documento inválido" }, { status: 400 });
   }
-  const items = cleanItems(body?.items);
+  let items = cleanItems(body?.items);
   const notes = typeof body?.notes === "string" ? body.notes.trim().slice(0, 5000) : "";
 
   const apac = kind === "apac" ? cleanApac(body?.apac) : null;
+  if (apac?.model === "enmg" && apac.enmg) {
+    // Formulário ENMG: o procedimento vem das caixinhas marcadas.
+    const procName = enmgProcedureName(apac.enmg.procedures);
+    items = procName ? [{ name: procName, quantity: "1", instructions: "" }] : [];
+  }
   if (apac) {
     const problem = validateApac(apac, items[0]?.name ?? "", notes);
     if (problem) return NextResponse.json({ error: problem }, { status: 400 });
@@ -88,6 +94,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const doctor = await getSigningDoctor(session.doctorId);
     if (!doctor) return NextResponse.json({ error: "Médico não encontrado" }, { status: 404 });
+
+    // Pré-visualização do formulário ENMG: PDF sem assinatura, nada é salvo.
+    if (body?.preview === true && apac?.model === "enmg") {
+      const pv = appointment.patients;
+      const preview = await buildPrescriptionPdf(
+        {
+          kind,
+          doctor: { name: doctor.name, crm: doctor.crm ?? "", crmUf: doctor.crm_uf ?? "", rqe: doctor.rqe, specialty: doctor.specialty, address: null },
+          patient: { name: pv.full_name, cpf: pv.cpf, birthDate: pv.birth_date, city: pv.city, state: pv.state },
+          items,
+          notes,
+          apac,
+          issuedAt: new Date(),
+        },
+        { preview: true }
+      );
+      return new NextResponse(preview as unknown as BodyInit, {
+        headers: { "Content-Type": "application/pdf", "Content-Disposition": 'inline; filename="previa-laudo.pdf"', "Cache-Control": "no-store" },
+      });
+    }
 
     const state = await refreshSigningState(doctor);
     if (!state.ready) {
@@ -160,7 +186,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (kind === "exame") await saveCustomExams(items.map((it) => it.name), doctor.id);
     if (kind === "apac" && apac) {
       await savePatientApacData(patient.id, apac);
-      await saveApacProcedure(items[0].name, doctor.id);
+      if (apac.model !== "enmg") await saveApacProcedure(items[0].name, doctor.id);
     }
     await audit("doctor", {
       action: "emitir_documento",
