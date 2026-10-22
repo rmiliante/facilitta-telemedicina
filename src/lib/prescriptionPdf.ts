@@ -2,6 +2,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf
 import { buildEnmgPdf } from "@/lib/enmgPdf";
 import type { EnmgData } from "@/lib/enmgForm";
 import { findExam } from "@/lib/examSearch";
+import { drawItiQr } from "@/lib/qrValidar";
 
 /**
  * Gera o PDF da receita / pedido de exame / atestado (ainda sem
