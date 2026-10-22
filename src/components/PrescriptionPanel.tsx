@@ -5,6 +5,8 @@ import { SIGNING_CHANGED_EVENT } from "@/lib/signingEvents";
 import { searchExams, findExam, type ExamHit } from "@/lib/examSearch";
 import { EXAM_PACKAGES } from "@/data/exames";
 import { CATEGORY_LABEL, checkPrescription } from "@/lib/controlledMeds";
+import EnmgFormFields, { ApacModelTabs } from "@/components/EnmgFormFields";
+import { EMPTY_ENMG, type ApacModel, type EnmgData } from "@/lib/enmgForm";
 
 /**
  * Receita digital na tela de consulta: o médico monta a receita / pedido
@@ -143,6 +145,10 @@ export default function PrescriptionPanel({
   const [apacExtra, setApacExtra] = useState({ cns: "", motherName: "", sex: "", address: "", cep: "", cid: "", cid2: "" });
   const [apacProcs, setApacProcs] = useState<string[]>([]);
   const apacLoaded = useRef(false);
+  const [apacModel, setApacModel] = useState<ApacModel>("enmg");
+  const [enmg, setEnmg] = useState<EnmgData>(EMPTY_ENMG);
+  const [apacBirth, setApacBirth] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
   useEffect(() => {
     if (!open || kind !== "apac" || apacLoaded.current) return;
     apacLoaded.current = true;
@@ -159,6 +165,12 @@ export default function PrescriptionPanel({
             sex: d.patient.sex ?? "",
             address: d.patient.address ?? "",
             cep: d.patient.cep ?? "",
+          }));
+          setApacBirth(d.patient.birth_date ?? null);
+          setEnmg((prev) => ({
+            ...prev,
+            municipality: prev.municipality || d.patient.city || "",
+            phoneMobile: prev.phoneMobile || d.patient.phone || "",
           }));
         }
       })
@@ -255,6 +267,7 @@ export default function PrescriptionPanel({
     apac: [{ ...EMPTY_ITEM }],
     });
     setNotesByKind({ receita: "", exame: "", atestado: "", apac: "" });
+    setEnmg((p) => ({ ...p, procedures: [], comorbidities: [], hypotheses: "" }));
     setError(null);
     setTemplateMsg(null);
     setPhase("edit");
@@ -365,11 +378,53 @@ export default function PrescriptionPanel({
     return false;
   }
 
+  /** Itens de cada aba (no laudo ENMG o procedimento vem das caixinhas marcadas). */
+  const itemsFor = (k: Kind): Item[] =>
+    k === "apac" && apacModel === "enmg"
+      ? enmg.procedures.length
+        ? [{ name: "Eletroneuromiografia", quantity: "1", instructions: "" }]
+        : []
+      : itemsByKind[k];
+
+  /** Abre o PDF do formulário ENMG sem assinar (só pra conferir). */
+  async function previewEnmg() {
+    setError(null);
+    setPreviewing(true);
+    const w = window.open("", "_blank");
+    try {
+      const res = await fetch(`/api/doctor/appointments/${appointmentId}/prescription`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "apac",
+          preview: true,
+          items: [],
+          notes: notesByKind.apac,
+          apac: { ...apacExtra, model: "enmg", enmg },
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        w?.close();
+        setError(d.error ?? "Não foi possível gerar a pré-visualização.");
+        return;
+      }
+      const url = URL.createObjectURL(await res.blob());
+      if (w) w.location.href = url;
+      else window.open(url, "_blank");
+    } catch {
+      w?.close();
+      setError("Falha ao gerar a pré-visualização. Verifique a conexão.");
+    } finally {
+      setPreviewing(false);
+    }
+  }
+
   /** Abas com conteúdo pra emitir (receita/exame com item, atestado com texto). */
   const filledKinds = (Object.keys(KIND_LABELS) as Kind[]).filter((k) =>
     k === "atestado"
       ? notesByKind[k].trim() !== ""
-      : itemsByKind[k].some((it) => it.name.trim()),
+      : itemsFor(k).some((it) => it.name.trim()),
   );
 
   /**
@@ -387,7 +442,7 @@ export default function PrescriptionPanel({
       return;
     }
     for (const k of kinds) {
-      const clean = itemsByKind[k].filter((it) => it.name.trim());
+      const clean = itemsFor(k).filter((it) => it.name.trim());
       if (k === "atestado" ? !notesByKind[k].trim() : clean.length === 0) {
         setKind(k);
         setError(
@@ -395,7 +450,9 @@ export default function PrescriptionPanel({
             ? "Escreva o texto do atestado."
             : k === "receita"
               ? "Inclua pelo menos um medicamento."
-              : "Inclua pelo menos um exame.",
+              : k === "apac"
+                ? "Informe o procedimento solicitado."
+                : "Inclua pelo menos um exame.",
         );
         return;
       }
@@ -404,7 +461,7 @@ export default function PrescriptionPanel({
     const done: Kind[] = [];
     const batch: IssuedDocument[] = [];
     for (const [idx, k] of kinds.entries()) {
-      const clean = itemsByKind[k].filter((it) => it.name.trim());
+      const clean = itemsFor(k).filter((it) => it.name.trim());
       let ok = false;
       for (let attempt = 0; attempt < 2 && !ok; attempt++) {
         if (!(await ensureAuthorized())) return;
@@ -425,7 +482,10 @@ export default function PrescriptionPanel({
               kind: k,
               items: k === "atestado" ? [] : clean,
               notes: notesByKind[k],
-              apac: k === "apac" ? apacExtra : undefined,
+              apac:
+                k === "apac"
+                  ? { ...apacExtra, model: apacModel, enmg: apacModel === "enmg" ? enmg : undefined }
+                  : undefined,
             }),
           },
         ).catch(() => null);
@@ -440,6 +500,7 @@ export default function PrescriptionPanel({
           // Limpa a aba emitida: se outra falhar, tentar de novo não duplica esta.
           setItemsByKind((all) => ({ ...all, [k]: [{ ...EMPTY_ITEM }] }));
           setNotesByKind((all) => ({ ...all, [k]: "" }));
+          if (k === "apac") setEnmg((p) => ({ ...p, procedures: [], comorbidities: [], hypotheses: "" }));
           ok = true;
           if (k === "exame") loadCustomExams();
         } else if (res?.status === 409 && data.needsSession && attempt === 0) {
@@ -780,8 +841,25 @@ export default function PrescriptionPanel({
                     </button>
                     {templateMsg && <span className="text-[11px] text-zinc-500">{templateMsg}</span>}
                   </div>
-                  {kind === "apac" ? (
+                  {kind === "apac" && apacModel === "enmg" ? (
                     <div className="space-y-3">
+                      <ApacModelTabs model={apacModel} onChange={setApacModel} />
+                      <EnmgFormFields
+                        patientName={patientName}
+                        birthDate={apacBirth}
+                        apac={apacExtra}
+                        setApac={setApacExtra}
+                        enmg={enmg}
+                        setEnmg={setEnmg}
+                        notes={notes}
+                        setNotes={setNotes}
+                        onPreview={previewEnmg}
+                        previewing={previewing}
+                      />
+                    </div>
+                  ) : kind === "apac" ? (
+                    <div className="space-y-3">
+                      <ApacModelTabs model={apacModel} onChange={setApacModel} />
                       <p className="text-[11px] text-zinc-500">
                         Laudo para solicitação de APAC (modelo padrão SUS). Campos com * são obrigatórios; o cadastro do paciente é atualizado ao emitir.
                       </p>
