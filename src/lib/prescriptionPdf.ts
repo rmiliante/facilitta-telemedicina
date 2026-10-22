@@ -1,4 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { buildEnmgPdf } from "@/lib/enmgPdf";
+import type { EnmgData } from "@/lib/enmgForm";
+import { findExam } from "@/lib/examSearch";
 
 /**
  * Gera o PDF da receita / pedido de exame / atestado (ainda sem
@@ -43,6 +46,9 @@ export interface PrescriptionPdfInput {
     cid: string;
     cid2: string;
     phone?: string | null;
+    /** Formulário ENMG da Secretaria de Saúde (model = "enmg"). */
+    model?: "enmg" | "livre";
+    enmg?: EnmgData;
   };
   issuedAt: Date;
 }
@@ -123,7 +129,8 @@ function wrap(font: PDFFont, text: string, size: number, maxWidth: number): stri
   return lines;
 }
 
-export async function buildPrescriptionPdf(input: PrescriptionPdfInput): Promise<Uint8Array> {
+export async function buildPrescriptionPdf(input: PrescriptionPdfInput, opts: { preview?: boolean } = {}): Promise<Uint8Array> {
+  if (input.kind === "apac" && input.apac?.model === "enmg" && input.apac.enmg) return buildEnmgPdf(input, opts);
   const pdf = await PDFDocument.create();
   pdf.setTitle(`${KIND_TITLES[input.kind]} - ${input.patient.name}`);
   pdf.setAuthor(input.doctor.name);
@@ -183,10 +190,14 @@ export async function buildPrescriptionPdf(input: PrescriptionPdfInput): Promise
   const place = [p.city, p.state].filter(Boolean).join("/");
 
   // Título + dados do paciente (repetidos em cada página de exame).
-  function drawTitleAndPatient() {
+  function drawTitleAndPatient(sub?: string) {
   const title = KIND_TITLES[input.kind];
   text(title, (PAGE_W - bold.widthOfTextAtSize(title, 15)) / 2, y, 15, bold, NAVY);
   y -= 30;
+  if (sub) {
+    text(sub, (PAGE_W - bold.widthOfTextAtSize(sub, 11)) / 2, y + 8, 11, bold, MUTED);
+    y -= 14;
+  }
 
   const patientFields: [string, string | null | undefined][] = [
     ["Paciente", p.name],
@@ -209,7 +220,20 @@ export async function buildPrescriptionPdf(input: PrescriptionPdfInput): Promise
   text(local, MARGIN + bold.widthOfTextAtSize("Local do atendimento: ", 10), y, 10);
   y -= 34;
   }
-  drawTitleAndPatient();
+  // Pedido de exames: laboratoriais juntos numa página; cada exame de imagem
+  // (e qualquer outro tipo, ou fora do catálogo) numa página própria.
+  const examGroups: { label: string; items: PrescriptionItem[] }[] = [];
+  if (input.kind === "exame") {
+    const lab = input.items.filter((it) => findExam(it.name)?.group === "Laboratório");
+    if (lab.length) examGroups.push({ label: "Exames laboratoriais", items: lab });
+    input.items
+      .filter((it) => findExam(it.name)?.group !== "Laboratório")
+      .forEach((it) => {
+        const g = findExam(it.name)?.group;
+        examGroups.push({ label: g === "Imagem" ? "Exame de imagem" : g === "Cardiologia" ? "Exame cardiológico" : "Exame", items: [it] });
+      });
+  }
+  drawTitleAndPatient(input.kind === "exame" && examGroups.length ? examGroups[0].label : undefined);
 
   // Corpo
   if (input.kind === "apac" && input.apac) {
@@ -293,16 +317,16 @@ export async function buildPrescriptionPdf(input: PrescriptionPdfInput): Promise
     };
 
     if (input.kind === "exame") {
-      // Pedido de exames: um exame por página (cada página leva cabeçalho,
-      // paciente e observações), tudo no mesmo PDF = uma única assinatura.
-      input.items.forEach((item, idx) => {
-        if (idx > 0) {
+      // Pedido de exames: laboratoriais juntos, imagem uma por página (cada página leva
+      // cabeçalho, paciente e observações), tudo no mesmo PDF = uma única assinatura.
+      examGroups.forEach((group, gi) => {
+        if (gi > 0) {
           page = pdf.addPage([PAGE_W, PAGE_H]);
           y = PAGE_H - MARGIN;
           drawHeader();
-          drawTitleAndPatient();
+          drawTitleAndPatient(group.label);
         }
-        drawItem(item, idx);
+        group.items.forEach(drawItem);
         drawNotes();
       });
     } else {
