@@ -286,10 +286,10 @@ export async function buildEnmgPdf(input: PrescriptionPdfInput, opts: { preview?
   page.drawLine({ start: { x: X(110), y: Y(sigTop) }, end: { x: X(320), y: Y(sigTop) }, thickness: 0.7, color: BLACK });
   page.drawLine({ start: { x: X(430), y: Y(sigTop) }, end: { x: X(640), y: Y(sigTop) }, thickness: 0.7, color: BLACK });
   const sm = 13 * SCALE * PT;
-  center("NOME DO MÉDICO SOLICITANTE", 215, sigTop + 6, regular, sm);
+  center("ASSINATURA DO MÉDICO SOLICITANTE", 215, sigTop + 6, regular, sm);
   center(input.doctor.name, 215, sigTop + 21, regular, sm, FILL);
-  center("CREMEB", 535, sigTop + 6, regular, sm);
-  center(registro, 535, sigTop + 21, regular, sm, FILL);
+  center("NÚMERO PROFISSIONAL", 535, sigTop + 6, regular, sm);
+  center(`CREMEB ${input.doctor.crm}/${input.doctor.crmUf.toUpperCase()}`, 535, sigTop + 21, regular, sm, FILL);
 
   // Rodapé: identificação da assinatura digital (igual receita/exames).
   const top = 122;
