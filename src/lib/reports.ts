@@ -191,6 +191,50 @@ export async function monthlyReport(month: string) {
     }))
     .sort((a, b) => a.date.localeCompare(b.date) || a.patient.localeCompare(b.patient));
 
+  // Relatório de faturamento (só consultas realizadas): por especialidade e por dia.
+  const round2 = (v: number) => Math.round(v * 100) / 100;
+  const spDate = (iso: string) => new Date(new Date(iso).getTime() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+  const concluidas = rows.filter((r) => r.status === "concluido");
+  const fatEsp = specs
+    .map((s) => {
+      const list = concluidas.filter((r) => r.specialty_id === s.id);
+      if (list.length === 0) return null;
+      const ref = refFees.get(s.id);
+      const refAvg = ref?.length ? ref.reduce((a, b) => a + b, 0) / ref.length : null;
+      let soma = 0;
+      let semValor = 0;
+      const porDia = new Map<string, number>();
+      for (const r of list) {
+        const f = valorDisponivel ? (toFee(r.contract_fee) ?? refAvg) : null;
+        if (f === null) semValor += 1;
+        else soma += f;
+        const d = spDate(r.scheduled_at);
+        porDia.set(d, (porDia.get(d) ?? 0) + 1);
+      }
+      const comValor = list.length - semValor;
+      return {
+        name: s.name,
+        realizadas: list.length,
+        valorConsulta: comValor > 0 ? round2(soma / comValor) : null,
+        valorReceber: round2(soma),
+        semValor,
+        dias: [...porDia.entries()].sort(([x], [y]) => x.localeCompare(y)).map(([date, qtd]) => ({ date, qtd })),
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
+  const [fy, fm] = month.split("-").map(Number);
+  const ultimoDia = `${month}-${String(new Date(Date.UTC(fy, fm, 0)).getUTCDate()).padStart(2, "0")}`;
+  const relatorioFaturamento = {
+    periodo: { inicio: `${month}-01`, fim: hoje >= `${month}-01` && hoje < ultimoDia ? hoje : ultimoDia },
+    emitidoEm: hoje,
+    totais: {
+      realizadas: fatEsp.reduce((a, e) => a + e.realizadas, 0),
+      valorReceber: round2(fatEsp.reduce((a, e) => a + e.valorReceber, 0)),
+      semValor: fatEsp.reduce((a, e) => a + e.semValor, 0),
+    },
+    especialidades: fatEsp,
+  };
+
   return {
     month,
     totais,
@@ -198,6 +242,7 @@ export async function monthlyReport(month: string) {
     medicos,
     faltososRecorrentes,
     detalhe,
+    relatorioFaturamento,
     faturamento: {
       disponivel: valorDisponivel,
       inicioContrato: CONTRACT_START_MONTH,
