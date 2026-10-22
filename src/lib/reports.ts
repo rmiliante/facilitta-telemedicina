@@ -191,10 +191,10 @@ export async function monthlyReport(month: string) {
     }))
     .sort((a, b) => a.date.localeCompare(b.date) || a.patient.localeCompare(b.patient));
 
-  // Relatório de faturamento (só consultas realizadas): por especialidade e por dia.
+  // Relatório de faturamento: todas as consultas que já ocorreram (presentes e faltas, que também são faturadas), por especialidade e por dia.
   const round2 = (v: number) => Math.round(v * 100) / 100;
   const spDate = (iso: string) => new Date(new Date(iso).getTime() - 3 * 3600 * 1000).toISOString().slice(0, 10);
-  const concluidas = rows.filter((r) => r.status === "concluido");
+  const concluidas = rows.filter((r) => r.status === "concluido" || isAusente(r));
   const fatEsp = specs
     .map((s) => {
       const list = concluidas.filter((r) => r.specialty_id === s.id);
