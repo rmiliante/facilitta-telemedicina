@@ -53,7 +53,7 @@ export default function BillingReport({ data, monthLabel }: { data: BillingData;
             Facilitta <span style={{ color: TEAL }}>Saúde</span>
           </div>
           <h1 style={{ fontSize: 20, margin: "10px 0 0", color: NAVY }}>Relatório de faturamento</h1>
-          <div style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>Consultas de telemedicina realizadas · {monthLabel}</div>
+          <div style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>Consultas de telemedicina · {monthLabel}</div>
         </div>
         <div style={{ textAlign: "right", fontSize: 11, color: MUTED }}>
           Emitido em {br(data.emitidoEm)}
@@ -98,7 +98,7 @@ export default function BillingReport({ data, monthLabel }: { data: BillingData;
             {data.especialidades.length === 0 && (
               <tr>
                 <td style={td} colSpan={4}>
-                  Nenhuma consulta realizada no período.
+                  Nenhuma consulta no período.
                 </td>
               </tr>
             )}
@@ -158,7 +158,7 @@ export default function BillingReport({ data, monthLabel }: { data: BillingData;
       ))}
 
       <p style={{ fontSize: 10.5, color: MUTED, marginTop: 18 }}>
-        <b>Total geral: {t.realizadas} consultas · {money(t.valorReceber)}.</b> Consideradas apenas as consultas realizadas (paciente presente). Valores conforme contrato vigente.
+        <b>Total geral: {t.realizadas} consultas · {money(t.valorReceber)}.</b> Incluídas todas as consultas agendadas no período, com paciente presente ou ausente. Valores conforme contrato vigente.
       </p>
       <p style={{ fontSize: 9.5, color: "#8a85a0", marginTop: 14 }}>Facilitta Saúde · facilittasaude.com.br</p>
     </div>
