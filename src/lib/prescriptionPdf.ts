@@ -354,7 +354,8 @@ export async function buildPrescriptionPdf(input: PrescriptionPdfInput, opts: { 
     );
     text(`Emitido em ${issued}`, MARGIN, top - 48, 8.5, regular, MUTED);
     text("Documento emitido em modalidade de telemedicina (Resolução CFM nº 2.314/2022)", MARGIN, top - 61, 8.5, regular, MUTED);
-    text("Confira a autenticidade da assinatura em validar.iti.gov.br", MARGIN, top - 74, 8.5, regular, MUTED);
+    text("Confira a autenticidade da assinatura em validar.iti.gov.br ou escaneie o QR Code", MARGIN, top - 74, 8.5, regular, MUTED);
+    drawItiQr(page, PAGE_W - MARGIN - 54, 60, 54);
     const right = place ? `${place}, ${issued.slice(0, 10)}` : issued.slice(0, 10);
     const r = safe(regular, right);
     text(r, PAGE_W - MARGIN - regular.widthOfTextAtSize(r, 9), top - 74, 9, regular, MUTED);
