@@ -12,8 +12,8 @@ import { ENMG_COMORB_LABEL, ENMG_COMORB_ROWS, ENMG_PROC_LABEL, ENMG_PROC_ROWS } 
  */
 
 // Estabelecimento solicitante (fixo, interno). Pode ser trocado pelas variáveis de ambiente.
-const ESTABELECIMENTO = process.env.APAC_ESTABELECIMENTO || "Facilitta Saúde";
-const CNES = process.env.APAC_CNES || "";
+const ESTABELECIMENTO = process.env.APAC_ESTABELECIMENTO || "Polo Integrado de Saúde de Jacobina - Ba";
+const CNES = process.env.APAC_CNES || "6117252";
 
 const PAGE_W = 595.28;
 const PAGE_H = 841.89;
