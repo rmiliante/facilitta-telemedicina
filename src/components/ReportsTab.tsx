@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import BillingReport, { type BillingData } from "@/components/BillingReport";
 
 /**
  * Admin → Relatórios: relatório mensal para a prestação de contas à
@@ -48,6 +49,7 @@ interface Report {
   /** null quando o nível de acesso não pode ver pacientes. */
   faltososRecorrentes: { id: string; name: string; phone: string | null; faltas: number; ultima: string }[] | null;
   detalhe?: { date: string; patient: string; specialty: string; doctor: string | null; situacao: "presente" | "ausente" | "a_realizar" }[] | null;
+  relatorioFaturamento?: BillingData;
 }
 
 function currentMonth() {
@@ -148,6 +150,7 @@ function exportCsv(r: Report) {
 export default function ReportsTab() {
   const [month, setMonth] = useState(() => shiftMonth(currentMonth(), -1));
   const [data, setData] = useState<Report | null>(null);
+  const [view, setView] = useState<"geral" | "faturamento">("geral");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -196,6 +199,16 @@ export default function ReportsTab() {
         </button>
         <span className="ml-1 text-sm font-semibold text-brand-navy">{monthLabel(month)}</span>
         <span className="flex-1" />
+        <div className="flex overflow-hidden rounded-md border border-zinc-300 text-xs font-bold">
+          {([
+            ["geral", "Relatório geral"],
+            ["faturamento", "Relatório de faturamento"],
+          ] as const).map(([id, label]) => (
+            <button key={id} type="button" onClick={() => setView(id)} className={`px-3 py-2 ${view === id ? "bg-brand-navy text-white" : "text-brand-navy hover:bg-zinc-50"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
         <button type="button" disabled={!data} onClick={() => window.print()} className="rounded-md border border-brand-navy px-3 py-2 text-xs font-bold text-brand-navy hover:bg-zinc-50 disabled:opacity-40">
           🖨 Imprimir / PDF
         </button>
@@ -207,7 +220,15 @@ export default function ReportsTab() {
       {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
       {loading && !data && <p className="text-sm text-zinc-400">Carregando...</p>}
 
-      {data && t && (
+      {data && view === "faturamento" && (
+        data.relatorioFaturamento ? (
+          <BillingReport data={data.relatorioFaturamento} monthLabel={monthLabel(data.month)} />
+        ) : (
+          <p className="text-sm text-zinc-500">Sem dados de faturamento para este mês.</p>
+        )
+      )}
+
+      {data && t && view === "geral" && (
         <div className="space-y-5">
           <div className="hidden print:block">
             <p className="text-xs text-zinc-500">Facilitta Saúde — Telemedicina</p>
