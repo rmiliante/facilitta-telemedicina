@@ -14,7 +14,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const { data } = await getSupabaseAdmin()
     .from("patients")
-    .select("cns, mother_name, sex, address, cep")
+    .select("cns, mother_name, sex, address, cep, city, phone, birth_date")
     .eq("id", appointment.patient_id)
     .maybeSingle();
   return NextResponse.json({ patient: data ?? null, procedures: await listApacProcedures() });
