@@ -270,26 +270,16 @@ export async function buildEnmgPdf(input: PrescriptionPdfInput, opts: { preview?
     const s = safe(font, t);
     page.drawText(s, { x: X(cxPx) - font.widthOfTextAtSize(s, size) / 2, y: Y(top + 13), size, font, color });
   };
-  // selo de assinatura (ou aviso de pré-visualização)
-  if (opts.preview) {
-    center("PRÉ-VISUALIZAÇÃO", 215, 1008, bold, small, MUTED);
-    center("(ainda sem assinatura digital)", 215, 1022, regular, small, MUTED);
-  } else {
-    const sx = X(112);
-    const sy = Y(1043);
-    page.drawRectangle({ x: sx, y: sy, width: W(206), height: W(48), borderColor: FILL, borderWidth: 0.6 });
-    center("Assinado digitalmente por", 215, 1000, regular, small, FILL);
-    center(input.doctor.name.toUpperCase(), 215, 1014, bold, small, FILL);
-    center(`${registro} · ${issued}`, 215, 1028, regular, small, FILL);
-  }
+  // Linha única de assinatura: dados do médico + assinatura eletrônica
   const sigTop = 1050;
-  page.drawLine({ start: { x: X(110), y: Y(sigTop) }, end: { x: X(320), y: Y(sigTop) }, thickness: 0.7, color: BLACK });
-  page.drawLine({ start: { x: X(430), y: Y(sigTop) }, end: { x: X(640), y: Y(sigTop) }, thickness: 0.7, color: BLACK });
+  page.drawLine({ start: { x: X(CX - 150), y: Y(sigTop) }, end: { x: X(CX + 150), y: Y(sigTop) }, thickness: 0.7, color: BLACK });
   const sm = 13 * SCALE * PT;
-  center("ASSINATURA DO MÉDICO SOLICITANTE", 215, sigTop + 6, regular, sm);
-  center(input.doctor.name, 215, sigTop + 21, regular, sm, FILL);
-  center("NÚMERO PROFISSIONAL", 535, sigTop + 6, regular, sm);
-  center(registro, 535, sigTop + 21, regular, sm, FILL);
+  center(`${input.doctor.name.toUpperCase()} · ${registro}`, CX, sigTop + 6, bold, sm, FILL);
+  if (opts.preview) {
+    center("Pré-visualização (ainda sem assinatura digital)", CX, sigTop + 22, regular, small, MUTED);
+  } else {
+    center(`Assinado digitalmente em ${issued}`, CX, sigTop + 22, regular, small, FILL);
+  }
 
   // Rodapé: identificação da assinatura digital (igual receita/exames).
   const top = 122;
