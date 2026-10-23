@@ -31,6 +31,7 @@ const LOCKED = "w-full rounded-md border border-zinc-200 bg-zinc-100 px-2 py-1.5
 export function ApacModelTabs({ model, onChange }: { model: ApacModel; onChange: (m: ApacModel) => void }) {
   const tabs: [ApacModel, string][] = [
     ["enmg", "Modelo ENMG (Secretaria de Saúde)"],
+    ["imagem", "Ressonância · Tomografia · Cintilografia"],
     ["livre", "Laudo livre"],
   ];
   return (
