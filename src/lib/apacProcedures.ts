@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { examKey } from "@/lib/customExams";
+import { EMPTY_OFICIAL, OFICIAL_MAX_JUSTIFICATIVA, OFICIAL_RACAS, type OficialData } from "@/lib/apacOficial";
 import {
   EMPTY_IMAGEM,
   IMAGEM_CONTRASTE_LABEL,
@@ -30,6 +31,7 @@ export interface ApacInput {
   model: ApacModel;
   enmg?: EnmgData;
   imagem?: ImagemData;
+  oficial?: OficialData;
 }
 
 function str(v: unknown, max: number) {
@@ -72,6 +74,29 @@ function cleanImagem(raw: unknown): ImagemData {
   };
 }
 
+function digits(v: unknown, max: number) {
+  return typeof v === "string" ? v.replace(/\D/g, "").slice(0, max) : "";
+}
+
+function cleanOficial(raw: unknown): OficialData {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const raca = typeof r.racaCor === "string" && OFICIAL_RACAS.includes(r.racaCor) ? r.racaCor : "";
+  return {
+    ...EMPTY_OFICIAL,
+    procCode: digits(r.procCode, 10),
+    prontuario: str(r.prontuario, 30),
+    racaCor: raca,
+    responsavel: str(r.responsavel, 200),
+    telResponsavel: str(r.telResponsavel, 30),
+    telefone: str(r.telefone, 30),
+    municipality: str(r.municipality, 80),
+    ibge: digits(r.ibge, 7),
+    uf: str(r.uf, 2).toUpperCase(),
+    cid3: str(r.cid3, 20).toUpperCase(),
+    solicitanteDoc: str(r.solicitanteDoc, 20),
+  };
+}
+
 export function cleanApac(raw: unknown): ApacInput {
   const r = (raw ?? {}) as Record<string, unknown>;
   const sex = str(r.sex, 20);
@@ -80,6 +105,7 @@ export function cleanApac(raw: unknown): ApacInput {
     model,
     enmg: model === "enmg" ? cleanEnmg(r.enmg) : undefined,
     imagem: model === "imagem" ? cleanImagem(r.imagem) : undefined,
+    oficial: model === "livre" ? cleanOficial(r.oficial) : undefined,
     cns: str(r.cns, 40).replace(/\D/g, ""),
     motherName: str(r.motherName, 200),
     sex: sex === "Feminino" || sex === "Masculino" ? sex : "",
@@ -119,6 +145,9 @@ export function validateApac(a: ApacInput, procedure: string, justificativa: str
     return null;
   }
   if (!procedure) return "Informe o procedimento solicitado";
+  if (a.oficial?.procCode && a.oficial.procCode.length !== 10) return "O código SIGTAP tem 10 números (ex.: 0207010064)";
+  if (a.oficial?.ibge && a.oficial.ibge.length !== 7) return "O código IBGE do município tem 7 números";
+  if (justificativa.length > OFICIAL_MAX_JUSTIFICATIVA) return `A justificativa pode ter até ${OFICIAL_MAX_JUSTIFICATIVA} caracteres`;
   if (a.cns.length !== 15) return "Informe o CNS (Cartão SUS) do paciente, com 15 números";
   if (!a.motherName) return "Informe o nome da mãe do paciente";
   if (!a.address) return "Informe o endereço do paciente";
@@ -160,7 +189,7 @@ export async function savePatientApacData(patientId: string, a: ApacInput) {
     if (a.sex) upd.sex = a.sex;
     if (a.address) upd.address = a.address;
     if (a.cep) upd.cep = a.cep;
-    const city = a.enmg?.municipality || a.imagem?.municipality;
+    const city = a.enmg?.municipality || a.imagem?.municipality || a.oficial?.municipality;
     if (city) upd.city = city;
     if (Object.keys(upd).length === 0) return;
     await getSupabaseAdmin().from("patients").update(upd).eq("id", patientId);
