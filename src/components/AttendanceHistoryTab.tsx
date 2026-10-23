@@ -550,7 +550,7 @@ export default function AttendanceHistoryTab({
         )}
 
         <div className="overflow-x-auto">
-          <table className={`w-full text-sm ${locked ? "min-w-[680px]" : "min-w-[820px]"}`}>
+          <table className={`w-full text-sm ${locked ? "min-w-[760px]" : "min-w-[820px]"}`}>
             <thead>
               <tr className="border-b border-zinc-200 text-left text-[11px] uppercase tracking-wide text-zinc-500">
                 <th className="px-2 py-2 font-semibold">Data</th>
@@ -562,6 +562,7 @@ export default function AttendanceHistoryTab({
                 <th className="px-2 py-2 font-semibold">Fim</th>
                 <th className="px-2 py-2 font-semibold">Duração</th>
                 <th className="px-2 py-2 font-semibold">Status</th>
+                {rowHref && <th className="px-2 py-2 font-semibold">Ação</th>}
               </tr>
             </thead>
             <tbody>
@@ -604,6 +605,17 @@ export default function AttendanceHistoryTab({
                       <td className="px-2 py-2.5">
                         <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.cls}`}>{st.label}</span>
                       </td>
+                      {rowHref && (
+                        <td className="px-2 py-2.5">
+                          <a
+                            href={rowHref(i)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-block whitespace-nowrap rounded-md bg-brand-navy px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
+                          >
+                            ✎ Editar
+                          </a>
+                        </td>
+                      )}
                     </tr>
                     {open && i.patient && renderPatientHistory && (
                       <tr className="border-b border-zinc-100 bg-zinc-50/60">
@@ -623,7 +635,7 @@ export default function AttendanceHistoryTab({
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-500">
           <span>
             {items.length > 0 &&
-              `Mostrando ${page * PAGE_SIZE + 1}–${Math.min(items.length, (page + 1) * PAGE_SIZE)} de ${items.length} · ${rowHref ? "clique na linha para abrir a consulta" : "clique na linha para abrir o histórico do paciente"}`}
+              `Mostrando ${page * PAGE_SIZE + 1}–${Math.min(items.length, (page + 1) * PAGE_SIZE)} de ${items.length} · ${rowHref ? "clique na linha ou em Editar para abrir a consulta" : "clique na linha para abrir o histórico do paciente"}`}
           </span>
           <span className="flex gap-2">
             <button
