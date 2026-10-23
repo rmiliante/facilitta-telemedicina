@@ -6,6 +6,7 @@ import { searchExams, findExam, type ExamHit } from "@/lib/examSearch";
 import { EXAM_PACKAGES } from "@/data/exames";
 import { CATEGORY_LABEL, checkPrescription } from "@/lib/controlledMeds";
 import EnmgFormFields, { ApacModelTabs } from "@/components/EnmgFormFields";
+import BasicPharmacyPicker from "@/components/BasicPharmacyPicker";
 import { EMPTY_ENMG, type ApacModel, type EnmgData } from "@/lib/enmgForm";
 
 /**
@@ -1069,6 +1070,9 @@ export default function PrescriptionPanel({
                               </button>
                             )}
                           </div>
+                          {kind === "receita" && (
+                            <BasicPharmacyPicker onPick={(name) => updateItem(i, { name })} />
+                          )}
                           {kind === "receita" && (
                             <label className="mt-2 block text-xs">
                               <span className="mb-1 block font-medium text-zinc-600">
