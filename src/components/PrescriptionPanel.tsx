@@ -9,6 +9,8 @@ import EnmgFormFields, { ApacModelTabs } from "@/components/EnmgFormFields";
 import BasicPharmacyPicker from "@/components/BasicPharmacyPicker";
 import { EMPTY_ENMG, type ApacModel, type EnmgData } from "@/lib/enmgForm";
 import ImagemFormFields from "@/components/ImagemFormFields";
+import ApacOficialFields from "@/components/ApacOficialFields";
+import { EMPTY_OFICIAL, type OficialData } from "@/lib/apacOficial";
 import { EMPTY_IMAGEM, imagemProcedureName, type ImagemData } from "@/lib/imagemForm";
 
 /**
@@ -151,6 +153,7 @@ export default function PrescriptionPanel({
   const [apacModel, setApacModel] = useState<ApacModel>("enmg");
   const [enmg, setEnmg] = useState<EnmgData>(EMPTY_ENMG);
   const [imagem, setImagem] = useState<ImagemData>(EMPTY_IMAGEM);
+  const [oficial, setOficial] = useState<OficialData>(EMPTY_OFICIAL);
   const [apacBirth, setApacBirth] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   useEffect(() => {
@@ -180,6 +183,11 @@ export default function PrescriptionPanel({
             ...prev,
             municipality: prev.municipality || d.patient.city || "",
             phoneMobile: prev.phoneMobile || d.patient.phone || "",
+          }));
+          setOficial((prev) => ({
+            ...prev,
+            municipality: prev.municipality || d.patient.city || "",
+            telefone: prev.telefone || d.patient.phone || "",
           }));
         }
       })
@@ -411,9 +419,14 @@ export default function PrescriptionPanel({
         body: JSON.stringify({
           kind: "apac",
           preview: true,
-          items: [],
+          items: apacModel === "livre" ? itemsByKind.apac : [],
           notes: notesByKind.apac,
-          apac: apacModel === "imagem" ? { ...apacExtra, model: "imagem", imagem } : { ...apacExtra, model: "enmg", enmg },
+          apac:
+            apacModel === "imagem"
+              ? { ...apacExtra, model: "imagem", imagem }
+              : apacModel === "livre"
+                ? { ...apacExtra, model: "livre", oficial }
+                : { ...apacExtra, model: "enmg", enmg },
         }),
       });
       if (!res.ok) {
@@ -502,6 +515,7 @@ export default function PrescriptionPanel({
                       model: apacModel,
                       enmg: apacModel === "enmg" ? enmg : undefined,
                       imagem: apacModel === "imagem" ? imagem : undefined,
+                      oficial: apacModel === "livre" ? oficial : undefined,
                     }
                   : undefined,
             }),
@@ -896,7 +910,7 @@ export default function PrescriptionPanel({
                     <div className="space-y-3">
                       <ApacModelTabs model={apacModel} onChange={setApacModel} />
                       <p className="text-[11px] text-zinc-500">
-                        Laudo para solicitação de APAC (modelo padrão SUS). Campos com * são obrigatórios; o cadastro do paciente é atualizado ao emitir.
+                        Laudo para Solicitação/Autorização de Procedimento Ambulatorial (modelo do Ministério da Saúde). Campos com * são obrigatórios; o cadastro do paciente é atualizado ao emitir.
                       </p>
                       <div className="grid gap-2 sm:grid-cols-2">
                         {(
@@ -974,6 +988,7 @@ export default function PrescriptionPanel({
                           />
                         </label>
                       </div>
+                      <ApacOficialFields oficial={oficial} setOficial={setOficial} onPreview={previewEnmg} previewing={previewing} />
                       <label className="block text-xs">
                         <span className="mb-1 block font-medium text-zinc-600">Justificativa clínica (quadro clínico) *</span>
                         <textarea
