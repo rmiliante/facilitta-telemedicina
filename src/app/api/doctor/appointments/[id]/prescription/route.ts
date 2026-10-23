@@ -101,7 +101,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!doctor) return NextResponse.json({ error: "Médico não encontrado" }, { status: 404 });
 
     // Pré-visualização do formulário ENMG: PDF sem assinatura, nada é salvo.
-    if (body?.preview === true && (apac?.model === "enmg" || apac?.model === "imagem")) {
+    if (body?.preview === true && (apac?.model === "enmg" || apac?.model === "imagem" || apac?.model === "livre")) {
       const pv = appointment.patients;
       const preview = await buildPrescriptionPdf(
         {
