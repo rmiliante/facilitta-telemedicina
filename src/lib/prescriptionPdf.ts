@@ -1,6 +1,8 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { buildEnmgPdf } from "@/lib/enmgPdf";
 import type { EnmgData } from "@/lib/enmgForm";
+import { buildImagemPdf } from "@/lib/imagemPdf";
+import type { ImagemData } from "@/lib/imagemForm";
 import { findExam } from "@/lib/examSearch";
 import { drawItiQr } from "@/lib/qrValidar";
 
@@ -48,8 +50,9 @@ export interface PrescriptionPdfInput {
     cid2: string;
     phone?: string | null;
     /** Formulário ENMG da Secretaria de Saúde (model = "enmg"). */
-    model?: "enmg" | "livre";
+    model?: "enmg" | "imagem" | "livre";
     enmg?: EnmgData;
+    imagem?: ImagemData;
   };
   issuedAt: Date;
 }
@@ -132,6 +135,7 @@ function wrap(font: PDFFont, text: string, size: number, maxWidth: number): stri
 
 export async function buildPrescriptionPdf(input: PrescriptionPdfInput, opts: { preview?: boolean } = {}): Promise<Uint8Array> {
   if (input.kind === "apac" && input.apac?.model === "enmg" && input.apac.enmg) return buildEnmgPdf(input, opts);
+  if (input.kind === "apac" && input.apac?.model === "imagem" && input.apac.imagem) return buildImagemPdf(input, opts);
   const pdf = await PDFDocument.create();
   pdf.setTitle(`${KIND_TITLES[input.kind]} - ${input.patient.name}`);
   pdf.setAuthor(input.doctor.name);
