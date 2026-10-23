@@ -1,6 +1,6 @@
 /** Formulário de solicitação de eletroneuromiografia (modelo da Secretaria Municipal de Saúde). */
 
-export type ApacModel = "enmg" | "livre";
+export type ApacModel = "enmg" | "imagem" | "livre";
 
 export interface EnmgData {
   procedures: string[];
