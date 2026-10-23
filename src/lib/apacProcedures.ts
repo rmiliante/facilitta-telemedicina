@@ -1,5 +1,19 @@
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { examKey } from "@/lib/customExams";
+import {
+  EMPTY_IMAGEM,
+  IMAGEM_CONTRASTE_LABEL,
+  IMAGEM_MAX_DETALHE,
+  IMAGEM_MAX_HIPOTESES,
+  IMAGEM_MAX_RESUMO,
+  IMAGEM_REGIOES,
+  IMAGEM_SAFETY_LABEL,
+  IMAGEM_TIPO_LABEL,
+  imagemUsaContraste,
+  type ImagemContraste,
+  type ImagemData,
+  type ImagemTipo,
+} from "@/lib/imagemForm";
 import { EMPTY_ENMG, ENMG_COMORB_LABEL, ENMG_MAX_HIPOTESES, ENMG_MAX_RESUMO, ENMG_PROC_LABEL, type ApacModel, type EnmgData } from "@/lib/enmgForm";
 
 /** Laudo para solicitação de APAC: dados extras do paciente e procedimentos usados. */
@@ -15,6 +29,7 @@ export interface ApacInput {
   /** "enmg" = formulário da Secretaria de Saúde (eletroneuromiografia); "livre" = laudo padrão. */
   model: ApacModel;
   enmg?: EnmgData;
+  imagem?: ImagemData;
 }
 
 function str(v: unknown, max: number) {
@@ -38,13 +53,33 @@ function cleanEnmg(raw: unknown): EnmgData {
   };
 }
 
+function cleanImagem(raw: unknown): ImagemData {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const tipo: ImagemTipo = typeof r.tipo === "string" && r.tipo in IMAGEM_TIPO_LABEL ? (r.tipo as ImagemTipo) : "RM";
+  const regiao = typeof r.regiao === "string" && IMAGEM_REGIOES[tipo].includes(r.regiao) ? r.regiao : "";
+  const contraste: ImagemContraste =
+    typeof r.contraste === "string" && r.contraste in IMAGEM_CONTRASTE_LABEL ? (r.contraste as ImagemContraste) : "";
+  return {
+    ...EMPTY_IMAGEM,
+    tipo,
+    regiao,
+    contraste: imagemUsaContraste(tipo) ? contraste : "",
+    detalhe: str(r.detalhe, IMAGEM_MAX_DETALHE),
+    safety: pick(r.safety, IMAGEM_SAFETY_LABEL),
+    hypotheses: str(r.hypotheses, IMAGEM_MAX_HIPOTESES),
+    municipality: str(r.municipality, 80),
+    phoneMobile: str(r.phoneMobile, 30),
+  };
+}
+
 export function cleanApac(raw: unknown): ApacInput {
   const r = (raw ?? {}) as Record<string, unknown>;
   const sex = str(r.sex, 20);
-  const model: ApacModel = r.model === "livre" ? "livre" : "enmg";
+  const model: ApacModel = r.model === "livre" ? "livre" : r.model === "imagem" ? "imagem" : "enmg";
   return {
     model,
     enmg: model === "enmg" ? cleanEnmg(r.enmg) : undefined,
+    imagem: model === "imagem" ? cleanImagem(r.imagem) : undefined,
     cns: str(r.cns, 40).replace(/\D/g, ""),
     motherName: str(r.motherName, 200),
     sex: sex === "Feminino" || sex === "Masculino" ? sex : "",
@@ -56,6 +91,21 @@ export function cleanApac(raw: unknown): ApacInput {
 }
 
 export function validateApac(a: ApacInput, procedure: string, justificativa: string): string | null {
+  if (a.model === "imagem" && a.imagem) {
+    const im = a.imagem;
+    if (!im.regiao) return "Escolha a região ou o estudo do exame";
+    if (im.regiao === "Outro" && !im.detalhe) return "Descreva o exame no campo de detalhe";
+    if (imagemUsaContraste(im.tipo) && !im.contraste) return "Informe se o exame é com ou sem contraste";
+    if (!a.sex) return "Informe o sexo do paciente";
+    if (!a.address) return "Informe o endereço do paciente";
+    if (!im.municipality) return "Informe o município de residência";
+    if (a.cns.length !== 15) return "Informe o CNS (Cartão SUS) do paciente, com 15 números";
+    if (!justificativa) return "Escreva o resumo da história clínica";
+    if (justificativa.length > IMAGEM_MAX_RESUMO) return `O resumo da história clínica pode ter até ${IMAGEM_MAX_RESUMO} caracteres`;
+    if (!a.cid) return "Informe o CID";
+    if (!im.hypotheses) return "Informe a(s) hipótese(s) diagnóstica(s)";
+    return null;
+  }
   if (a.model === "enmg" && a.enmg) {
     if (a.enmg.procedures.length === 0) return "Marque o procedimento solicitado (MMSS, MMII, MSD...)";
     if (!a.sex) return "Informe o sexo do paciente";
@@ -110,7 +160,8 @@ export async function savePatientApacData(patientId: string, a: ApacInput) {
     if (a.sex) upd.sex = a.sex;
     if (a.address) upd.address = a.address;
     if (a.cep) upd.cep = a.cep;
-    if (a.enmg?.municipality) upd.city = a.enmg.municipality;
+    const city = a.enmg?.municipality || a.imagem?.municipality;
+    if (city) upd.city = city;
     if (Object.keys(upd).length === 0) return;
     await getSupabaseAdmin().from("patients").update(upd).eq("id", patientId);
   } catch (err) {
