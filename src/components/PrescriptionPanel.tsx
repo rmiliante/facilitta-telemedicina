@@ -8,6 +8,8 @@ import { CATEGORY_LABEL, checkPrescription } from "@/lib/controlledMeds";
 import EnmgFormFields, { ApacModelTabs } from "@/components/EnmgFormFields";
 import BasicPharmacyPicker from "@/components/BasicPharmacyPicker";
 import { EMPTY_ENMG, type ApacModel, type EnmgData } from "@/lib/enmgForm";
+import ImagemFormFields from "@/components/ImagemFormFields";
+import { EMPTY_IMAGEM, imagemProcedureName, type ImagemData } from "@/lib/imagemForm";
 
 /**
  * Receita digital na tela de consulta: o médico monta a receita / pedido
@@ -148,6 +150,7 @@ export default function PrescriptionPanel({
   const apacLoaded = useRef(false);
   const [apacModel, setApacModel] = useState<ApacModel>("enmg");
   const [enmg, setEnmg] = useState<EnmgData>(EMPTY_ENMG);
+  const [imagem, setImagem] = useState<ImagemData>(EMPTY_IMAGEM);
   const [apacBirth, setApacBirth] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   useEffect(() => {
@@ -169,6 +172,11 @@ export default function PrescriptionPanel({
           }));
           setApacBirth(d.patient.birth_date ?? null);
           setEnmg((prev) => ({
+            ...prev,
+            municipality: prev.municipality || d.patient.city || "",
+            phoneMobile: prev.phoneMobile || d.patient.phone || "",
+          }));
+          setImagem((prev) => ({
             ...prev,
             municipality: prev.municipality || d.patient.city || "",
             phoneMobile: prev.phoneMobile || d.patient.phone || "",
@@ -381,7 +389,11 @@ export default function PrescriptionPanel({
 
   /** Itens de cada aba (no laudo ENMG o procedimento vem das caixinhas marcadas). */
   const itemsFor = (k: Kind): Item[] =>
-    k === "apac" && apacModel === "enmg"
+    k === "apac" && apacModel === "imagem"
+      ? imagem.regiao
+        ? [{ name: imagemProcedureName(imagem), quantity: "1", instructions: "" }]
+        : []
+      : k === "apac" && apacModel === "enmg"
       ? enmg.procedures.length
         ? [{ name: "Eletroneuromiografia", quantity: "1", instructions: "" }]
         : []
@@ -401,7 +413,7 @@ export default function PrescriptionPanel({
           preview: true,
           items: [],
           notes: notesByKind.apac,
-          apac: { ...apacExtra, model: "enmg", enmg },
+          apac: apacModel === "imagem" ? { ...apacExtra, model: "imagem", imagem } : { ...apacExtra, model: "enmg", enmg },
         }),
       });
       if (!res.ok) {
@@ -485,7 +497,12 @@ export default function PrescriptionPanel({
               notes: notesByKind[k],
               apac:
                 k === "apac"
-                  ? { ...apacExtra, model: apacModel, enmg: apacModel === "enmg" ? enmg : undefined }
+                  ? {
+                      ...apacExtra,
+                      model: apacModel,
+                      enmg: apacModel === "enmg" ? enmg : undefined,
+                      imagem: apacModel === "imagem" ? imagem : undefined,
+                    }
                   : undefined,
             }),
           },
@@ -502,6 +519,7 @@ export default function PrescriptionPanel({
           setItemsByKind((all) => ({ ...all, [k]: [{ ...EMPTY_ITEM }] }));
           setNotesByKind((all) => ({ ...all, [k]: "" }));
           if (k === "apac") setEnmg((p) => ({ ...p, procedures: [], comorbidities: [], hypotheses: "" }));
+          if (k === "apac") setImagem((p) => ({ ...p, regiao: "", contraste: "", detalhe: "", safety: [], hypotheses: "" }));
           ok = true;
           if (k === "exame") loadCustomExams();
         } else if (res?.status === 409 && data.needsSession && attempt === 0) {
@@ -842,7 +860,23 @@ export default function PrescriptionPanel({
                     </button>
                     {templateMsg && <span className="text-[11px] text-zinc-500">{templateMsg}</span>}
                   </div>
-                  {kind === "apac" && apacModel === "enmg" ? (
+                  {kind === "apac" && apacModel === "imagem" ? (
+                    <div className="space-y-3">
+                      <ApacModelTabs model={apacModel} onChange={setApacModel} />
+                      <ImagemFormFields
+                        patientName={patientName}
+                        birthDate={apacBirth}
+                        apac={apacExtra}
+                        setApac={setApacExtra}
+                        imagem={imagem}
+                        setImagem={setImagem}
+                        notes={notes}
+                        setNotes={setNotes}
+                        onPreview={previewEnmg}
+                        previewing={previewing}
+                      />
+                    </div>
+                  ) : kind === "apac" && apacModel === "enmg" ? (
                     <div className="space-y-3">
                       <ApacModelTabs model={apacModel} onChange={setApacModel} />
                       <EnmgFormFields
