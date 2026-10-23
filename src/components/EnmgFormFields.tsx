@@ -32,7 +32,7 @@ export function ApacModelTabs({ model, onChange }: { model: ApacModel; onChange:
   const tabs: [ApacModel, string][] = [
     ["enmg", "Modelo ENMG (Secretaria de Saúde)"],
     ["imagem", "Ressonância · Tomografia · Cintilografia"],
-    ["livre", "Laudo livre"],
+    ["livre", "Laudo APAC (Ministério da Saúde)"],
   ];
   return (
     <div className="flex flex-wrap gap-2">
