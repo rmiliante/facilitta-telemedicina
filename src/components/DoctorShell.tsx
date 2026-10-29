@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import LogoutButton from "./LogoutButton";
 import SigningSessionBadge from "./SigningSessionBadge";
+import DoctorHeartbeat from "./DoctorHeartbeat";
 
 function IconMenu() {
   return (
@@ -97,6 +98,7 @@ export default function DoctorShell({
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-brand-bg">
+      <DoctorHeartbeat />
       <nav
         className={`fixed inset-y-0 left-0 z-40 flex h-full w-64 shrink-0 -translate-x-full flex-col border-r border-zinc-200 bg-white transition-transform duration-200 md:static md:z-auto md:w-56 md:translate-x-0 ${
           navOpen ? "translate-x-0" : ""
