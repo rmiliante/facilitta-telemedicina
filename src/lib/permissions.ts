@@ -43,6 +43,7 @@ export function normalizeRole(value: unknown): StaffRole | null {
 export type AdminTab =
   | "dashboard"
   | "agenda"
+  | "fila"
   | "historico"
   | "financeiro"
   | "relatorios"
@@ -56,8 +57,8 @@ export type AdminTab =
 
 /** Telas do /admin por nível (o atendente usa o /atendente). */
 export const ROLE_TABS: Record<StaffRole, AdminTab[]> = {
-  master: ["dashboard", "agenda", "historico", "financeiro", "relatorios", "pacientes", "medicos", "captacao", "especialidades", "manuais", "equipe", "auditoria"],
-  gestor: ["dashboard", "agenda", "historico", "financeiro", "relatorios", "pacientes"],
+  master: ["dashboard", "agenda", "fila", "historico", "financeiro", "relatorios", "pacientes", "medicos", "captacao", "especialidades", "manuais", "equipe", "auditoria"],
+  gestor: ["dashboard", "agenda", "fila", "historico", "financeiro", "relatorios", "pacientes"],
   financeiro: ["dashboard", "historico", "financeiro", "relatorios"],
   prefeitura: ["dashboard", "relatorios"],
   atendente: [],
