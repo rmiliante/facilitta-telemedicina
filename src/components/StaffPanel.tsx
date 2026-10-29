@@ -15,6 +15,7 @@ interface Doctor {
   name: string;
   specialty_id: string | null;
   active: boolean;
+  last_seen_at?: string | null;
   specialties: { name: string } | null;
 }
 
@@ -353,6 +354,15 @@ export default function StaffPanel({ staffName }: { staffName: string }) {
 // ------------------------------------------------------------
 // Fila de atendimento
 // ------------------------------------------------------------
+/** Situação do médico pelo último sinal da tela dele: online (< 3 min), ausente (< 30 min) ou offline. */
+function presenceOf(lastSeen: string | null | undefined, now: number): "on" | "away" | "off" {
+  if (!lastSeen || !now) return "off";
+  const min = (now - new Date(lastSeen).getTime()) / 60000;
+  return min < 3 ? "on" : min < 30 ? "away" : "off";
+}
+
+const PRESENCE_TEXT = { on: "● Online", away: "◐ Ausente", off: "○ Offline" } as const;
+
 const STATUS_LABELS: Record<string, string> = {
   agendado: "Aguardando",
   em_andamento: "Em atendimento",
@@ -370,6 +380,7 @@ export function FilaTab() {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [now, setNow] = useState(0);
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [addForm, setAddForm] = useState({ patientId: "", specialtyId: "", tipo: "" });
@@ -461,6 +472,21 @@ export function FilaTab() {
     const timeout = setTimeout(loadBase, 0);
     return () => clearTimeout(timeout);
   }, [loadBase]);
+
+  // Atualiza a situação online/offline dos médicos a cada minuto.
+  useEffect(() => {
+    async function refreshPresence() {
+      const res = await fetch("/api/admin/doctors");
+      if (res.ok) setDoctors(((await res.json()).doctors as Doctor[]).filter((d) => d.active));
+      setNow(Date.now());
+    }
+    const first = setTimeout(refreshPresence, 0);
+    const timer = setInterval(refreshPresence, 60_000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(timer);
+    };
+  }, []);
 
   useEffect(() => {
     const timeout = setTimeout(() => loadQueue(doctorId, date), 0);
@@ -671,6 +697,7 @@ export function FilaTab() {
       <div className="flex flex-wrap items-end gap-3 rounded-lg border border-zinc-200 bg-white p-4">
         <label className="text-xs">
           <span className="mb-1 block font-medium text-zinc-600">Médico</span>
+          <div className="flex items-center gap-2">
           <select
             value={doctorId}
             onChange={(e) => {
@@ -685,10 +712,16 @@ export function FilaTab() {
           >
             {doctors.map((d) => (
               <option key={d.id} value={d.id}>
-                {d.name} {d.specialties?.name ? `— ${d.specialties.name}` : ""}
+                {d.name} {d.specialties?.name ? `— ${d.specialties.name}` : ""} · {PRESENCE_TEXT[presenceOf(d.last_seen_at, now)]}
               </option>
             ))}
           </select>
+          {doctorId && (() => {
+            const st = presenceOf(doctors.find((d) => d.id === doctorId)?.last_seen_at, now);
+            const cls = st === "on" ? "bg-green-100 text-green-800 font-semibold" : st === "away" ? "bg-yellow-100 text-yellow-800" : "bg-zinc-100 text-zinc-500";
+            return <span className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] ${cls}`}>{PRESENCE_TEXT[st]}</span>;
+          })()}
+          </div>
         </label>
         <label className="text-xs">
           <span className="mb-1 block font-medium text-zinc-600">Data</span>
