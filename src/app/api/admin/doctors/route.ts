@@ -15,7 +15,10 @@ export async function GET() {
       .select("id, name, specialty_id, active, specialties(name)")
       .order("name", { ascending: true });
     if (error) return NextResponse.json({ error: "Falha ao buscar médicos" }, { status: 500 });
-    return NextResponse.json({ doctors: data });
+    // Só o sinal de "online" (sem dados pessoais) para a fila de atendimento.
+    const { data: seenRows } = await supabase.from("doctors").select("id, last_seen_at");
+    const seenMap = new Map(((seenRows ?? []) as { id: string; last_seen_at: string | null }[]).map((r) => [r.id, r.last_seen_at]));
+    return NextResponse.json({ doctors: (data ?? []).map((d) => ({ ...d, last_seen_at: seenMap.get(d.id) ?? null })) });
   }
   // Colunas de migrações que podem não ter sido rodadas ainda — tira da
   // mais nova pra mais antiga até a consulta passar.
