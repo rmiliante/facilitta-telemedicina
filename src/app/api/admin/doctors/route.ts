@@ -34,7 +34,25 @@ export async function GET() {
     console.error("Erro ao buscar médicos:", error);
     return NextResponse.json({ error: "Falha ao buscar médicos" }, { status: 500 });
   }
-  return NextResponse.json({ doctors: data });
+  // Situação do médico: último sinal (tela aberta) e último login.
+  const seen = new Map<string, string>();
+  const { data: seenRows } = await supabase.from("doctors").select("id, last_seen_at");
+  for (const r of (seenRows ?? []) as { id: string; last_seen_at: string | null }[]) if (r.last_seen_at) seen.set(r.id, r.last_seen_at);
+  const logins = new Map<string, string>();
+  const { data: loginRows } = await supabase
+    .from("audit_log")
+    .select("actor_id, at")
+    .eq("action", "login_ok")
+    .eq("actor_type", "medico")
+    .order("at", { ascending: false })
+    .limit(1000);
+  for (const r of (loginRows ?? []) as { actor_id: string | null; at: string }[]) if (r.actor_id && !logins.has(r.actor_id)) logins.set(r.actor_id, r.at);
+  const withPresence = ((data ?? []) as unknown as { id: string }[]).map((d) => ({
+    ...d,
+    last_seen_at: seen.get(d.id) ?? null,
+    last_login_at: logins.get(d.id) ?? null,
+  }));
+  return NextResponse.json({ doctors: withPresence });
 }
 
 export async function POST(req: NextRequest) {
