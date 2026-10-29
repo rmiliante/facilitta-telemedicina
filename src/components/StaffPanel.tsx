@@ -976,12 +976,28 @@ export function FilaTab() {
             {shown.map(({ item, index }) => (
               <li
                 key={item.id}
-                className={`flex flex-wrap items-center justify-between gap-2 rounded-md border bg-white px-4 py-3 text-sm ${
+                className={`flex flex-wrap items-center justify-between gap-2 rounded-md border px-4 py-3 text-sm ${
+                  item.status === "concluido"
+                    ? "bg-gradient-to-r from-green-200 via-green-50 to-white"
+                    : item.status === "em_andamento"
+                      ? "bg-gradient-to-r from-yellow-200 via-yellow-50 to-white"
+                      : item.status === "agendado"
+                        ? "bg-gradient-to-r from-sky-200 via-sky-50 to-white"
+                        : item.status === "faltou"
+                          ? "bg-gradient-to-r from-zinc-200 via-zinc-50 to-white"
+                          : "bg-white"
+                } ${
                   item.booth_rejected_at
                     ? "border-amber-400 ring-2 ring-amber-300"
                     : index === 0 && item.status === "agendado"
                       ? "border-brand-teal-dark ring-1 ring-brand-teal/40"
-                      : "border-zinc-200"
+                      : item.status === "concluido"
+                        ? "border-green-300"
+                        : item.status === "em_andamento"
+                          ? "border-yellow-300"
+                          : item.status === "agendado"
+                            ? "border-sky-200"
+                            : "border-zinc-200"
                 }`}
               >
                 <div className="flex items-center gap-3 min-w-0">
