@@ -13,6 +13,7 @@ import ReportsTab, { QuotaBar } from "./ReportsTab";
 import AuditTab from "./AuditTab";
 import { FilaTab } from "./StaffPanel";
 import AttendanceHistoryTab from "./AttendanceHistoryTab";
+import CabineStatus from "./CabineStatus";
 import DoctorContract from "./DoctorContract";
 import DoctorCompany from "./DoctorCompany";
 import { printFile } from "@/lib/printPdf";
@@ -473,9 +474,12 @@ export default function AdminPanel({ role }: { role: StaffRole }) {
             {tab === "agenda" && <AgendaTab />}
             {tab === "fila" && <FilaTab />}
             {tab === "historico" && (
-              <AttendanceHistoryTab
-                renderPatientHistory={canSeePatients(role) ? (id) => <PatientHistoryPanel patientId={id} /> : undefined}
-              />
+              <div className="space-y-4">
+                {canSeePatients(role) && <CabineStatus />}
+                <AttendanceHistoryTab
+                  renderPatientHistory={canSeePatients(role) ? (id) => <PatientHistoryPanel patientId={id} /> : undefined}
+                />
+              </div>
             )}
             {tab === "financeiro" && <FinanceTab readOnly={financeReadOnly(role)} />}
             {tab === "relatorios" && <ReportsTab />}
