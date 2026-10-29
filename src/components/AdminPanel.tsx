@@ -11,6 +11,7 @@ import PatientTimeline from "./PatientTimeline";
 import FinanceTab from "./FinanceTab";
 import ReportsTab, { QuotaBar } from "./ReportsTab";
 import AuditTab from "./AuditTab";
+import { FilaTab } from "./StaffPanel";
 import AttendanceHistoryTab from "./AttendanceHistoryTab";
 import DoctorContract from "./DoctorContract";
 import DoctorCompany from "./DoctorCompany";
@@ -213,9 +214,18 @@ function IconHistory() {
   );
 }
 
+function IconQueue() {
+  return (
+    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
+    </svg>
+  );
+}
+
 const NAV_ITEMS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: "dashboard", label: "Dashboard", icon: <IconChart /> },
   { key: "agenda", label: "Agenda", icon: <IconCalendar /> },
+  { key: "fila", label: "Fila de atendimento", icon: <IconQueue /> },
   { key: "historico", label: "Histórico de atendimentos", icon: <IconHistory /> },
   { key: "financeiro", label: "Financeiro", icon: <IconMoney /> },
   { key: "relatorios", label: "Relatórios", icon: <IconReport /> },
@@ -438,6 +448,7 @@ export default function AdminPanel({ role }: { role: StaffRole }) {
             {tab === "captacao" && <CaptacaoFunil />}
             {tab === "pacientes" && <PatientsTab />}
             {tab === "agenda" && <AgendaTab />}
+            {tab === "fila" && <FilaTab />}
             {tab === "historico" && (
               <AttendanceHistoryTab
                 renderPatientHistory={canSeePatients(role) ? (id) => <PatientHistoryPanel patientId={id} /> : undefined}
