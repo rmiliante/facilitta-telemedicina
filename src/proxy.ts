@@ -161,7 +161,7 @@ export async function proxy(request: NextRequest) {
       }
     } else if (!canUseAdmin(role)) {
       // Atendente que abre /admin: mostra o login (com aviso) para poder trocar
-      // de usuário, em vez de mandar direto para o Atendimento sem saída.
+      // de usuário, em vez de mandar direto para o Atendimento (sem saída).
       if (role === "atendente") return NextResponse.redirect(new URL("/equipe/login?aviso=admin", request.url));
       return NextResponse.redirect(new URL(role === "agendamento" ? "/agendamento" : "/atendente", request.url));
     }
