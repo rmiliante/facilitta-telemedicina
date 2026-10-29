@@ -75,13 +75,23 @@ export default function DoctorQueueClient() {
     );
   }
 
-  const pending = queue.filter((q) => q.status === "agendado" || q.status === "em_andamento");
   const finished = queue.filter((q) => q.status === "concluido" || q.status === "faltou");
-  const waiting = pending.filter((q) => q.status === "agendado");
+  const waiting = queue.filter((q) => q.status === "agendado");
+  // Quem a atendente enviou para atendimento é atendido na ORDEM DO ENVIO
+  // (o mais antigo primeiro), não pela posição na fila: se o 1º da fila não
+  // chegou, ela manda outro e a médica não espera.
+  const inProgress = queue
+    .filter((q) => q.status === "em_andamento")
+    .sort(
+      (a, b) =>
+        (a.called_at ? new Date(a.called_at).getTime() : Number.MAX_SAFE_INTEGER) -
+        (b.called_at ? new Date(b.called_at).getTime() : Number.MAX_SAFE_INTEGER)
+    );
+  const pending = [...inProgress, ...waiting];
   // Quem já foi chamado (em_andamento) tem prioridade no card em
   // destaque, mesmo que não fosse o próximo da fila por posição —
   // é quem a atendente decidiu iniciar o atendimento agora.
-  const current = pending.find((q) => q.status === "em_andamento");
+  const current = inProgress[0];
   const next = current ?? waiting[0];
 
   if (loading) {
