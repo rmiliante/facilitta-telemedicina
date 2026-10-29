@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import LogoutButton from "./LogoutButton";
+import CabineStatus from "./CabineStatus";
 import { uploadPatientDocuments as uploadPatientDocumentsDirect } from "@/lib/uploadPatientDocument";
 import { printFile, printPdf } from "@/lib/printPdf";
 import PatientTimeline from "./PatientTimeline";
@@ -678,6 +679,7 @@ export function FilaTab() {
 
   return (
     <div className="space-y-6">
+      <CabineStatus />
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-brand-teal-dark bg-brand-teal/10 px-4 py-3">
         <div>
           <p className="text-xs font-semibold text-brand-navy">Link fixo da cabine de atendimento</p>
