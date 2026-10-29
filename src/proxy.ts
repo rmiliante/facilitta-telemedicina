@@ -160,6 +160,9 @@ export async function proxy(request: NextRequest) {
         return NextResponse.json({ error: "Sem permissão para este nível de acesso" }, { status: 403 });
       }
     } else if (!canUseAdmin(role)) {
+      // Atendente que abre /admin: mostra o login (com aviso) para poder trocar
+      // de usuário, em vez de mandar direto para o Atendimento sem saída.
+      if (role === "atendente") return NextResponse.redirect(new URL("/equipe/login?aviso=admin", request.url));
       return NextResponse.redirect(new URL(role === "agendamento" ? "/agendamento" : "/atendente", request.url));
     }
     return withRole(request, role);
