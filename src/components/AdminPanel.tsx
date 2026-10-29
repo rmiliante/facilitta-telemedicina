@@ -42,6 +42,8 @@ interface Doctor {
   consult_fee?: number | string | null;
   contract_fee?: number | string | null;
   pix_key?: string | null;
+  last_seen_at?: string | null;
+  last_login_at?: string | null;
   specialties: { name: string } | null;
 }
 
@@ -1077,6 +1079,34 @@ function feeInput(value: number | string | null | undefined): string {
   return Number.isFinite(n) ? n.toFixed(2).replace(".", ",") : "";
 }
 
+function agoLabel(iso: string, now: number) {
+  const min = Math.max(0, Math.round((now - new Date(iso).getTime()) / 60000));
+  if (min < 1) return "agora";
+  if (min < 60) return `há ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `há ${h} h`;
+  const d = Math.floor(h / 24);
+  return `há ${d} ${d === 1 ? "dia" : "dias"}`;
+}
+
+function loginLabel(iso: string) {
+  return new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+/** Etiqueta de situação do médico: online (sinal há menos de 3 min), ausente (até 30 min) ou offline. */
+function DoctorPresence({ d, now }: { d: Doctor; now: number }) {
+  const min = d.last_seen_at ? (now - new Date(d.last_seen_at).getTime()) / 60000 : null;
+  if (min !== null && min < 3)
+    return <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-semibold text-green-800">● Online agora</span>;
+  if (min !== null && min < 30)
+    return <span className="ml-2 rounded-full bg-yellow-100 px-2 py-0.5 text-[11px] text-yellow-800">◐ Ausente · visto {agoLabel(d.last_seen_at as string, now)}</span>;
+  return (
+    <span className="ml-2 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500">
+      ○ Offline{d.last_seen_at ? ` · visto ${agoLabel(d.last_seen_at, now)}` : ""}
+    </span>
+  );
+}
+
 function DoctorsTab() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
@@ -1086,6 +1116,7 @@ function DoctorsTab() {
   const [editForm, setEditForm] = useState({ name: "", email: "", specialtyId: "", password: "", cpf: "", crm: "", crmUf: "", rqe: "", enderecoProfissional: "", consultFee: "", contractFee: "", pixKey: "", active: true });
   const [editSaving, setEditSaving] = useState(false);
   const [contractId, setContractId] = useState<string | null>(null);
+  const [now, setNow] = useState(0);
 
   const load = useCallback(async () => {
     const [dRes, sRes] = await Promise.all([
@@ -1094,11 +1125,17 @@ function DoctorsTab() {
     ]);
     if (dRes.ok) setDoctors((await dRes.json()).doctors);
     if (sRes.ok) setSpecialties((await sRes.json()).specialties);
+    setNow(Date.now());
   }, []);
 
   useEffect(() => {
     const timeout = setTimeout(load, 0);
-    return () => clearTimeout(timeout);
+    // A situação (online/offline) se atualiza sozinha a cada minuto.
+    const timer = setInterval(load, 60_000);
+    return () => {
+      clearTimeout(timeout);
+      clearInterval(timer);
+    };
   }, [load]);
 
   async function handleCreate(e: React.FormEvent) {
@@ -1516,9 +1553,9 @@ function DoctorsTab() {
               className="flex items-center justify-between rounded-md border border-zinc-200 bg-white px-4 py-2.5 text-sm"
             >
               <div>
-                <p className="font-medium text-zinc-800">{d.name}</p>
+                <p className="font-medium text-zinc-800">{d.name}<DoctorPresence d={d} now={now} /></p>
                 <p className="text-xs text-zinc-500">
-                  {d.email} {d.specialties?.name ? `· ${d.specialties.name}` : ""}
+                  {d.last_login_at ? `Último login ${loginLabel(d.last_login_at)} · ` : "Nunca entrou · "}{d.email} {d.specialties?.name ? `· ${d.specialties.name}` : ""}
                   {feeInput(d.consult_fee) ? ` · médico recebe R$ ${feeInput(d.consult_fee)}` : " · sem valor por consulta"}
                   {feeInput(d.contract_fee) ? ` · recebemos R$ ${feeInput(d.contract_fee)}` : <span className="text-amber-700"> · sem valor que recebemos</span>}
                   {d.pix_key ? ` · PIX: ${d.pix_key}` : ""}
