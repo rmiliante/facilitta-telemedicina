@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function StaffLoginPage() {
@@ -9,6 +9,13 @@ export default function StaffLoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [avisoAdmin, setAvisoAdmin] = useState(false);
+
+  // Vindo do /admin com sessão de atendente: explica e deixa trocar de usuário.
+  useEffect(() => {
+    const t = setTimeout(() => setAvisoAdmin(new URLSearchParams(window.location.search).get("aviso") === "admin"), 0);
+    return () => clearTimeout(t);
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -50,6 +57,17 @@ export default function StaffLoginPage() {
           </h1>
           <p className="mt-1 text-xs text-zinc-500">Área da equipe</p>
         </div>
+
+        {avisoAdmin && (
+          <div className="mb-4 rounded-md border border-yellow-300 bg-yellow-50 px-3 py-2.5 text-xs text-yellow-800">
+            Você está conectado como <b>Atendente</b>, que não abre o Admin. Entre abaixo com um usuário{" "}
+            <b>Master</b> ou <b>Gestor</b>, ou{" "}
+            <a href="/atendente" className="underline">
+              volte para o Atendimento
+            </a>
+            .
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <label className="block text-sm">
