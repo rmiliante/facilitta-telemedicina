@@ -24,7 +24,9 @@ export async function GET() {
     .is("patient_joined_at", null)
     .gte("scheduled_at", dayStart)
     .lt("scheduled_at", dayEnd)
-    .order("called_at", { ascending: false, nullsFirst: false })
+    // Ordem de ENVIO: quem a atendente mandou primeiro é o primeiro da cabine
+    // (se o 1º da fila não chegou, ela manda outro e ele não espera).
+    .order("called_at", { ascending: true, nullsFirst: false })
     .limit(1)
     .maybeSingle();
 
