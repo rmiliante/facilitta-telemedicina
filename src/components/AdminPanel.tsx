@@ -285,10 +285,16 @@ function AdminSidebar({
         <ul className="space-y-0.5">
           {NAV_ITEMS.filter((item) => ROLE_TABS[role].includes(item.key)).map((item) => (
             <li key={item.key}>
-              <button
-                type="button"
-                onClick={() => {
+              {/* Link de verdade (/admin#tela): clique normal troca a tela aqui;
+                  Ctrl+clique, botão do meio ou "abrir em nova aba" abre
+                  essa tela em outra aba do navegador, na mesma sessão. */}
+              <a
+                href={`/admin#${item.key}`}
+                onClick={(e) => {
+                  if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                  e.preventDefault();
                   onSelect(item.key);
+                  window.history.replaceState(null, "", `#${item.key}`);
                   onClose();
                 }}
                 className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-medium transition-colors ${
@@ -299,7 +305,7 @@ function AdminSidebar({
               >
                 {item.icon}
                 {item.label}
-              </button>
+              </a>
               {item.key === "manuais" && (
                 <ManuaisSubmenu
                   active={tab === "manuais"}
@@ -410,6 +416,21 @@ function IconLink() {
 export default function AdminPanel({ role }: { role: StaffRole }) {
   const [tab, setTab] = useState<Tab>(ROLE_TABS[role][0] ?? "dashboard");
   const [navOpen, setNavOpen] = useState(false);
+
+  // Cada tela tem seu endereço (/admin#fila): abre direto nela e dá para
+  // manter várias telas abertas, cada uma em uma aba do navegador.
+  useEffect(() => {
+    const fromHash = () => {
+      const h = window.location.hash.replace("#", "") as Tab;
+      if (h && ROLE_TABS[role].includes(h)) setTab(h);
+    };
+    const t = setTimeout(fromHash, 0);
+    window.addEventListener("hashchange", fromHash);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("hashchange", fromHash);
+    };
+  }, [role]);
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-brand-bg print:block print:h-auto print:overflow-visible print:bg-white">
