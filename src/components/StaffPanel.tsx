@@ -361,7 +361,7 @@ const STATUS_LABELS: Record<string, string> = {
   faltou: "Faltou",
 };
 
-function FilaTab() {
+export function FilaTab() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
