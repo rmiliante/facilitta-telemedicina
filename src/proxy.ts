@@ -42,6 +42,32 @@ function safeEqual(a: string, b: string): boolean {
   return bufA.length === bufB.length && timingSafeEqual(bufA, bufB);
 }
 
+// Limite de tentativas erradas no acesso de recuperação (por IP, 15 minutos).
+// Fica na memória de cada instância: segura a maior parte dos ataques de força bruta.
+const RECOVERY_WINDOW_MS = 15 * 60 * 1000;
+const RECOVERY_MAX_FAILS = 8;
+const recoveryFails = new Map<string, { n: number; first: number }>();
+
+function clientIp(request: NextRequest): string {
+  return request.headers.get("x-forwarded-for")?.split(",")[0].trim() || "desconhecido";
+}
+
+function recoveryBlocked(ip: string): boolean {
+  const f = recoveryFails.get(ip);
+  if (!f) return false;
+  if (Date.now() - f.first > RECOVERY_WINDOW_MS) {
+    recoveryFails.delete(ip);
+    return false;
+  }
+  return f.n >= RECOVERY_MAX_FAILS;
+}
+
+function recoveryFailed(ip: string) {
+  const f = recoveryFails.get(ip);
+  if (!f || Date.now() - f.first > RECOVERY_WINDOW_MS) recoveryFails.set(ip, { n: 1, first: Date.now() });
+  else f.n += 1;
+}
+
 function checkStaffBasicAuth(request: NextRequest): boolean {
   const user = process.env.ADMIN_USER;
   const password = process.env.ADMIN_PASSWORD;
@@ -146,7 +172,15 @@ export async function proxy(request: NextRequest) {
   if (pathname.startsWith("/admin") || pathname.startsWith("/api/admin")) {
     const staff = await getStaffFromCookie(request);
     // Usuário/senha de recuperação (variáveis de ambiente) = Master.
-    const role = staff?.role ?? (checkStaffBasicAuth(request) ? "master" : null);
+    let role: StaffRole | null = staff?.role ?? null;
+    if (!role && request.headers.get("authorization")?.startsWith("Basic ")) {
+      const ip = clientIp(request);
+      if (recoveryBlocked(ip)) {
+        return new NextResponse("Muitas tentativas. Tente novamente em alguns minutos.", { status: 429 });
+      }
+      if (checkStaffBasicAuth(request)) role = "master";
+      else recoveryFailed(ip);
+    }
 
     if (!role) {
       if (pathname.startsWith("/api/admin")) {
