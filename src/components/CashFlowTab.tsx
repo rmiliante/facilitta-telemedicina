@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { fmtDay, fmtMoney, Kpi, monthLabel, todayKey } from "./FinanceShared";
+import CashFlowPlan, { type PlanData } from "./CashFlowPlan";
 
 /**
  * Admin → Fluxo de caixa (contrato Bahia): entradas (recebimentos da
@@ -20,6 +21,11 @@ interface Ev {
   receiptId?: string;
   notes?: string | null;
   saldo: number | null;
+  tipo?: "recebimento" | "repasse" | "despesa";
+  label?: string;
+  categoria?: string;
+  projetado?: boolean;
+  expenseId?: string;
 }
 interface Month {
   month: string;
@@ -36,12 +42,14 @@ interface Data {
   months: Month[];
   events: Ev[];
   totals: { receber: number; pagar: number; recebido: number; aReceber: number; pago: number; aPagar: number; semPrevisao: number };
+  plan: PlanData;
 }
 
 const NAVY = "#15004d";
 const TEAL = "#00b8a0";
 
 function situacao(e: Ev, today: string) {
+  if (e.projetado) return { text: "Projetado", cls: "bg-amber-50 text-amber-700" };
   if (e.status === "a_definir") return { text: "A definir", cls: "bg-zinc-100 text-zinc-600" };
   if (e.status === "realizado") return { text: e.kind === "entrada" ? "Recebido" : "Pago", cls: "bg-brand-teal/15 text-brand-teal-dark" };
   if (e.date && e.date < today) return { text: "Atrasado", cls: "bg-red-50 text-red-700" };
@@ -103,6 +111,7 @@ export default function CashFlowTab({ readOnly = false }: { readOnly?: boolean }
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showProj, setShowProj] = useState(false);
   const [form, setForm] = useState({ month: "", amount: "", date: "", received: false, notes: "" });
   const today = todayKey();
 
@@ -197,16 +206,23 @@ export default function CashFlowTab({ readOnly = false }: { readOnly?: boolean }
         </p>
       )}
 
+      {data?.plan && <CashFlowPlan plan={data.plan} events={data.events} readOnly={readOnly} busy={busy} call={call} onError={setError} />}
+
       <section className="rounded-xl border border-zinc-200 bg-white p-4">
-        <h2 className="text-sm font-bold text-brand-navy">Entradas, saídas e saldo por data</h2>
+        <h2 className="text-sm font-bold text-brand-navy">Entradas, saídas e saldo por data (contrato)</h2>
         <p className="mb-2 text-xs text-zinc-500">
           <span style={{ color: TEAL }}>■</span> entrada &nbsp;<span style={{ color: NAVY }}>■</span> saída &nbsp;<span style={{ color: "#f5b301" }}>●</span> saldo acumulado. Barras claras são previsões.
         </p>
-        {data ? <Chart events={data.events} /> : <p className="py-10 text-center text-sm text-zinc-400">Carregando…</p>}
+        {data ? <Chart events={data.events.filter((e) => !e.projetado && e.tipo !== "despesa")} /> : <p className="py-10 text-center text-sm text-zinc-400">Carregando…</p>}
       </section>
 
       <section className="rounded-xl border border-zinc-200 bg-white p-4">
-        <h2 className="mb-2 text-sm font-bold text-brand-navy">Calendário de caixa</h2>
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <h2 className="text-sm font-bold text-brand-navy">Calendário de caixa</h2>
+          <label className="flex items-center gap-2 text-xs text-zinc-600">
+            <input type="checkbox" checked={showProj} onChange={(e) => setShowProj(e.target.checked)} /> Mostrar projeção
+          </label>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -217,13 +233,13 @@ export default function CashFlowTab({ readOnly = false }: { readOnly?: boolean }
               </tr>
             </thead>
             <tbody>
-              {(data?.events ?? []).map((e) => {
+              {(data?.events ?? []).filter((e) => showProj || !e.projetado).map((e) => {
                 const s = situacao(e, today);
                 return (
                   <tr key={e.key} className="border-b border-zinc-100">
                     <td className="whitespace-nowrap py-2 pr-3">{e.date ? fmtDay(e.date) : "A definir"}</td>
                     <td className="pr-3">
-                      {e.kind === "entrada" ? "Recebimento" : "Repasse às médicas"} · {monthLabel(e.period)}
+                      {e.tipo === "despesa" ? (e.label ?? "Despesa") : <>{e.kind === "entrada" ? "Recebimento" : "Repasse às médicas"} · {monthLabel(e.period)}</>}
                       {e.notes && <span className="block text-xs text-zinc-400">{e.notes}</span>}
                     </td>
                     <td className="pr-3"><span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${s.cls}`}>{s.text}</span></td>
