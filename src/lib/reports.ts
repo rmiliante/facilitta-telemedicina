@@ -51,7 +51,7 @@ export async function monthlyReport(month: string) {
 
   const apptCols = "id, scheduled_at, status, patient_id, specialty_id, doctor_id, called_at, finished_at, patients(full_name), specialties(name), doctors(name)";
   const appts = (cols: string) => supabase.from("appointments").select(cols).gte("scheduled_at", start).lt("scheduled_at", end);
-  const [apptFirst, specRes, faltasRes, docRes] = await Promise.all([
+  const [apptFirst, specRes, faltasRes, docRes, antesRes] = await Promise.all([
     appts(`${apptCols}, contract_fee`),
     supabase.from("specialties").select("id, name, monthly_quota").order("name", { ascending: true }),
     supabase
@@ -61,6 +61,8 @@ export async function monthlyReport(month: string) {
       .gte("scheduled_at", since90)
       .lt("scheduled_at", end),
     supabase.from("doctors").select("specialty_id, contract_fee").eq("active", true),
+    // Especialidades que já tinham consulta antes do mês (as demais começaram dentro dele).
+    supabase.from("appointments").select("specialty_id").lt("scheduled_at", start).neq("status", "cancelado").limit(5000),
   ]);
   // Sem a migração do valor recebido por consulta: relatório sai sem faturamento.
   let apptRes = apptFirst;
@@ -77,6 +79,7 @@ export async function monthlyReport(month: string) {
     refFees.set(d.specialty_id, [...(refFees.get(d.specialty_id) ?? []), fee]);
   }
 
+  const antes = new Set(((antesRes.error ? [] : antesRes.data ?? []) as { specialty_id: string | null }[]).map((r) => r.specialty_id));
   const rows = (apptRes.data ?? []) as unknown as Row[];
   const specs = (specRes.data ?? []) as { id: string; name: string; monthly_quota: number }[];
   const count = (list: Row[], status: string) => list.filter((r) => r.status === status).length;
@@ -96,12 +99,16 @@ export async function monthlyReport(month: string) {
       const faltas = ausentesDe(list);
       const aRealizar = list.filter(isARealizar).length;
       const ref = refFees.get(s.id);
+      // Começou no meio do mês: sem consulta antes dele, a cota mínima é proporcional ao 1º dia de atendimento.
+      const datas = list.filter((r) => r.status !== "cancelado").map((r) => r.scheduled_at.slice(0, 10)).sort();
+      const inicio = !antesRes.error && !antes.has(s.id) && datas.length ? datas[0] : null;
       const fat = billing(
         month,
         list.filter((r) => r.status === "concluido").map((r) => toFee(r.contract_fee)),
         s.monthly_quota,
         ref?.length ? ref.reduce((a, b) => a + b, 0) / ref.length : null,
-        faltas + aRealizar
+        faltas + aRealizar,
+        inicio
       );
       return {
         id: s.id,
@@ -112,7 +119,11 @@ export async function monthlyReport(month: string) {
         faturadas: fat.faturadas,
         valorReceber: fat.valor,
         regra: fat.rule,
-        regraLabel: BILLING_RULE_LABEL[fat.rule],
+        cotaFaturavel: fat.cotaFaturavel,
+        regraLabel:
+          fat.rule === "minimo_proporcional"
+            ? `Mínimo proporcional: ${fat.cotaFaturavel} de ${s.monthly_quota} consultas (início em ${inicio!.slice(8, 10)}/${inicio!.slice(5, 7)}, ${fat.dias} de ${fat.diasMes} dias)`
+            : BILLING_RULE_LABEL[fat.rule],
         agendados: naoCancelados,
         usoCota: pct(naoCancelados, s.monthly_quota),
         realizados,
