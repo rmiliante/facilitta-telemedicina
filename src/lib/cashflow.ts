@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { FINANCE_MIGRATION_WARNING, FinanceError, isFinanceMissing, isMonthKey } from "@/lib/finance";
+import { monthlyReport } from "@/lib/reports";
 
 /**
  * Fluxo de caixa do contrato (Bahia): entradas = recebimentos da prefeitura
@@ -78,6 +79,15 @@ export async function cashflowOverview() {
     m.pagar += num(a.doctor_fee);
     if (!a.payout_id) openByMonth.set(month, (openByMonth.get(month) ?? 0) + num(a.doctor_fee));
   }
+
+  // A cobrança do contrato segue a regra do relatório (mínimo da cota; proporcional quando a
+  // especialidade começou no meio do mês), não só as consultas concluídas.
+  const keys = [...months.keys()];
+  const reports = await Promise.all(keys.map((k) => monthlyReport(k).catch(() => null)));
+  keys.forEach((k, i) => {
+    const esp = reports[i]?.especialidades;
+    if (esp && esp.length && esp.every((e) => e.valorReceber !== null)) get(k).receber = esp.reduce((a, e) => a + (e.valorReceber ?? 0), 0);
+  });
 
   const events: CashEvent[] = [];
 
