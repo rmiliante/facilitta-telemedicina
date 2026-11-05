@@ -110,8 +110,11 @@ export default function ConsultationClient({
     }
   }
 
-  async function handleRemovePatientDocument(path: string) {
-    if (!confirm("Remover esse documento anexado?")) return;
+  async function handleRemovePatientDocument(path: string, signed?: boolean) {
+    const msg = signed
+      ? "Remover este documento ASSINADO digitalmente? A assinatura e o arquivo serão apagados e a remoção fica registrada na auditoria."
+      : "Remover esse documento anexado?";
+    if (!confirm(msg)) return;
     await removeDocByPath(path);
   }
 
@@ -545,7 +548,7 @@ export default function ConsultationClient({
                   documents={currentDocs}
                   currentAppointmentId={appointmentId}
                   compact
-                  onRemove={(d) => handleRemovePatientDocument(d.path)}
+                  onRemove={(d) => handleRemovePatientDocument(d.path, d.signed)}
                 />
                 <p className="text-[11px] text-zinc-400">
                   O que você anexa aqui fica em &quot;Do médico&quot;. Receitas,
