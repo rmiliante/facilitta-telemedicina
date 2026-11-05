@@ -10,7 +10,7 @@ import BasicPharmacyPicker from "@/components/BasicPharmacyPicker";
 import { EMPTY_ENMG, type ApacModel, type EnmgData } from "@/lib/enmgForm";
 import ImagemFormFields from "@/components/ImagemFormFields";
 import ApacOficialFields from "@/components/ApacOficialFields";
-import { EMPTY_OFICIAL, type OficialData } from "@/lib/apacOficial";
+import { EMPTY_OFICIAL, OFICIAL_MUNICIPIO_PADRAO, type OficialData } from "@/lib/apacOficial";
 import { EMPTY_IMAGEM, imagemProcedureName, type ImagemData } from "@/lib/imagemForm";
 
 /**
@@ -184,11 +184,17 @@ export default function PrescriptionPanel({
             municipality: prev.municipality || d.patient.city || "",
             phoneMobile: prev.phoneMobile || d.patient.phone || "",
           }));
-          setOficial((prev) => ({
-            ...prev,
-            municipality: prev.municipality || d.patient.city || "",
-            telefone: prev.telefone || d.patient.phone || "",
-          }));
+          setOficial((prev) => {
+            const city = String(d.patient.city ?? "").trim();
+            const outra = city !== "" && city.toUpperCase() !== OFICIAL_MUNICIPIO_PADRAO.municipality;
+            return {
+              ...prev,
+              // Jacobina já vem preenchida; paciente de outra cidade troca município/UF e limpa o IBGE.
+              ...(outra ? { municipality: city.toUpperCase(), ibge: "", uf: String(d.patient.state ?? "").toUpperCase().slice(0, 2) } : {}),
+              telefone: prev.telefone || d.patient.phone || "",
+            };
+          });
+          setApacExtra((prev) => ({ ...prev, cep: prev.cep || (String(d.patient.city ?? "").trim() === "" || String(d.patient.city).toUpperCase() === OFICIAL_MUNICIPIO_PADRAO.municipality ? OFICIAL_MUNICIPIO_PADRAO.cep : "") }));
         }
       })
       .catch(() => {
@@ -988,7 +994,7 @@ export default function PrescriptionPanel({
                           />
                         </label>
                       </div>
-                      <ApacOficialFields oficial={oficial} setOficial={setOficial} onPreview={previewEnmg} previewing={previewing} />
+                      <ApacOficialFields oficial={oficial} setOficial={setOficial} onPreview={previewEnmg} previewing={previewing} onPickProcedure={(name) => updateItem(0, { name })} cid={apacExtra.cid} />
                       <label className="block text-xs">
                         <span className="mb-1 block font-medium text-zinc-600">Justificativa clínica (quadro clínico) *</span>
                         <textarea
