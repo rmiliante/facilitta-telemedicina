@@ -1775,7 +1775,10 @@ function PatientHistoryPanel({ patientId }: { patientId: string }) {
   };
 
   async function removeDoc(doc: TimelineDoc) {
-    if (!confirm(`Remover "${doc.name}"?`)) return;
+    const msg = doc.signed
+      ? `Remover "${doc.name}"? O documento está ASSINADO digitalmente: a assinatura e o arquivo serão apagados e a remoção fica registrada na auditoria.`
+      : `Remover "${doc.name}"?`;
+    if (!confirm(msg)) return;
     const res = await fetch(`/api/admin/patients/${patientId}/documents`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
