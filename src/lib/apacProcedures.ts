@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { examKey } from "@/lib/customExams";
-import { EMPTY_OFICIAL, OFICIAL_MAX_JUSTIFICATIVA, OFICIAL_RACAS, type OficialData } from "@/lib/apacOficial";
+import { EMPTY_OFICIAL, OFICIAL_MAX_JUSTIFICATIVA, OFICIAL_MAX_SECUNDARIOS, OFICIAL_RACAS, type OficialData, type OficialSecundario } from "@/lib/apacOficial";
 import {
   EMPTY_IMAGEM,
   IMAGEM_CONTRASTE_LABEL,
@@ -78,6 +78,17 @@ function digits(v: unknown, max: number) {
   return typeof v === "string" ? v.replace(/\D/g, "").slice(0, max) : "";
 }
 
+function cleanSecundarios(raw: unknown): OficialSecundario[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .slice(0, OFICIAL_MAX_SECUNDARIOS)
+    .map((x) => {
+      const o = (x ?? {}) as Record<string, unknown>;
+      return { code: digits(o.code, 10), name: str(o.name, 200), qty: str(o.qty, 6) || "1" };
+    })
+    .filter((x) => x.code || x.name);
+}
+
 function cleanOficial(raw: unknown): OficialData {
   const r = (raw ?? {}) as Record<string, unknown>;
   const raca = typeof r.racaCor === "string" && OFICIAL_RACAS.includes(r.racaCor) ? r.racaCor : "";
@@ -86,6 +97,9 @@ function cleanOficial(raw: unknown): OficialData {
     procCode: digits(r.procCode, 10),
     prontuario: str(r.prontuario, 30),
     racaCor: raca,
+    etnia: str(r.etnia, 60),
+    diagnostico: str(r.diagnostico, 150),
+    secundarios: cleanSecundarios(r.secundarios),
     responsavel: str(r.responsavel, 200),
     telResponsavel: str(r.telResponsavel, 30),
     telefone: str(r.telefone, 30),
@@ -147,6 +161,7 @@ export function validateApac(a: ApacInput, procedure: string, justificativa: str
   if (!procedure) return "Informe o procedimento solicitado";
   if (a.oficial?.procCode && a.oficial.procCode.length !== 10) return "O código SIGTAP tem 10 números (ex.: 0207010064)";
   if (a.oficial?.ibge && a.oficial.ibge.length !== 7) return "O código IBGE do município tem 7 números";
+  if (a.oficial?.secundarios.some((x) => x.code && x.code.length !== 10)) return "O código SIGTAP dos procedimentos secundários tem 10 números";
   if (justificativa.length > OFICIAL_MAX_JUSTIFICATIVA) return `A justificativa pode ter até ${OFICIAL_MAX_JUSTIFICATIVA} caracteres`;
   if (a.cns.length !== 15) return "Informe o CNS (Cartão SUS) do paciente, com 15 números";
   if (!a.motherName) return "Informe o nome da mãe do paciente";
