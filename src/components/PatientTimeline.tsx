@@ -345,7 +345,7 @@ function DocColumn({
                   Baixar
                 </button>
               )}
-              {onRemove && !d.signed && (
+              {onRemove && (
                 <button
                   type="button"
                   onClick={() => onRemove(d)}
