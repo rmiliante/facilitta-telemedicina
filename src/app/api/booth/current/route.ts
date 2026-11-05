@@ -22,11 +22,14 @@ export async function GET() {
     .select("id, access_token, called_at, patients(full_name, cpf), doctors(name), specialties(name)")
     .eq("status", "em_andamento")
     .is("patient_joined_at", null)
+    // Só aparece quem a atendente enviou ("Enviar para atendimento"). Quando
+    // a médica abre o vídeo ou inicia a consulta, o paciente NÃO cai na cabine.
+    .not("booth_sent_at", "is", null)
     .gte("scheduled_at", dayStart)
     .lt("scheduled_at", dayEnd)
     // Ordem de ENVIO: quem a atendente mandou primeiro é o primeiro da cabine
     // (se o 1º da fila não chegou, ela manda outro e ele não espera).
-    .order("called_at", { ascending: true, nullsFirst: false })
+    .order("booth_sent_at", { ascending: true, nullsFirst: false })
     .limit(1)
     .maybeSingle();
 
