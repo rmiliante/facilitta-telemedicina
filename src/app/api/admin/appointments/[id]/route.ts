@@ -55,7 +55,10 @@ export async function PATCH(
     update.queue_position = body.queuePosition;
   }
   if (body.markCalled === true) {
-    update.called_at = new Date().toISOString();
+    const now = new Date().toISOString();
+    update.called_at = now;
+    // "Enviar para atendimento": só quem a atendente envia aparece na cabine.
+    update.booth_sent_at = now;
     // Reenviar pro atendimento resolve o aviso de "não sou eu" anterior.
     update.booth_rejected_at = null;
   }
