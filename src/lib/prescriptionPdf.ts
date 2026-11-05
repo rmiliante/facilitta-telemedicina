@@ -28,6 +28,8 @@ export interface PrescriptionPdfInput {
     crm: string;
     crmUf: string;
     rqe?: string | null;
+    /** CPF do médico (campo 43/44 do laudo de APAC). */
+    cpf?: string | null;
     specialty?: string | null;
     /** Endereço profissional (obrigatório na prescrição por telemedicina, Res. CFM 2.314/2022). */
     address?: string | null;
