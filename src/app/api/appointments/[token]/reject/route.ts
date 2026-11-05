@@ -35,6 +35,7 @@ export async function POST(
     .update({
       status: "agendado",
       called_at: null,
+      booth_sent_at: null,
       patient_joined_at: null,
       booth_rejected_at: new Date().toISOString(),
     })
