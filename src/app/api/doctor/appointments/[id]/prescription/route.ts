@@ -106,7 +106,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const preview = await buildPrescriptionPdf(
         {
           kind,
-          doctor: { name: doctor.name, crm: doctor.crm ?? "", crmUf: doctor.crm_uf ?? "", rqe: doctor.rqe, specialty: doctor.specialty, address: null },
+          doctor: { name: doctor.name, crm: doctor.crm ?? "", crmUf: doctor.crm_uf ?? "", rqe: doctor.rqe, cpf: doctor.cpf, specialty: doctor.specialty, address: null },
           patient: { name: pv.full_name, cpf: pv.cpf, birthDate: pv.birth_date, city: pv.city, state: pv.state },
           items,
           notes,
@@ -138,6 +138,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const pdf = await buildPrescriptionPdf({
       kind,
       doctor: { name: doctor.name, crm: doctor.crm!, crmUf: doctor.crm_uf!, rqe: doctor.rqe,
+        cpf: doctor.cpf,
         specialty: doctor.specialty,
         address: doctor.endereco_profissional || process.env.RECEITA_ENDERECO || null,
       },
