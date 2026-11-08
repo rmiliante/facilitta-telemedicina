@@ -32,6 +32,16 @@ const nextConfig: NextConfig = {
         destination: "https://totem.facilittasaude.com.br/totem/checkout/light?seller=FM-7&product=26",
         permanent: false,
       },
+      {
+        source: "/cliente",
+        destination: "https://facilittasaude.volplab.com/beneficiario/login",
+        permanent: false,
+      },
+      {
+        source: "/clientes",
+        destination: "https://facilittasaude.volplab.com/beneficiario/login",
+        permanent: false,
+      },
     ];
   },
 };
