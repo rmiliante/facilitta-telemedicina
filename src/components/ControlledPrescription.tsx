@@ -246,6 +246,9 @@ export default function ControlledPrescription({
 
       {open && (
         <div className="mt-3 text-sm">
+          <a href="/manuais/guia-receita-controlada.pdf" target="_blank" rel="noreferrer" className="mb-2 inline-block text-xs font-semibold text-brand-teal-dark underline">
+            Baixar o manual em PDF (passo a passo)
+          </a>
           <div className="rounded-md border border-zinc-200 bg-white px-3">
             <Passo n={1} titulo="Seus dados" feito={passo1} atual={atual === 1}>
               {!passo1 && (
