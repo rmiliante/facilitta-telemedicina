@@ -56,7 +56,7 @@ interface CallOptions {
 
 async function call<T>(path: string, opts: CallOptions = {}): Promise<T> {
   const method = opts.method || "GET";
-  let url = baseUrl() + API + path;
+  let url = baseUrl() + (path.startsWith("/backend") ? "" : API) + path;
   if (opts.query) {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(opts.query)) {
@@ -345,4 +345,60 @@ export function listarDocumentos(bearer: string, limit = 50, offset = 0) {
     query: { limit, offset },
     bearer,
   });
+}
+
+// ───────────────────────── Conta do profissional (cadastro e validação do CRM) ─────────────────────────
+// O cadastro cria só a conta (sem documento). A validação do CRM é uma etapa separada,
+// feita com o token do próprio médico (login por código no e-mail).
+
+export interface CadastroProfissionalInput {
+  nome: string;
+  email: string;
+  senha: string;
+  cpf: string;      // só dígitos
+  uf: string;       // UF do CRM, ex.: "PR"
+  numeroCrm: string;
+}
+
+export function cadastrarProfissional(i: CadastroProfissionalInput) {
+  return call<{ message?: string }>("/backend/v4.1/profissionais/cadastro", {
+    method: "POST",
+    body: {
+      nome: i.nome,
+      email: i.email,
+      senha: i.senha,
+      confirmacao_senha: i.senha,
+      cpf: i.cpf,
+      profissao: "Médico",
+      tipo_registro: "CRM-" + i.uf.toUpperCase(),
+      num_registro: i.numeroCrm,
+    },
+  });
+}
+
+/** Envia a foto/PDF da carteira do conselho. Validação automática (pode ir para revisão manual). */
+export async function validarDocumentoProfissional(bearer: string, file: Blob, fileName: string) {
+  const form = new FormData();
+  form.append("file", file, fileName);
+  let res: Response;
+  try {
+    res = await fetch(baseUrl() + "/backend/v2/auth/profissional/validacao", {
+      method: "POST",
+      headers: { "X-API-Key": apiKey(), Authorization: "Bearer " + bearer },
+      body: form,
+      cache: "no-store",
+    });
+  } catch (e) {
+    console.error("Prescrições: falha de rede na validação do CRM", e);
+    throw new PrescricoesError("Não foi possível falar com a Prescreve. Tente de novo.", 502);
+  }
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    const message =
+      (typeof data.message === "string" && data.message) ||
+      (typeof data.error === "string" && data.error) ||
+      "Erro da Prescreve (" + res.status + ")";
+    throw new PrescricoesError(message, res.status);
+  }
+  return { validado: data.validado === true, motivo: typeof data.motivo === "string" ? data.motivo : "" };
 }
