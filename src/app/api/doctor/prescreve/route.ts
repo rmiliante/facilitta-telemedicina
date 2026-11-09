@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDoctorSession } from "@/lib/auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import {
+  cadastrarProfissional,
   conectarCertificado,
   encerrarSessao,
   otpRequest,
@@ -17,22 +18,35 @@ import {
 
 /**
  * Conta do médico na Prescreve (API de Prescrições) para receitas controladas:
- * vincular (código por e-mail), abrir sessão do certificado (8h) e numeração SNCR.
- * Tudo atrás da flag PRESCREVE_PRESCRICOES_ATIVO. Não guarda senha nenhuma.
+ * criar/vincular conta, abrir sessão do certificado (8h) e numeração SNCR.
+ * Tudo atrás da flag PRESCREVE_PRESCRICOES_ATIVO. A senha escolhida pela médica
+ * só passa por aqui rumo à Prescreve: não é guardada nem registrada.
  */
 
 const digits = (s: string | null | undefined) => (s || "").replace(/\D/g, "");
 
+interface DoctorRow {
+  id: string; name: string; email: string | null; cpf: string | null;
+  crm: string | null; crm_uf: string | null; endereco_profissional: string | null;
+  prescreve_uuid: string | null; prescreve_crm_validado_em: string | null;
+}
+
 async function loadDoctor(id: string) {
   const { data } = await getSupabaseAdmin()
     .from("doctors")
-    .select("id, name, email, cpf, crm, crm_uf, prescreve_uuid")
+    .select("id, name, email, cpf, crm, crm_uf, endereco_profissional, prescreve_uuid, prescreve_crm_validado_em")
     .eq("id", id)
     .maybeSingle();
-  return data as {
-    id: string; name: string; email: string | null; cpf: string | null;
-    crm: string | null; crm_uf: string | null; prescreve_uuid: string | null;
-  } | null;
+  return data as DoctorRow | null;
+}
+
+function faltando(d: DoctorRow): string[] {
+  const f: string[] = [];
+  if (digits(d.cpf).length !== 11) f.push("CPF");
+  if (!(d.crm || "").trim()) f.push("número do CRM");
+  if (!(d.crm_uf || "").trim()) f.push("UF do CRM");
+  if (!(d.endereco_profissional || "").trim()) f.push("endereço profissional");
+  return f;
 }
 
 function fail(err: unknown) {
@@ -49,10 +63,14 @@ export async function GET() {
   if (!prescricoesAtivo()) return NextResponse.json({ ativo: false });
   const doctor = await loadDoctor(session.doctorId);
   if (!doctor) return NextResponse.json({ error: "Médico não encontrado" }, { status: 404 });
+  const falta = faltando(doctor);
   const base = {
     ativo: true,
     cpfOk: digits(doctor.cpf).length === 11,
+    dadosOk: falta.length === 0,
+    faltando: falta,
     vinculado: !!doctor.prescreve_uuid,
+    crmValidado: !!doctor.prescreve_crm_validado_em,
     emailPadrao: doctor.email,
     conectado: false,
     provider: null as string | null,
@@ -80,6 +98,30 @@ export async function POST(req: NextRequest) {
   const cpf = digits(doctor.cpf);
 
   try {
+    if (action === "criar_conta") {
+      const falta = faltando(doctor);
+      if (falta.length > 0) {
+        return NextResponse.json({ error: "Falta no seu cadastro da Facilitta: " + falta.join(", ") + "." }, { status: 400 });
+      }
+      const email = String(body.email || "").trim();
+      const senha = String(body.senha || "");
+      const confirmacao = String(body.confirmacao || "");
+      if (!email) return NextResponse.json({ error: "Informe o seu e-mail" }, { status: 400 });
+      if (senha.length < 6) return NextResponse.json({ error: "A senha precisa ter pelo menos 6 caracteres" }, { status: 400 });
+      if (senha !== confirmacao) return NextResponse.json({ error: "As senhas não são iguais" }, { status: 400 });
+      await cadastrarProfissional({
+        nome: doctor.name,
+        email,
+        senha,
+        cpf,
+        uf: String(doctor.crm_uf),
+        numeroCrm: String(doctor.crm),
+      });
+      let codigoEnviado = false;
+      try { await otpRequest(email); codigoEnviado = true; } catch { /* a médica pede o código na tela */ }
+      return NextResponse.json({ ok: true, email, codigoEnviado });
+    }
+
     if (action === "otp_pedir") {
       const email = String(body.email || doctor.email || "").trim();
       if (!email) return NextResponse.json({ error: "Informe o e-mail do cadastro na Prescreve" }, { status: 400 });
@@ -109,7 +151,7 @@ export async function POST(req: NextRequest) {
       if (body.pedirLink) {
         try { sncrUrl = (await sncrLoginUrl(login.access_token)).login_url; } catch { /* opcional */ }
       }
-      return NextResponse.json({ ok: true, saldo, sncrUrl });
+      return NextResponse.json({ ok: true, saldo, sncrUrl, token: login.access_token });
     }
 
     if (!doctor.prescreve_uuid) {
