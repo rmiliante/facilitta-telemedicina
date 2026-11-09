@@ -262,7 +262,7 @@ export function buildEvent(
         g("infoPerApur", g("ideEstabLot", x("tpInsc", "1") + x("nrInsc", digits(ctx.cnpj)) + x("codLotacao", COD_LOT) + g("remunPerApur", x("matricula", matricula) + itensXml))),
     );
     const ev = g("ideEvento", x("indRetif", "1") + x("indApuracao", "1") + x("perApur", perApur) + x("tpAmb", ctx.tpAmb) + x("procEmi", "1") + x("verProc", VER_PROC));
-    const trab = g("ideTrabalhador", x("cpfTrab", digits(emp.cpf)) + x("nmTrab", emp.full_name) + x("dtNascto", isoDate(d.dtNascto)));
+    const trab = g("ideTrabalhador", x("cpfTrab", digits(emp.cpf)));
     return { ok: true, tag: meta.tag, id, grupo: meta.grupo, xml: wrap(ev + ideEmpregador(ctx) + trab + dm) };
   }
 
