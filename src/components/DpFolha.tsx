@@ -2,6 +2,8 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import type { DpEmployee } from "@/lib/dp";
+import DpComissoes from "@/components/DpComissoes";
+import { abrirConferencia, abrirContracheques, type FolhaLinha } from "@/lib/contracheque";
 
 /* Folha e custos — Regularização / passivo + Guias e vencimentos.
    ESTIMATIVAS para apoio ao contador. Nada é enviado ao governo por esta tela. */
@@ -86,7 +88,7 @@ function baixarCsv(nome: string, linhas: (string | number)[][]) {
 }
 
 export default function DpFolha({ employees }: { employees: DpEmployee[] }) {
-  const [tab, setTab] = useState<"folha" | "passivo" | "guias">("passivo");
+  const [tab, setTab] = useState<"folha" | "passivo" | "guias" | "comissoes">("passivo");
   const [comissoes, setComissoes] = useState<Comissao[]>([]);
   const [guias, setGuias] = useState<Guia[]>([]);
   const [err, setErr] = useState<string | null>(null);
@@ -108,13 +110,15 @@ export default function DpFolha({ employees }: { employees: DpEmployee[] }) {
         <p className="text-sm text-zinc-500">Estimativas de apoio ao contador. Esta tela não envia nada ao governo; os valores finais são do contador.</p>
       </div>
       <div className="flex gap-2">
-        {([["folha", "Folha mensal"], ["passivo", "Regularização / passivo"], ["guias", "Guias e vencimentos"]] as const).map(([k, l]) => (
+        {([["folha", "Folha mensal"], ["passivo", "Regularização / passivo"], ["guias", "Guias e vencimentos"], ["comissoes", "Comissões e evolução"]] as const).map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} className={`rounded-full px-4 py-1.5 text-sm font-medium ${tab === k ? "bg-[#0b1f3a] text-white" : "border border-zinc-300 bg-white text-zinc-700"}`}>{l}</button>
         ))}
       </div>
       {err && <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">{err}</p>}
       {loading ? <p className="text-sm text-zinc-400">Carregando…</p> : tab === "folha" ? (
         <FolhaMensal employees={employees} comissoes={comissoes} />
+      ) : tab === "comissoes" ? (
+        <DpComissoes employees={employees} onSaved={load} />
       ) : tab === "passivo" ? (
         <Passivo employees={employees} comissoes={comissoes} onSaved={load} />
       ) : (
@@ -311,6 +315,20 @@ const ST_LABEL: Record<string, string> = { assinado: "gerado (não enviado)", en
 const btnL = "rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs font-semibold hover:bg-zinc-50 disabled:opacity-40";
 const btnEnviar = "rounded-md bg-amber-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-amber-500 disabled:opacity-40";
 
+const FERIADOS = ["01-01", "04-21", "05-01", "09-07", "10-12", "11-02", "11-15", "11-20", "12-25"];
+/** 5º dia útil do mês seguinte à competência (seg-sex, sem feriados nacionais fixos). */
+function quintoDiaUtil(comp: string): string {
+  const ym = nextYm(comp);
+  let n = 0;
+  for (let d = 1; d <= 31; d++) {
+    const dt = new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)) - 1, d);
+    const iso = ym + "-" + String(d).padStart(2, "0");
+    if (dt.getDay() === 0 || dt.getDay() === 6 || FERIADOS.includes(iso.slice(5))) continue;
+    if (++n === 5) return iso;
+  }
+  return ym + "-05";
+}
+
 function FolhaMensal({ employees, comissoes }: { employees: DpEmployee[]; comissoes: Comissao[] }) {
   const [evs, setEvs] = useState<Ev[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -318,6 +336,9 @@ function FolhaMensal({ employees, comissoes }: { employees: DpEmployee[]; comiss
   const [xml, setXml] = useState<{ titulo: string; xml: string } | null>(null);
   const [fpas, setFpas] = useState("515");
   const [dctf, setDctf] = useState(true);
+  const [pagto, setPagto] = useState("");
+  const [conf, setConf] = useState(false);
+  const [fechando, setFechando] = useState(false);
 
   const carregar = useCallback(async () => {
     const todos = await Promise.all(TIPOS_FOLHA.map((t) => fetch(`/api/admin/dp/esocial/events?tipo=${t}`).then((r) => r.json().catch(() => ({})))));
@@ -371,6 +392,34 @@ function FolhaMensal({ employees, comissoes }: { employees: DpEmployee[]; comiss
   const tabelasOk = ok(evRub("SAL")) && ok(ev1020);
   const funcMes = ativos.filter((e) => porFunc[e.id]?.[cur]);
   const todosRem = funcMes.length > 0 && funcMes.every((e) => ok(evRem(e.id)));
+  const linhasFolha: FolhaLinha[] = funcMes.map((e) => {
+    const m = porFunc[e.id][cur];
+    return { employee_id: e.id, nome: e.full_name, cpf: e.cpf, cargo: e.role_title, admissao: e.admitted_at, dias: m.dias, salario: m.salario, comissao: m.comissao, inss: m.inss, irrf: m.irrf, fgts: m.fgts, liquido: r2(m.base - m.inss - m.irrf) };
+  });
+  const pg = pagto || (cur ? quintoDiaUtil(cur) : "");
+  const semComissao = funcMes.filter((e) => !comissoes.some((c) => c.employee_id === e.id && c.competencia === cur));
+  const mesAberto = funcMes.some((e) => porFunc[e.id][cur].aberto);
+  const bloqueioFolha = !funcMes.length ? "Nenhum colaborador nesta competência." : mesAberto ? "Mês em curso: feche depois que o mês terminar." : semComissao.length ? "Informe a comissão do mês (0 se não houve) para: " + semComissao.map((e) => e.full_name).join(", ") : null;
+  async function gerarFolhaReal() {
+    setFechando(true);
+    const r = await fetch("/api/admin/dp/folha/fechar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ competencia: cur, pagamento: pg, linhas: linhasFolha }) });
+    const d = await r.json().catch(() => ({}));
+    setFechando(false);
+    setConf(false);
+    if (!r.ok) { setMsg(d.error ?? "Falha ao gerar a folha"); return; }
+    setMsg("Folha de " + labelComp(cur) + " gerada (" + d.folhas + " colaborador). Os contracheques abriram para imprimir ou salvar em PDF. Nada foi enviado ao eSocial.");
+    if (!abrirContracheques(linhasFolha, cur, pg)) setMsg("Folha gravada, mas o navegador bloqueou a janela dos contracheques. Libere pop-ups e clique em Gerar conferência / Gerar folha de novo.");
+  }
+  function gerarConferencia() {
+    const checks = [
+      { ok: !mesAberto, texto: "Competência encerrada" },
+      { ok: semComissao.length === 0, texto: "Comissão do mês informada" },
+      { ok: tabelasOk, texto: "Tabelas eSocial (S-1010 Salário e S-1020) processadas" },
+      { ok: linhasFolha.every((l) => l.comissao === 0) || ok(evRub("COM")), texto: "Rubrica de comissões (S-1010) processada, quando há comissão" },
+      { ok: linhasFolha.every((l) => l.irrf === 0), texto: "Sem IRRF devido (com IRRF, o S-1200 segue com o contador)" },
+    ];
+    abrirConferencia(linhasFolha, cur, pg, checks);
+  }
 
   function Linha({ chave, titulo, detalhe, ev, bloqueio, onGerar }: { chave: string; titulo: string; detalhe?: string; ev?: Ev; bloqueio?: string | null; onGerar: () => void }) {
     const rec = ev?.resposta?.resumo?.eventos?.[0];
@@ -414,6 +463,25 @@ function FolhaMensal({ employees, comissoes }: { employees: DpEmployee[]; comiss
       <div className="flex flex-wrap items-center gap-3 text-sm">
         Competência:
         <select className={inp} value={cur} onChange={(e) => setComp(e.target.value)}>{comps.map((c) => <option key={c} value={c}>{labelComp(c)}</option>)}</select>
+      </div>
+
+      <div className="rounded-xl border border-teal-300 bg-white p-4">
+        <h2 className="text-sm font-semibold text-[#0b1f3a]">Folha real · {labelComp(cur)}</h2>
+        <p className="mb-2 text-xs text-zinc-500">Gera a conferência (resumo e verificações) e, ao confirmar, grava a folha e emite os contracheques. Não envia nada ao eSocial.</p>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="text-xs text-zinc-600">Pagamento (5º dia útil) <input type="date" className={inp} value={pg} onChange={(e) => setPagto(e.target.value)} /></label>
+          <button className={btn2} disabled={!funcMes.length} onClick={gerarConferencia}>Gerar conferência</button>
+          {!conf ? (
+            <button className={btn} disabled={!!bloqueioFolha} title={bloqueioFolha ?? ""} onClick={() => setConf(true)}>Gerar folha</button>
+          ) : (
+            <span className="flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 p-2 text-sm text-amber-900">
+              Confirmar a folha real de {labelComp(cur)}: {linhasFolha.length} colaborador(es), líquido total {brl(linhasFolha.reduce((s, l) => s + l.liquido, 0))}?
+              <button className={btn} disabled={fechando} onClick={() => void gerarFolhaReal()}>{fechando ? "Gerando…" : "Confirmar e gerar"}</button>
+              <button className={btn2} onClick={() => setConf(false)}>Cancelar</button>
+            </span>
+          )}
+        </div>
+        {bloqueioFolha && <p className="mt-2 text-xs text-amber-700">{bloqueioFolha}</p>}
       </div>
 
       <div className="rounded-xl border border-zinc-200 bg-white p-4">
