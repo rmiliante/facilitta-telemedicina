@@ -282,7 +282,7 @@ function Guias({ employees, comissoes, guias, onSaved }: { employees: DpEmployee
                     <td className="p-2">{labelComp(c)}</td>
                     <td>{TIPOS[t].nome}</td>
                     <td><a className="text-sky-700 underline" href={TIPOS[t].url} target="_blank" rel="noopener noreferrer">{TIPOS[t].onde} ↗</a></td>
-                    <td>{valor === null || valor === undefined ? "—" : brl(Number(valor))}{g?.valor == null && estimado !== null && <span className="ml-1 text-xs text-zinc-400">est.</span>}</td>
+                    <td>{valor === null || valor === undefined ? "—" : brl(Number(valor))}{g?.valor == null && estimado !== null && <span className="ml-1 text-xs text-zinc-400">est.</span>}{atras && t === "darf" && valor != null && (() => { const dias = Math.round((new Date(hoje).getTime() - new Date(venc(c)).getTime()) / 86400000); const mu = r2(Number(valor) * Math.min(0.2, dias * 0.0033)); return <div className="text-[11px] text-red-700">+ multa ~{brl(mu)} ({dias}d) + juros Selic</div>; })()}{atras && t === "fgts" && <div className="text-[11px] text-red-700">multa e juros: o FGTS Digital calcula</div>}</td>
                     <td className={atras ? "font-semibold text-red-700" : ""}>{fmt(venc(c))}</td>
                     <td><span className={`rounded-full px-2 py-0.5 text-xs ${STATUS_STYLE[status]}`}>{status === "pendente" ? (atras ? "Atrasada" : "Pendente") : status === "emitida" ? "Guia emitida" : "Paga"}</span></td>
                     <td className={`text-xs ${sist.c}`}>{sist.t}</td>
@@ -354,6 +354,10 @@ function quintoDiaUtil(comp: string): string {
   return ym + "-05";
 }
 
+interface FolhaRow { employee_id: string; competencia: string; salario: number; comissao: number; dsr: number; inss: number; irrf: number; fgts: number; liquido: number; pagamento: string | null; status: string }
+interface Passo { label: string; tipo: string; params: Record<string, string>; employee_id?: string; match: (e: Ev) => boolean }
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 function FolhaMensal({ employees, comissoes }: { employees: DpEmployee[]; comissoes: Comissao[] }) {
   const [evs, setEvs] = useState<Ev[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -364,6 +368,16 @@ function FolhaMensal({ employees, comissoes }: { employees: DpEmployee[]; comiss
   const [pagto, setPagto] = useState("");
   const [conf, setConf] = useState(false);
   const [fechando, setFechando] = useState(false);
+  const [folhas, setFolhas] = useState<FolhaRow[]>([]);
+  const [confEnvio, setConfEnvio] = useState<"mes" | "todos" | null>(null);
+  const [rodando, setRodando] = useState(false);
+  const [prog, setProg] = useState<string[]>([]);
+
+  const carregarFolhas = useCallback(async () => {
+    const d = await fetch("/api/admin/dp/folha/fechar").then((r) => r.json().catch(() => ({})));
+    setFolhas((d.folhas ?? []) as FolhaRow[]);
+  }, []);
+  useEffect(() => { void carregarFolhas(); }, [carregarFolhas]);
 
   const carregar = useCallback(async () => {
     const todos = await Promise.all(TIPOS_FOLHA.map((t) => fetch(`/api/admin/dp/esocial/events?tipo=${t}`).then((r) => r.json().catch(() => ({})))));
@@ -425,12 +439,123 @@ function FolhaMensal({ employees, comissoes }: { employees: DpEmployee[]; comiss
   const semComissao = funcMes.filter((e) => !comissoes.some((c) => c.employee_id === e.id && c.competencia === cur));
   const mesAberto = funcMes.some((e) => porFunc[e.id][cur].aberto);
   const bloqueioFolha = !funcMes.length ? "Nenhum colaborador nesta competência." : mesAberto ? "Mês em curso: feche depois que o mês terminar." : semComissao.length ? "Informe a comissão do mês (0 se não houve) para: " + semComissao.map((e) => e.full_name).join(", ") : null;
+  const latest = (lista: Ev[], f: (e: Ev) => boolean) => lista.filter(f).sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+  const passosDe = (c: string): Passo[] => {
+    const fm = ativos.filter((e) => porFunc[e.id]?.[c]);
+    const p: Passo[] = [{ label: "Rubrica Salário (S-1010)", tipo: "S-1010", params: { rubrica: "SAL" }, match: (e) => e.tipo === "S-1010" && e.params?.rubrica === "SAL" }];
+    if (fm.some((e) => porFunc[e.id][c].comissao > 0)) p.push({ label: "Rubrica Comissões (S-1010)", tipo: "S-1010", params: { rubrica: "COM" }, match: (e) => e.tipo === "S-1010" && e.params?.rubrica === "COM" });
+    p.push({ label: "Lotação tributária (S-1020)", tipo: "S-1020", params: { fpas }, match: (e) => e.tipo === "S-1020" });
+    for (const e of fm) {
+      const m = porFunc[e.id][c];
+      p.push({ label: "Remuneração " + labelComp(c) + " · " + e.full_name + " (S-1200)", tipo: "S-1200", employee_id: e.id, params: { perApur: c, vrSal: m.salario.toFixed(2), vrCom: m.comissao + m.dsr > 0 ? (m.comissao + m.dsr).toFixed(2) : "" }, match: (x) => x.tipo === "S-1200" && x.employee_id === e.id && x.params?.perApur === c });
+    }
+    p.push({ label: "Fechamento " + labelComp(c) + " (S-1299)", tipo: "S-1299", params: { perApur: c, transDCTFWeb: dctf ? "S" : "N" }, match: (x) => x.tipo === "S-1299" && x.params?.perApur === c });
+    return p;
+  };
+  const bloqueioComp = (c: string): string | null => {
+    const fm = ativos.filter((e) => porFunc[e.id]?.[c]);
+    if (!fm.length) return "nenhum colaborador na competência";
+    if (fm.some((e) => porFunc[e.id][c].aberto)) return "mês em curso";
+    const sem = fm.filter((e) => !comissoes.some((x) => x.employee_id === e.id && x.competencia === c));
+    if (sem.length) return "informe a comissão do mês (0 se não houve) para " + sem.map((e) => e.full_name).join(", ") + " na aba Regularização / passivo";
+    if (fm.some((e) => porFunc[e.id][c].irrf > 0)) return "IRRF devido: o S-1200 ainda não informa IRRF, siga com o contador";
+    return null;
+  };
+  const pendentesDe = (c: string) => passosDe(c).filter((p) => latest(evs, p.match)?.status !== "processado").length;
+  const compsPend = comps.filter((c) => pendentesDe(c) > 0);
+  const amb = evs.find((e) => e.ambiente)?.ambiente;
+  const ambLabel = amb === "1" ? "PRODUÇÃO (valor legal)" : amb === "2" ? "HOMOLOGAÇÃO (teste)" : "ambiente conforme a configuração";
+
+  async function buscarEvs(): Promise<Ev[]> {
+    const todos = await Promise.all(TIPOS_FOLHA.map((t) => fetch("/api/admin/dp/esocial/events?tipo=" + t).then((r) => r.json().catch(() => ({})))));
+    const l = todos.flatMap((d) => (d.eventos ?? []) as Ev[]);
+    setEvs(l);
+    return l;
+  }
+  async function consultarAte(id: string): Promise<string> {
+    let st = "enviado";
+    for (let i = 0; i < 10; i++) {
+      await sleep(4000);
+      const r = await fetch("/api/admin/dp/esocial/events/" + id, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "consultar", confirm: true, confirmProducao: true }) });
+      const d = await r.json().catch(() => ({}));
+      st = d.status ?? st;
+      if (st === "processado" || st === "rejeitado" || st === "erro") break;
+    }
+    return st;
+  }
+  async function rodar(alvo: "mes" | "todos", enviar: boolean) {
+    setConfEnvio(null); setRodando(true); setProg([]); setMsg(null);
+    const log = (s: string) => setProg((p) => [...p, s]);
+    const lista = alvo === "mes" ? [cur] : compsPend;
+    try {
+      let atuais = await buscarEvs();
+      for (const c of lista) {
+        const bl = bloqueioComp(c);
+        if (bl) { log("✖ " + labelComp(c) + ": bloqueado — " + bl); return; }
+        for (const p of passosDe(c)) {
+          let ev = latest(atuais, p.match);
+          if (ev?.status === "processado") { continue; }
+          if (ev?.status === "enviado") {
+            const st = await consultarAte(ev.id);
+            atuais = await buscarEvs();
+            if (st !== "processado") { log("⏳ " + p.label + ": " + (ST_LABEL[st] ?? st) + ". Consulte o resultado depois."); return; }
+            log("✔ " + p.label + ": processado");
+            continue;
+          }
+          if (!ev || ev.status === "rejeitado") {
+            const r = await fetch("/api/admin/dp/esocial/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tipo: p.tipo, params: p.params, employee_id: p.employee_id }) });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) { log("✖ " + p.label + ": " + (d.error ?? "falha ao gerar") + (d.missing ? " (" + d.missing.join(", ") + ")" : "")); if (enviar) return; continue; }
+            atuais = await buscarEvs();
+            ev = latest(atuais, p.match);
+            log("• " + p.label + ": gerado e assinado");
+            if (!ev) { log("✖ " + p.label + ": evento não encontrado após gerar"); return; }
+          }
+          if (!enviar) continue;
+          const r2 = await fetch("/api/admin/dp/esocial/events/" + ev.id, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "enviar", confirm: true, confirmProducao: true }) });
+          const d2 = await r2.json().catch(() => ({}));
+          if (!r2.ok) { log("✖ " + p.label + ": " + (d2.error ?? "falha no envio")); return; }
+          log("➤ " + p.label + ": enviado, consultando…");
+          const st = await consultarAte(ev.id);
+          atuais = await buscarEvs();
+          if (st !== "processado") { log((st === "rejeitado" ? "✖ " : "⏳ ") + p.label + ": " + (ST_LABEL[st] ?? st) + (st === "rejeitado" ? " — veja o motivo nos passos abaixo." : ". Consulte o resultado depois.")); return; }
+          log("✔ " + p.label + ": processado");
+        }
+        log("✔ " + labelComp(c) + ": " + (enviar ? "competência concluída" : "eventos gerados"));
+      }
+    } finally {
+      setRodando(false);
+      await buscarEvs();
+    }
+  }
+  async function consultarTodos() {
+    setRodando(true); setProg([]);
+    const pend = evs.filter((e) => e.status === "enviado");
+    for (const e of pend) {
+      const r = await fetch("/api/admin/dp/esocial/events/" + e.id, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "consultar", confirm: true, confirmProducao: true }) });
+      const d = await r.json().catch(() => ({}));
+      setProg((p) => [...p, e.tipo + ": " + (d.status ?? d.error ?? "sem resposta")]);
+    }
+    if (!pend.length) setProg(["Nenhum evento aguardando resultado."]);
+    setRodando(false);
+    await buscarEvs();
+  }
+  function abrirContrachequesSalvos(c: string) {
+    const ls: FolhaLinha[] = folhas.filter((f) => f.competencia === c).map((f) => {
+      const e = employees.find((x) => x.id === f.employee_id);
+      return { employee_id: f.employee_id, nome: e?.full_name ?? "", cpf: e?.cpf ?? "", cargo: e?.role_title ?? "", admissao: e?.admitted_at ?? "", dias: porFunc[f.employee_id]?.[c]?.dias ?? 30, salario: Number(f.salario), comissao: Number(f.comissao), dsr: Number(f.dsr), inss: Number(f.inss), irrf: Number(f.irrf), fgts: Number(f.fgts), liquido: Number(f.liquido) };
+    });
+    const pgt = folhas.find((f) => f.competencia === c)?.pagamento ?? quintoDiaUtil(c);
+    if (!abrirContracheques(ls, c, pgt)) setMsg("O navegador bloqueou a janela. Libere pop-ups e tente de novo.");
+  }
+
   async function gerarFolhaReal() {
     setFechando(true);
     const r = await fetch("/api/admin/dp/folha/fechar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ competencia: cur, pagamento: pg, linhas: linhasFolha }) });
     const d = await r.json().catch(() => ({}));
     setFechando(false);
     setConf(false);
+    void carregarFolhas();
     if (!r.ok) { setMsg(d.error ?? "Falha ao gerar a folha"); return; }
     setMsg("Folha de " + labelComp(cur) + " gerada (" + d.folhas + " colaborador). Os contracheques abriram para imprimir ou salvar em PDF. Nada foi enviado ao eSocial.");
     if (!abrirContracheques(linhasFolha, cur, pg)) setMsg("Folha gravada, mas o navegador bloqueou a janela dos contracheques. Libere pop-ups e clique em Gerar conferência / Gerar folha de novo.");
@@ -507,6 +632,53 @@ function FolhaMensal({ employees, comissoes }: { employees: DpEmployee[]; comiss
           )}
         </div>
         {bloqueioFolha && <p className="mt-2 text-xs text-amber-700">{bloqueioFolha}</p>}
+      </div>
+
+      {folhas.length > 0 && (
+        <div className="rounded-xl border border-zinc-200 bg-white p-4">
+          <h2 className="text-sm font-semibold text-[#0b1f3a]">Contracheques emitidos</h2>
+          <p className="mb-2 text-xs text-zinc-500">Folhas já geradas. Abra de novo para imprimir ou salvar em PDF.</p>
+          <div className="flex flex-wrap gap-2">
+            {[...new Set(folhas.map((f) => f.competencia))].sort().reverse().map((c) => (
+              <button key={c} className={btnL} onClick={() => abrirContrachequesSalvos(c)}>📄 {labelComp(c)} · {folhas.filter((f) => f.competencia === c).length} colab.</button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="rounded-xl border border-amber-400 bg-white p-4">
+        <h2 className="text-sm font-semibold text-[#0b1f3a]">Envio ao eSocial · {labelComp(cur)}</h2>
+        <p className="mb-2 text-xs text-zinc-500">Envia na ordem certa e consulta o resultado de cada etapa antes de seguir. Ambiente: <b className={amb === "1" ? "text-red-700" : ""}>{ambLabel}</b>.</p>
+        {passosDe(cur).map((p, i) => {
+          const ev = latest(evs, p.match);
+          return (
+            <div key={i} className="flex flex-wrap items-center gap-2 border-t border-zinc-100 py-1.5 text-sm">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-zinc-200 text-[11px]">{i + 1}</span>
+              <span>{p.label}</span>
+              <span className={"ml-auto rounded-full px-2 py-0.5 text-xs " + (ev ? ST_STYLE[ev.status] : "bg-zinc-100 text-zinc-600")}>{ev ? ST_LABEL[ev.status] ?? ev.status : "não gerado"}</span>
+            </div>
+          );
+        })}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button className={btnEnviar + " !px-4 !py-2 !text-sm"} disabled={rodando || !!bloqueioComp(cur) || pendentesDe(cur) === 0} title={bloqueioComp(cur) ?? ""} onClick={() => setConfEnvio("mes")}>Gerar e enviar tudo</button>
+          {compsPend.length > 1 && <button className={btnL + " !px-3 !py-2"} disabled={rodando} onClick={() => setConfEnvio("todos")}>Enviar todos os meses pendentes ({compsPend.length})</button>}
+          <button className={btnL + " !px-3 !py-2"} disabled={rodando} onClick={() => void consultarTodos()}>Consultar resultados</button>
+          <button className={btnL + " !px-3 !py-2"} disabled={rodando || !!bloqueioComp(cur)} onClick={() => void rodar("mes", false)}>Só gerar (sem enviar)</button>
+        </div>
+        {bloqueioComp(cur) && <p className="mt-2 text-xs text-amber-700">Bloqueado: {bloqueioComp(cur)}.</p>}
+        {confEnvio && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+            <span>Confirmar o envio ao eSocial ({ambLabel}) de {confEnvio === "mes" ? pendentesDe(cur) + " evento(s) de " + labelComp(cur) : compsPend.map((c) => labelComp(c)).join(", ")}? Não dá para desfazer.</span>
+            <button className="rounded-md bg-red-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-600" onClick={() => void rodar(confEnvio, true)}>Sim, enviar agora</button>
+            <button className={btnL} onClick={() => setConfEnvio(null)}>Cancelar</button>
+          </div>
+        )}
+        {(rodando || prog.length > 0) && (
+          <div className="mt-3 rounded-md bg-zinc-50 p-2 text-xs text-zinc-700">
+            {rodando && <p className="mb-1 font-semibold">Em andamento… não feche esta tela.</p>}
+            {prog.map((l, i) => <p key={i}>{l}</p>)}
+          </div>
+        )}
       </div>
 
       <div className="rounded-xl border border-zinc-200 bg-white p-4">
