@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import type { DpEmployee } from "@/lib/dp";
 import DpComissoes from "@/components/DpComissoes";
+import DpVendedor from "@/components/DpVendedor";
 import { abrirConferencia, abrirContracheques, type FolhaLinha } from "@/lib/contracheque";
 
 /* Folha e custos — Regularização / passivo + Guias e vencimentos.
@@ -128,6 +129,16 @@ export default function DpFolha({ employees }: { employees: DpEmployee[] }) {
   }, []);
   useEffect(() => { void load(); }, [load]);
 
+  /* Dashboard do vendedor: custo mensal do colaborador de vendas (salário + comissão + DSR + FGTS + INSS patronal 20%). */
+  const vendEmp = useMemo(() => employees.find((e) => e.admitted_at && e.salary && e.role_title.toLowerCase().includes("vendas")), [employees]);
+  const vendInicio = vendEmp?.admitted_at?.slice(0, 10) ?? "2000-01-01";
+  const vendComis = useMemo(() => Object.fromEntries(comissoes.filter((c) => vendEmp && c.employee_id === vendEmp.id).map((c) => [c.competencia, Number(c.valor)])), [comissoes, vendEmp]);
+  const vendCusto = useCallback((ym: string, comissao: number) => {
+    if (!vendEmp) return 0;
+    const m = calcMeses(vendEmp, { ...vendComis, [ym]: comissao }, 0.08).find((x) => x.ym === ym);
+    return m ? r2(m.base + m.fgts + m.base * 0.2) : 0;
+  }, [vendEmp, vendComis]);
+
   return (
     <div className="space-y-4">
       <div>
@@ -143,7 +154,10 @@ export default function DpFolha({ employees }: { employees: DpEmployee[] }) {
       {loading ? <p className="text-sm text-zinc-400">Carregando…</p> : tab === "folha" ? (
         <FolhaMensal employees={employees} comissoes={comissoes} />
       ) : tab === "comissoes" ? (
-        <DpComissoes employees={employees} onSaved={load} />
+        <div className="space-y-4">
+          <DpVendedor inicio={vendInicio} comissoesReais={vendComis} custoFn={vendCusto} />
+          <DpComissoes employees={employees} onSaved={load} />
+        </div>
       ) : tab === "passivo" ? (
         <Passivo employees={employees} comissoes={comissoes} onSaved={load} />
       ) : (
