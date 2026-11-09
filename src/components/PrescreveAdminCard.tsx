@@ -54,6 +54,9 @@ export default function PrescreveAdminCard() {
         <div>
           <h3 className="text-sm font-semibold text-brand-navy">Receitas controladas (Prescreve)</h3>
           <p className="text-xs text-zinc-500">Quem vinculou a conta, quem está com o certificado conectado e o que foi emitido.</p>
+          <a href="/manuais/guia-receita-controlada.pdf" target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs font-semibold text-brand-teal-dark underline">
+            Manual das médicas (PDF)
+          </a>
         </div>
         <div className="text-right text-xs text-zinc-600">
           <p>{usado} de {limite} documentos no mês</p>
