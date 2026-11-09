@@ -4,31 +4,33 @@ import { useEffect, useRef, useState } from "react";
 import type { IssuedDocument } from "@/components/PrescriptionPanel";
 
 /**
- * Receita controlada (azul, amarela, controle especial) pela API de Prescrições da
- * Prescreve, com numeração SNCR do médico. Só aparece quando a flag
- * PRESCREVE_PRESCRICOES_ATIVO está ligada no servidor.
+ * Cadastro guiado + emissão de receita controlada (azul, amarela, controle especial)
+ * pela API de Prescrições da Prescreve. Só aparece com a flag PRESCREVE_PRESCRICOES_ATIVO.
+ * Passos: 1 dados, 2 conta Prescreve, 3 CRM validado, 4 certificado, 5 numeração SNCR.
  */
 
 interface Conta {
   ativo: boolean;
   cpfOk?: boolean;
+  dadosOk?: boolean;
+  faltando?: string[];
   vinculado?: boolean;
+  crmValidado?: boolean;
   conectado?: boolean;
   emailPadrao?: string | null;
-  provider?: string | null;
 }
 
-const TIPOS: { id: string; label: string; grupo: string }[] = [
-  { id: "B1", label: "Notificação AZUL (B1)", grupo: "Azul" },
-  { id: "B2", label: "Notificação AZUL (B2)", grupo: "Azul" },
-  { id: "A1", label: "Notificação AMARELA (A1)", grupo: "Amarela" },
-  { id: "A2", label: "Notificação AMARELA (A2)", grupo: "Amarela" },
-  { id: "A3", label: "Notificação AMARELA (A3)", grupo: "Amarela" },
-  { id: "C1", label: "Controle especial (C1)", grupo: "Especial" },
-  { id: "C5", label: "Controle especial (C5)", grupo: "Especial" },
-  { id: "C2", label: "Retinoides (C2)", grupo: "Especial" },
-  { id: "antimicrobiana", label: "Antimicrobiano", grupo: "Retenção" },
-  { id: "GLP1", label: "GLP-1", grupo: "Retenção" },
+const TIPOS: { id: string; label: string }[] = [
+  { id: "B1", label: "Notificação AZUL (B1)" },
+  { id: "B2", label: "Notificação AZUL (B2)" },
+  { id: "A1", label: "Notificação AMARELA (A1)" },
+  { id: "A2", label: "Notificação AMARELA (A2)" },
+  { id: "A3", label: "Notificação AMARELA (A3)" },
+  { id: "C1", label: "Controle especial (C1)" },
+  { id: "C5", label: "Controle especial (C5)" },
+  { id: "C2", label: "Retinoides (C2)" },
+  { id: "antimicrobiana", label: "Antimicrobiano" },
+  { id: "GLP1", label: "GLP-1" },
 ];
 
 const NOMES_SALDO: Record<string, string> = {
@@ -48,6 +50,25 @@ async function api(body: Record<string, unknown>) {
 const input = "w-full rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-brand-teal";
 const btn = "rounded-md px-3 py-2 text-xs font-semibold disabled:opacity-50";
 
+function Passo({ n, titulo, feito, atual, children }: { n: number; titulo: string; feito: boolean; atual: boolean; children?: React.ReactNode }) {
+  return (
+    <div className="flex gap-3 border-b border-zinc-100 py-3 last:border-0">
+      <div
+        className={
+          "flex h-6 w-6 flex-none items-center justify-center rounded-full text-xs font-bold " +
+          (feito ? "bg-emerald-100 text-emerald-800" : atual ? "bg-brand-navy text-white" : "bg-zinc-100 text-zinc-400")
+        }
+      >
+        {feito ? "✓" : n}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className={"text-sm font-semibold " + (feito || atual ? "text-brand-navy" : "text-zinc-400")}>{n + ". " + titulo}</p>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export default function ControlledPrescription({
   appointmentId,
   onIssued,
@@ -60,12 +81,20 @@ export default function ControlledPrescription({
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+
   const [email, setEmail] = useState("");
+  const [modoConta, setModoConta] = useState<"criar" | "vincular">("criar");
+  const [senha, setSenha] = useState("");
+  const [confirmacao, setConfirmacao] = useState("");
   const [codigoEnviado, setCodigoEnviado] = useState(false);
   const [codigo, setCodigo] = useState("");
   const [modoSncr, setModoSncr] = useState(false);
+  const [pedirToken, setPedirToken] = useState(false);
+  const token = useRef<string | null>(null);
   const [saldo, setSaldo] = useState<Record<string, number> | null>(null);
   const [sncrUrl, setSncrUrl] = useState<string | null>(null);
+  const [arquivo, setArquivo] = useState<File | null>(null);
+  const [crmMsg, setCrmMsg] = useState<string | null>(null);
   const [otpBird, setOtpBird] = useState("");
   const [esperandoApp, setEsperandoApp] = useState(false);
   const cancelPoll = useRef(false);
@@ -93,10 +122,25 @@ export default function ControlledPrescription({
 
   if (!conta || !conta.ativo) return null;
 
-  const pronto = !!conta.vinculado && !!conta.conectado;
-  const status = !conta.vinculado ? "Conta não vinculada" : !conta.conectado ? "Certificado desconectado" : "Pronto para assinar";
+  const passo1 = !!conta.dadosOk;
+  const passo2 = !!conta.vinculado;
+  const passo3 = passo2 && !!conta.crmValidado;
+  const passo4 = passo3 && !!conta.conectado;
+  const pronto = passo4;
+  const atual = !passo1 ? 1 : !passo2 ? 2 : !passo3 ? 3 : !passo4 ? 4 : 5;
+  const status = pronto ? "Pronto para assinar" : "Cadastro: passo " + atual + " de 5";
   const corStatus = pronto ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800";
 
+  async function criarConta() {
+    setBusy(true); setErro(null); setInfo(null);
+    const r = await api({ action: "criar_conta", email, senha, confirmacao });
+    setBusy(false);
+    setSenha(""); setConfirmacao("");
+    if (!r.ok) return setErro(String(r.error || "Não foi possível criar a conta"));
+    setCodigoEnviado(!!r.codigoEnviado);
+    setInfo(r.codigoEnviado ? "Conta criada. Enviamos um código para " + String(r.email) + "." : "Conta criada. Clique em Enviar código para confirmar.");
+    setModoConta("vincular");
+  }
   async function pedirCodigo() {
     setBusy(true); setErro(null); setInfo(null);
     const r = await api({ action: "otp_pedir", email });
@@ -109,11 +153,25 @@ export default function ControlledPrescription({
     const r = await api({ action: "otp_validar", email, codigo, pedirLink: modoSncr });
     setBusy(false);
     if (!r.ok) return setErro(String(r.error || "Código inválido"));
+    token.current = (r.token as string) || null;
     setSaldo((r.saldo as Record<string, number>) || null);
     setSncrUrl((r.sncrUrl as string) || null);
-    setCodigo(""); setCodigoEnviado(false);
+    setCodigo(""); setCodigoEnviado(false); setPedirToken(false);
     setInfo("Conta confirmada.");
     carregar();
+  }
+  async function enviarCrm() {
+    if (!arquivo || !token.current) return;
+    setBusy(true); setErro(null); setInfo(null); setCrmMsg(null);
+    const fd = new FormData();
+    fd.append("token", token.current);
+    fd.append("file", arquivo);
+    const res = await fetch("/api/doctor/prescreve/validacao", { method: "POST", body: fd }).catch(() => null);
+    const r = res ? await res.json().catch(() => ({})) : { error: "Sem conexão. Tente de novo." };
+    setBusy(false);
+    if (!res || !res.ok) return setErro(String(r.error || "Falha ao enviar"));
+    if (r.validado) { setInfo("CRM validado."); setArquivo(null); carregar(); }
+    else setCrmMsg(String(r.motivo || "O documento foi enviado e está em análise. Volte mais tarde."));
   }
   async function conectarBird() {
     setBusy(true); setErro(null);
@@ -160,7 +218,22 @@ export default function ControlledPrescription({
     setNome(""); setConc(""); setForma(""); setQtd(""); setObs("");
   }
 
-  const mostrarOtp = !conta.vinculado || modoSncr;
+  function blocoCodigo(texto: string) {
+    return (
+      <div className="mt-2 space-y-2 rounded-md border border-zinc-200 bg-white p-3">
+        <p className="text-xs text-zinc-600">{texto}</p>
+        <input className={input} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail da sua conta na Prescreve" disabled={codigoEnviado} />
+        {!codigoEnviado ? (
+          <button type="button" disabled={busy || !email} onClick={pedirCodigo} className={btn + " bg-brand-navy text-white"}>Enviar código</button>
+        ) : (
+          <div className="flex gap-2">
+            <input className={input} value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="Código recebido" inputMode="numeric" />
+            <button type="button" disabled={busy || !codigo} onClick={validarCodigo} className={btn + " bg-brand-teal text-white"}>Confirmar</button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="border-b border-zinc-100 bg-zinc-50 px-5 py-3">
@@ -172,76 +245,121 @@ export default function ControlledPrescription({
       </div>
 
       {open && (
-        <div className="mt-3 space-y-3 text-sm">
-          {!conta.cpfOk && (
-            <p className="rounded-md bg-red-50 p-2 text-xs text-red-700">Falta o seu CPF no cadastro. Peça à administração para completar.</p>
-          )}
+        <div className="mt-3 text-sm">
+          <div className="rounded-md border border-zinc-200 bg-white px-3">
+            <Passo n={1} titulo="Seus dados" feito={passo1} atual={atual === 1}>
+              {!passo1 && (
+                <p className="mt-1 rounded-md bg-red-50 p-2 text-xs text-red-700">
+                  Falta no seu cadastro da Facilitta: {(conta.faltando || []).join(", ")}. Peça à administração para completar.
+                </p>
+              )}
+            </Passo>
 
-          {mostrarOtp && conta.cpfOk && (
-            <div className="space-y-2 rounded-md border border-zinc-200 bg-white p-3">
-              <p className="text-xs text-zinc-600">
-                {modoSncr
-                  ? "Para ver sua numeração SNCR ou pedir mais, confirme sua conta com um código enviado por e-mail."
-                  : "Vincule sua conta da Prescreve. Enviamos um código para o e-mail do seu cadastro lá (a Facilitta não guarda senha)."}
-              </p>
-              <input className={input} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail do cadastro na Prescreve" disabled={codigoEnviado} />
-              {!codigoEnviado ? (
-                <button type="button" disabled={busy || !email} onClick={pedirCodigo} className={btn + " bg-brand-navy text-white"}>Enviar código</button>
-              ) : (
-                <div className="flex gap-2">
-                  <input className={input} value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="Código recebido" inputMode="numeric" />
-                  <button type="button" disabled={busy || !codigo} onClick={validarCodigo} className={btn + " bg-brand-teal text-white"}>Confirmar</button>
+            <Passo n={2} titulo="Conta da Prescreve" feito={passo2} atual={atual === 2}>
+              {passo1 && !passo2 && (
+                <div className="mt-1">
+                  <div className="mb-2 flex gap-2 text-xs">
+                    <button type="button" onClick={() => setModoConta("criar")} className={btn + (modoConta === "criar" ? " bg-brand-navy text-white" : " border border-zinc-300 bg-white text-zinc-700")}>Criar minha conta</button>
+                    <button type="button" onClick={() => setModoConta("vincular")} className={btn + (modoConta === "vincular" ? " bg-brand-navy text-white" : " border border-zinc-300 bg-white text-zinc-700")}>Já tenho conta</button>
+                  </div>
+                  {modoConta === "criar" && !codigoEnviado ? (
+                    <div className="space-y-2 rounded-md border border-zinc-200 bg-white p-3">
+                      <p className="text-xs text-zinc-600">A Facilitta cria a sua conta na Prescreve com os dados do seu cadastro. Escolha o e-mail e uma senha (mínimo 6 caracteres). A senha não fica guardada na Facilitta.</p>
+                      <input className={input} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Seu e-mail" autoComplete="email" />
+                      <input className={input} type="password" value={senha} onChange={(e) => setSenha(e.target.value)} placeholder="Escolha uma senha" autoComplete="new-password" />
+                      <input className={input} type="password" value={confirmacao} onChange={(e) => setConfirmacao(e.target.value)} placeholder="Repita a senha" autoComplete="new-password" />
+                      <button type="button" disabled={busy || !email || !senha || !confirmacao} onClick={criarConta} className={btn + " bg-brand-navy text-white"}>Criar conta</button>
+                    </div>
+                  ) : (
+                    blocoCodigo("Enviamos um código para o e-mail da sua conta na Prescreve. Digite aqui para confirmar.")
+                  )}
                 </div>
               )}
-            </div>
-          )}
+              {passo2 && <p className="mt-1 text-xs text-zinc-500">Conta vinculada.</p>}
+            </Passo>
 
-          {conta.vinculado && !modoSncr && (
-            <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => { setModoSncr(true); setCodigoEnviado(false); setSaldo(null); setSncrUrl(null); }} className={btn + " border border-zinc-300 bg-white text-zinc-700"}>
-                Numeração SNCR
-              </button>
-              {conta.conectado && (
-                <button type="button" disabled={busy} onClick={async () => { await api({ action: "encerrar" }); carregar(); }} className={btn + " border border-zinc-300 bg-white text-zinc-700"}>
-                  Encerrar sessão do certificado
-                </button>
+            <Passo n={3} titulo="Validação do CRM" feito={passo3} atual={atual === 3}>
+              {passo2 && !passo3 && (
+                <div className="mt-1 space-y-2">
+                  <p className="text-xs text-zinc-600">Envie uma foto ou PDF da carteira do conselho. A validação é automática e pode passar por revisão manual. Sem ela aprovada, não é possível emitir.</p>
+                  {!token.current || pedirToken ? (
+                    blocoCodigo("Para enviar o documento, confirme sua conta com o código do e-mail.")
+                  ) : (
+                    <div className="space-y-2 rounded-md border border-zinc-200 bg-white p-3">
+                      <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(e) => setArquivo(e.target.files?.[0] || null)} className="w-full text-xs" />
+                      <button type="button" disabled={busy || !arquivo} onClick={enviarCrm} className={btn + " bg-brand-navy text-white"}>
+                        {busy ? "Enviando..." : "Enviar para validação"}
+                      </button>
+                    </div>
+                  )}
+                  {crmMsg && <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-800">{crmMsg}</p>}
+                  {token.current && (
+                    <button type="button" onClick={carregar} className="text-xs text-zinc-500 underline">Atualizar situação</button>
+                  )}
+                </div>
               )}
-            </div>
-          )}
+            </Passo>
 
-          {saldo && (
-            <div className="rounded-md border border-zinc-200 bg-white p-3">
-              <p className="mb-1 text-xs font-semibold text-zinc-700">Sua numeração disponível</p>
-              <div className="flex flex-wrap gap-2 text-xs">
-                {Object.entries(saldo).map(([k, v]) => (
-                  <span key={k} className={"rounded-full px-2 py-0.5 " + (v > 0 ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-700")}>
-                    {(NOMES_SALDO[k] || k) + ": " + v}
-                  </span>
-                ))}
-              </div>
-              {sncrUrl && (
-                <a href={sncrUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs font-semibold text-brand-teal-dark underline">
-                  Pedir mais numeração no Gov.br (o link vale 5 minutos)
-                </a>
+            <Passo n={4} titulo="Certificado digital" feito={passo4} atual={atual === 4}>
+              {passo3 && !passo4 && (
+                <div className="mt-1 space-y-2 rounded-md border border-zinc-200 bg-white p-3">
+                  <p className="text-xs text-zinc-600">A aprovação vale por 8 horas.</p>
+                  <button type="button" disabled={busy || esperandoApp} onClick={conectarVidaas} className={btn + " bg-brand-navy text-white"}>
+                    {esperandoApp ? "Aguardando aprovação no app VIDaaS..." : "Conectar com VIDaaS"}
+                  </button>
+                  <div className="flex gap-2">
+                    <input className={input} value={otpBird} onChange={(e) => setOtpBird(e.target.value)} placeholder="Código do app BirdID" inputMode="numeric" />
+                    <button type="button" disabled={busy || !otpBird} onClick={conectarBird} className={btn + " bg-brand-teal text-white"}>BirdID</button>
+                  </div>
+                </div>
               )}
-            </div>
-          )}
+              {passo4 && (
+                <div className="mt-1 flex items-center gap-2">
+                  <p className="text-xs text-zinc-500">Conectado.</p>
+                  <button type="button" disabled={busy} onClick={async () => { await api({ action: "encerrar" }); carregar(); }} className="text-xs text-zinc-500 underline">Encerrar sessão</button>
+                </div>
+              )}
+            </Passo>
 
-          {conta.vinculado && !conta.conectado && (
-            <div className="space-y-2 rounded-md border border-zinc-200 bg-white p-3">
-              <p className="text-xs text-zinc-600">Conecte seu certificado digital. A aprovação vale por 8 horas.</p>
-              <button type="button" disabled={busy || esperandoApp} onClick={conectarVidaas} className={btn + " bg-brand-navy text-white"}>
-                {esperandoApp ? "Aguardando aprovação no app VIDaaS..." : "Conectar com VIDaaS"}
-              </button>
-              <div className="flex gap-2">
-                <input className={input} value={otpBird} onChange={(e) => setOtpBird(e.target.value)} placeholder="Código do app BirdID" inputMode="numeric" />
-                <button type="button" disabled={busy || !otpBird} onClick={conectarBird} className={btn + " bg-brand-teal text-white"}>BirdID</button>
-              </div>
-            </div>
-          )}
+            <Passo n={5} titulo="Numeração SNCR" feito={false} atual={atual === 5}>
+              {passo2 && (
+                <div className="mt-1 space-y-2">
+                  <p className="text-xs text-zinc-600">
+                    Os números são seus e o pedido é sempre feito por você, com o seu Gov.br. Azul e amarela: você escolhe de 10 a 50 números por tipo, por pedido (depende do que a Vigilância Sanitária já liberou). Controle especial e retenção: 1.000 números por pedido, no máximo 3 pedidos por mês. O saldo atualiza na hora.
+                  </p>
+                  {!modoSncr ? (
+                    <button type="button" onClick={() => { setModoSncr(true); setCodigoEnviado(false); setSaldo(null); setSncrUrl(null); }} className={btn + " border border-zinc-300 bg-white text-zinc-700"}>Ver saldo / pedir numeração</button>
+                  ) : (
+                    <>
+                      {!saldo && blocoCodigo("Confirme sua conta com o código do e-mail para ver o saldo e abrir o pedido.")}
+                      {saldo && (
+                        <div className="rounded-md border border-zinc-200 bg-white p-3">
+                          <p className="mb-1 text-xs font-semibold text-zinc-700">Sua numeração disponível</p>
+                          <div className="flex flex-wrap gap-2 text-xs">
+                            {Object.entries(saldo).map(([k, v]) => (
+                              <span key={k} className={"rounded-full px-2 py-0.5 " + (v > 0 ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-700")}>
+                                {(NOMES_SALDO[k] || k) + ": " + v}
+                              </span>
+                            ))}
+                          </div>
+                          {sncrUrl && (
+                            <a href={sncrUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs font-semibold text-brand-teal-dark underline">
+                              Pedir mais numeração no Gov.br (o link vale 5 minutos)
+                            </a>
+                          )}
+                          <p className="mt-1 text-[11px] text-zinc-500">Depois do pedido, abra de novo "Ver saldo" para atualizar.</p>
+                        </div>
+                      )}
+                      <button type="button" onClick={() => { setModoSncr(false); setCodigoEnviado(false); }} className="text-xs text-zinc-500 underline">Fechar</button>
+                    </>
+                  )}
+                </div>
+              )}
+            </Passo>
+          </div>
 
-          {pronto && !modoSncr && (
-            <div className="space-y-2 rounded-md border border-zinc-200 bg-white p-3">
+          {pronto && (
+            <div className="mt-3 space-y-2 rounded-md border border-zinc-200 bg-white p-3">
               <select className={input} value={tipo} onChange={(e) => setTipo(e.target.value)}>
                 {TIPOS.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
               </select>
@@ -262,13 +380,9 @@ export default function ControlledPrescription({
             </div>
           )}
 
-          {modoSncr && conta.vinculado && (
-            <button type="button" onClick={() => { setModoSncr(false); setCodigoEnviado(false); }} className="text-xs text-zinc-500 underline">Voltar</button>
-          )}
-
-          {emitido && <p className="rounded-md bg-emerald-50 p-2 text-xs text-emerald-800">Receita controlada emitida e assinada. Nº SNCR: {emitido}</p>}
-          {info && <p className="text-xs text-zinc-600">{info}</p>}
-          {erro && <p className="rounded-md bg-red-50 p-2 text-xs text-red-700">{erro}</p>}
+          {emitido && <p className="mt-2 rounded-md bg-emerald-50 p-2 text-xs text-emerald-800">Receita controlada emitida e assinada. Nº SNCR: {emitido}</p>}
+          {info && <p className="mt-2 text-xs text-zinc-600">{info}</p>}
+          {erro && <p className="mt-2 rounded-md bg-red-50 p-2 text-xs text-red-700">{erro}</p>}
         </div>
       )}
     </div>
