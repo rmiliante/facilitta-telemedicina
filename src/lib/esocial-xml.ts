@@ -259,7 +259,7 @@ export function buildEvent(
       "dmDev",
       x("ideDmDev", perApur.replace("-", "") + "01") +
         x("codCateg", d.codCateg || "101") +
-        g("infoPerApur", g("ideEstabLot", x("tpInsc", "1") + x("nrInsc", digits(ctx.cnpj)) + x("codLotacao", COD_LOT) + g("remunPerApur", x("matricula", matricula) + itensXml))),
+        g("infoPerApur", g("ideEstabLot", x("tpInsc", "1") + x("nrInsc", digits(ctx.cnpj)) + x("codLotacao", COD_LOT) + g("remunPerApur", x("matricula", matricula) + itensXml + g("infoAgNocivo", x("grauExp", "1"))))),
     );
     const ev = g("ideEvento", x("indRetif", "1") + x("indApuracao", "1") + x("perApur", perApur) + x("tpAmb", ctx.tpAmb) + x("procEmi", "1") + x("verProc", VER_PROC));
     const trab = g("ideTrabalhador", x("cpfTrab", digits(emp.cpf)));
