@@ -29,6 +29,17 @@ function inssEmpregado(base: number): number {
   return r2(tot);
 }
 
+/* IRRF mensal 2026 (Lei 15.270/2025): tabela progressiva, desconto simplificado R$ 607,20 ou INSS + dependentes (R$ 189,59), isenção até R$ 5.000 e redutor até R$ 7.350. CONFERIR com o contador. */
+const IRRF_TAB: [number, number, number][] = [[2428.8, 0, 0], [2826.65, 0.075, 182.16], [3751.05, 0.15, 394.16], [4664.68, 0.225, 675.49], [Infinity, 0.275, 908.73]];
+function irrfMensal(bruto: number, inss: number, dependentes = 0): number {
+  const ded = Math.max(inss + dependentes * 189.59, 607.2);
+  const base = Math.max(0, bruto - ded);
+  const f = IRRF_TAB.find(([teto]) => base <= teto)!;
+  const imposto = Math.max(0, base * f[1] - f[2]);
+  const redutor = bruto <= 5000 ? imposto : bruto <= 7350 ? Math.max(0, 978.62 - 0.133145 * bruto) : 0;
+  return r2(Math.max(0, imposto - redutor));
+}
+
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const ymOf = (d: string) => d.slice(0, 7);
 const daysIn = (ym: string) => new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0).getDate();
@@ -37,7 +48,7 @@ function nextYm(ym: string) {
   return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
 }
 
-interface Mes { ym: string; dias: number; salario: number; comissao: number; base: number; fgts: number; inss: number; aberto: boolean }
+interface Mes { ym: string; dias: number; salario: number; comissao: number; base: number; fgts: number; inss: number; irrf: number; aberto: boolean }
 
 /** Meses de vínculo (admissão → hoje/desligamento) com salário proporcional, comissão informada, FGTS 8% e INSS. */
 function calcMeses(e: DpEmployee, comis: Record<string, number>, fgtsPct: number): Mes[] {
@@ -55,7 +66,7 @@ function calcMeses(e: DpEmployee, comis: Record<string, number>, fgtsPct: number
     const salario = r2((e.salary * dias) / dim);
     const comissao = comis[ym] ?? 0;
     const base = r2(salario + comissao);
-    out.push({ ym, dias, salario, comissao, base, fgts: r2(base * fgtsPct), inss: inssEmpregado(base), aberto: ym === ymOf(hoje) });
+    out.push({ ym, dias, salario, comissao, base, fgts: r2(base * fgtsPct), inss: inssEmpregado(base), irrf: irrfMensal(base, inssEmpregado(base)), aberto: ym === ymOf(hoje) });
   }
   return out;
 }
@@ -413,10 +424,11 @@ function FolhaMensal({ employees, comissoes }: { employees: DpEmployee[]; comiss
           let bloqueio: string | null = null;
           if (!tabelasOk) bloqueio = "Antes: S-1010 (Salário) e S-1020 precisam estar processados.";
           else if (m.comissao > 0 && !ok(evRub("COM"))) bloqueio = "Antes: a rubrica de Comissões (S-1010) precisa estar processada.";
+          else if (m.irrf > 0) bloqueio = `IRRF devido (${brl(m.irrf)}): o S-1200 ainda não informa IRRF. Envie esta competência com o contador.`;
           else if (m.aberto) bloqueio = "Mês em curso: gere depois que o mês terminar.";
           else if (!temCom) bloqueio = "Informe a comissão do mês (0 se não houve) na aba Regularização / passivo.";
           return (
-            <Linha key={e.id} chave={"rem" + e.id} titulo={e.full_name} detalhe={`salário ${brl(m.salario)} · comissão ${brl(m.comissao)} · INSS ${brl(m.inss)} · FGTS ${brl(m.fgts)}`} ev={evRem(e.id)} bloqueio={bloqueio}
+            <Linha key={e.id} chave={"rem" + e.id} titulo={e.full_name} detalhe={`salário ${brl(m.salario)} · comissão ${brl(m.comissao)} · INSS ${brl(m.inss)} · IRRF ${brl(m.irrf)} · líquido ${brl(m.base - m.inss - m.irrf)} · FGTS ${brl(m.fgts)}`} ev={evRem(e.id)} bloqueio={bloqueio}
               onGerar={() => void gerar("rem" + e.id, "S-1200", { perApur: cur, vrSal: m.salario.toFixed(2), vrCom: m.comissao > 0 ? m.comissao.toFixed(2) : "" }, e.id)} />
           );
         })}
