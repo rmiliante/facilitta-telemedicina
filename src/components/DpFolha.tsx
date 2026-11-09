@@ -42,6 +42,30 @@ function irrfMensal(bruto: number, inss: number, dependentes = 0): number {
   return r2(Math.max(0, imposto - redutor));
 }
 
+function pascoa(y: number): Date {
+  const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const mes = Math.floor((h + l - 7 * m + 114) / 31), dia = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(y, mes - 1, dia);
+}
+function ehFeriado(dt: Date): boolean {
+  const mmdd = String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0");
+  if (FERIADOS.includes(mmdd)) return true;
+  const sx = pascoa(dt.getFullYear());
+  sx.setDate(sx.getDate() - 2);
+  return sx.getMonth() === dt.getMonth() && sx.getDate() === dt.getDate();
+}
+/** DSR sobre comissão = comissão ÷ dias úteis trabalhados (seg-sáb, sem feriados) × domingos e feriados do período. */
+function dsrComissao(ym: string, d1: number, d2: number, comissao: number): number {
+  if (comissao <= 0) return 0;
+  let uteis = 0, repouso = 0;
+  for (let d = d1; d <= d2; d++) {
+    const dt = new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)) - 1, d);
+    if (dt.getDay() === 0 || ehFeriado(dt)) repouso++; else uteis++;
+  }
+  return uteis > 0 ? r2((comissao / uteis) * repouso) : 0;
+}
+
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const ymOf = (d: string) => d.slice(0, 7);
 const daysIn = (ym: string) => new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0).getDate();
@@ -50,7 +74,7 @@ function nextYm(ym: string) {
   return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
 }
 
-interface Mes { ym: string; dias: number; salario: number; comissao: number; base: number; fgts: number; inss: number; irrf: number; aberto: boolean }
+interface Mes { ym: string; dias: number; salario: number; comissao: number; base: number; fgts: number; inss: number; irrf: number; dsr: number; aberto: boolean }
 
 /** Meses de vínculo (admissão → hoje/desligamento) com salário proporcional, comissão informada, FGTS 8% e INSS. */
 function calcMeses(e: DpEmployee, comis: Record<string, number>, fgtsPct: number): Mes[] {
@@ -67,8 +91,9 @@ function calcMeses(e: DpEmployee, comis: Record<string, number>, fgtsPct: number
     const dias = d2 - d1 + 1;
     const salario = r2((e.salary * dias) / dim);
     const comissao = comis[ym] ?? 0;
-    const base = r2(salario + comissao);
-    out.push({ ym, dias, salario, comissao, base, fgts: r2(base * fgtsPct), inss: inssEmpregado(base), irrf: irrfMensal(base, inssEmpregado(base)), aberto: ym === ymOf(hoje) });
+    const dsr = dsrComissao(ym, d1, d2, comissao);
+    const base = r2(salario + comissao + dsr);
+    out.push({ ym, dias, salario, comissao, dsr, base, fgts: r2(base * fgtsPct), inss: inssEmpregado(base), irrf: irrfMensal(base, inssEmpregado(base)), aberto: ym === ymOf(hoje) });
   }
   return out;
 }
@@ -394,7 +419,7 @@ function FolhaMensal({ employees, comissoes }: { employees: DpEmployee[]; comiss
   const todosRem = funcMes.length > 0 && funcMes.every((e) => ok(evRem(e.id)));
   const linhasFolha: FolhaLinha[] = funcMes.map((e) => {
     const m = porFunc[e.id][cur];
-    return { employee_id: e.id, nome: e.full_name, cpf: e.cpf, cargo: e.role_title, admissao: e.admitted_at, dias: m.dias, salario: m.salario, comissao: m.comissao, inss: m.inss, irrf: m.irrf, fgts: m.fgts, liquido: r2(m.base - m.inss - m.irrf) };
+    return { employee_id: e.id, nome: e.full_name, cpf: e.cpf, cargo: e.role_title, admissao: e.admitted_at, dias: m.dias, salario: m.salario, comissao: m.comissao, dsr: m.dsr, inss: m.inss, irrf: m.irrf, fgts: m.fgts, liquido: r2(m.base - m.inss - m.irrf) };
   });
   const pg = pagto || (cur ? quintoDiaUtil(cur) : "");
   const semComissao = funcMes.filter((e) => !comissoes.some((c) => c.employee_id === e.id && c.competencia === cur));
@@ -496,8 +521,8 @@ function FolhaMensal({ employees, comissoes }: { employees: DpEmployee[]; comiss
           else if (m.aberto) bloqueio = "Mês em curso: gere depois que o mês terminar.";
           else if (!temCom) bloqueio = "Informe a comissão do mês (0 se não houve) na aba Regularização / passivo.";
           return (
-            <Linha key={e.id} chave={"rem" + e.id} titulo={e.full_name} detalhe={`salário ${brl(m.salario)} · comissão ${brl(m.comissao)} · INSS ${brl(m.inss)} · IRRF ${brl(m.irrf)} · líquido ${brl(m.base - m.inss - m.irrf)} · FGTS ${brl(m.fgts)}`} ev={evRem(e.id)} bloqueio={bloqueio}
-              onGerar={() => void gerar("rem" + e.id, "S-1200", { perApur: cur, vrSal: m.salario.toFixed(2), vrCom: m.comissao > 0 ? m.comissao.toFixed(2) : "" }, e.id)} />
+            <Linha key={e.id} chave={"rem" + e.id} titulo={e.full_name} detalhe={`salário ${brl(m.salario)} · comissão ${brl(m.comissao)} · DSR ${brl(m.dsr)} · INSS ${brl(m.inss)} · IRRF ${brl(m.irrf)} · líquido ${brl(m.base - m.inss - m.irrf)} · FGTS ${brl(m.fgts)}`} ev={evRem(e.id)} bloqueio={bloqueio}
+              onGerar={() => void gerar("rem" + e.id, "S-1200", { perApur: cur, vrSal: m.salario.toFixed(2), vrCom: m.comissao + m.dsr > 0 ? (m.comissao + m.dsr).toFixed(2) : "" }, e.id)} />
           );
         })}
       </div>
