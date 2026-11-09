@@ -1,6 +1,7 @@
 "use client";
 
 import CaptacaoFunil from "@/components/CaptacaoFunil";
+import PrescreveAdminCard from "@/components/PrescreveAdminCard";
 import ManuaisTab, { ManuaisSubmenu, MANUAIS_CATEGORY_EVENT } from "@/components/ManuaisTab";
 import DashboardTabs from "./DashboardTabs";
 import LogoutButton from "./LogoutButton";
@@ -1269,6 +1270,7 @@ function DoctorsTab() {
   return (
     <div className="space-y-6">
       <SigningCreditsCard />
+      <PrescreveAdminCard />
       <form onSubmit={handleCreate} className="grid gap-3 rounded-lg border border-zinc-200 bg-white p-4 sm:grid-cols-2">
         <label className="text-xs">
           <span className="mb-1 block font-medium text-zinc-600">Nome</span>
