@@ -13,6 +13,7 @@ export interface FolhaLinha {
   dias: number;
   salario: number;
   comissao: number;
+  dsr: number;
   inss: number;
   irrf: number;
   fgts: number;
@@ -48,12 +49,13 @@ function abrir(titulo: string, corpo: string): boolean {
 }
 
 function reciboHtml(l: FolhaLinha, comp: string, pagamento: string): string {
-  const bruto = l.salario + l.comissao;
+  const bruto = l.salario + l.comissao + l.dsr;
   const desc = l.inss + l.irrf;
   const lin = (cod: string, d: string, ref: string, prov: number | null, des: number | null) =>
     "<tr><td>" + cod + "</td><td>" + d + "</td><td class='r'>" + ref + "</td><td class='r'>" + (prov === null ? "" : money(prov)) + "</td><td class='r'>" + (des === null ? "" : money(des)) + "</td></tr>";
   let rows = lin("001", "Salário", l.dias + " dias", l.salario, null);
   if (l.comissao > 0) rows += lin("002", "Comissões sobre vendas", "", l.comissao, null);
+  if (l.dsr > 0) rows += lin("003", "DSR sobre comissões", "", l.dsr, null);
   rows += lin("101", "INSS (empregado)", "", null, l.inss);
   if (l.irrf > 0) rows += lin("102", "IRRF", "", null, l.irrf);
   return (
@@ -80,13 +82,13 @@ export interface Checagem { ok: boolean; texto: string }
 export function abrirConferencia(linhas: FolhaLinha[], comp: string, pagamento: string, checks: Checagem[]): boolean {
   const tot = (f: (l: FolhaLinha) => number) => money(linhas.reduce((s, l) => s + f(l), 0));
   const rows = linhas
-    .map((l) => "<tr><td>" + esc(l.nome) + "</td><td class='r'>" + money(l.salario) + "</td><td class='r'>" + money(l.comissao) + "</td><td class='r'>" + money(l.inss) + "</td><td class='r'>" + money(l.irrf) + "</td><td class='r'>" + money(l.fgts) + "</td><td class='r'><b>" + money(l.liquido) + "</b></td></tr>")
+    .map((l) => "<tr><td>" + esc(l.nome) + "</td><td class='r'>" + money(l.salario) + "</td><td class='r'>" + money(l.comissao + l.dsr) + "</td><td class='r'>" + money(l.inss) + "</td><td class='r'>" + money(l.irrf) + "</td><td class='r'>" + money(l.fgts) + "</td><td class='r'><b>" + money(l.liquido) + "</b></td></tr>")
     .join("");
   const ck = checks.map((c) => "<li class='" + (c.ok ? "ok" : "bad") + "'>" + (c.ok ? "✔ " : "✖ ") + esc(c.texto) + "</li>").join("");
   const html =
     "<div class='top'><div><h1>CONFERÊNCIA DA FOLHA</h1><div>Competência: <b>" + nome(comp) + "</b> · Pagamento previsto: <b>" + dataBr(pagamento) + "</b></div></div><div style='text-align:right'><b>" + EMPREGADOR.nome + "</b><br>CNPJ " + EMPREGADOR.cnpj + "</div></div>" +
-    "<h2>Resumo por colaborador</h2><table><tr><th>Colaborador</th><th class='r'>Salário</th><th class='r'>Comissão</th><th class='r'>INSS</th><th class='r'>IRRF</th><th class='r'>FGTS</th><th class='r'>Líquido</th></tr>" + rows +
-    "<tr class='tot'><td>Total</td><td class='r'>" + tot((l) => l.salario) + "</td><td class='r'>" + tot((l) => l.comissao) + "</td><td class='r'>" + tot((l) => l.inss) + "</td><td class='r'>" + tot((l) => l.irrf) + "</td><td class='r'>" + tot((l) => l.fgts) + "</td><td class='r'>" + tot((l) => l.liquido) + "</td></tr></table>" +
+    "<h2>Resumo por colaborador</h2><table><tr><th>Colaborador</th><th class='r'>Salário</th><th class='r'>Comissão + DSR</th><th class='r'>INSS</th><th class='r'>IRRF</th><th class='r'>FGTS</th><th class='r'>Líquido</th></tr>" + rows +
+    "<tr class='tot'><td>Total</td><td class='r'>" + tot((l) => l.salario) + "</td><td class='r'>" + tot((l) => l.comissao + l.dsr) + "</td><td class='r'>" + tot((l) => l.inss) + "</td><td class='r'>" + tot((l) => l.irrf) + "</td><td class='r'>" + tot((l) => l.fgts) + "</td><td class='r'>" + tot((l) => l.liquido) + "</td></tr></table>" +
     "<h2>Verificações</h2><ul>" + ck + "</ul><div class='warn'>Estimativa de apoio: DSR sobre comissões, férias e 13º na competência e a tabela de INSS/IRRF devem ser validados com o contador.</div>";
   return abrir("Conferência " + nome(comp), html);
 }
