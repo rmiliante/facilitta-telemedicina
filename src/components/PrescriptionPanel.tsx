@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import ControlledPrescription from "@/components/ControlledPrescription";
 import { SIGNING_CHANGED_EVENT } from "@/lib/signingEvents";
 import { searchExams, findExam, type ExamHit } from "@/lib/examSearch";
 import { EXAM_PACKAGES } from "@/data/exames";
@@ -830,7 +831,8 @@ export default function PrescriptionPanel({
               </div>
             ) : (
               <>
-                <div className="flex gap-1 border-b border-zinc-100 px-5 pt-3">
+                <ControlledPrescription appointmentId={appointmentId} onIssued={onIssued} />
+<div className="flex gap-1 border-b border-zinc-100 px-5 pt-3">
                   {(Object.keys(KIND_LABELS) as Kind[]).map((k) => (
                     <button
                       key={k}
