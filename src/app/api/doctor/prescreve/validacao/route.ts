@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     if (r.validado) {
       await supabase.from("doctors").update({ prescreve_crm_validado_em: new Date().toISOString() }).eq("id", doctor.id);
     }
-    return NextResponse.json({ ok: true, validado: r.validado, motivo: r.motivo });
+    return NextResponse.json({ ok: true, validado: r.validado, motivo: r.motivo, raw: r.validado ? undefined : r.raw });
   } catch (err) {
     if (err instanceof PrescricoesError) {
       return NextResponse.json({ error: err.message }, { status: err.status >= 400 && err.status < 600 ? err.status : 502 });
