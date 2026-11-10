@@ -192,7 +192,7 @@ export default function ControlledPrescription({
     if (res && res.status === 413) return setErro("O arquivo é grande demais. Envie uma foto menor ou um PDF mais leve (até 4 MB).");
     if (!res || !res.ok) return setErro(String(r.error || "Falha ao enviar"));
     if (r.validado) { setInfo("CRM validado."); setArquivo(null); carregar(); }
-    else setCrmMsg(String(r.motivo || "O documento foi enviado e está em análise. Volte mais tarde."));
+    else setCrmMsg(String(r.motivo || "O documento foi enviado e está em análise. Volte mais tarde.") + (r.raw ? " [retorno da Prescreve: " + JSON.stringify(r.raw) + "]" : ""));
   }
   async function conectarBird() {
     setBusy(true); setErro(null);
