@@ -400,5 +400,10 @@ export async function validarDocumentoProfissional(bearer: string, file: Blob, f
       "Erro da Prescreve (" + res.status + ")";
     throw new PrescricoesError(message, res.status);
   }
-  return { validado: data.validado === true, motivo: typeof data.motivo === "string" ? data.motivo : "" };
+  const d = (data.data && typeof data.data === "object" ? data.data : data) as Record<string, unknown>;
+  const flag = (x: unknown) => x === true || x === 1 || (typeof x === "string" && ["true", "sim", "aprovado", "validado", "approved", "valid"].includes(x.trim().toLowerCase()));
+  const validado = [d.validado, d.valido, d.valid, d.aprovado, d.approved, d.is_valid, d.status].some(flag);
+  console.log("Prescrições validação CRM: retorno", JSON.stringify(data));
+  const motivoRaw = d.motivo ?? d.mensagem ?? d.message ?? d.reason;
+  return { validado, motivo: typeof motivoRaw === "string" ? motivoRaw : "", raw: data };
 }
