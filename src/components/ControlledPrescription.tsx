@@ -37,6 +37,24 @@ const NOMES_SALDO: Record<string, string> = {
   NRA: "Amarela", NRB: "Azul B1", NRB2: "Azul B2", NRR: "Retinoides", NRT: "Talidomida", RCE: "Especial", RET: "Retenção",
 };
 
+/** Reduz a foto da carteira (celular costuma passar de 4 MB, limite do servidor) e converte para JPEG. */
+async function prepararImagem(f: File): Promise<File> {
+  if (!f.type.startsWith("image/")) return f;
+  try {
+    const bmp = await createImageBitmap(f);
+    const k = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
+    const cv = document.createElement("canvas");
+    cv.width = Math.round(bmp.width * k);
+    cv.height = Math.round(bmp.height * k);
+    cv.getContext("2d")!.drawImage(bmp, 0, 0, cv.width, cv.height);
+    const blob: Blob | null = await new Promise((r) => cv.toBlob(r, "image/jpeg", 0.85));
+    if (!blob) return f;
+    return new File([blob], (f.name.replace(/\.[^.]+$/, "") || "carteira") + ".jpg", { type: "image/jpeg" });
+  } catch {
+    return f;
+  }
+}
+
 async function api(body: Record<string, unknown>) {
   const res = await fetch("/api/doctor/prescreve", {
     method: "POST",
@@ -163,12 +181,15 @@ export default function ControlledPrescription({
   async function enviarCrm() {
     if (!arquivo || !token.current) return;
     setBusy(true); setErro(null); setInfo(null); setCrmMsg(null);
+    const anexo = await prepararImagem(arquivo);
+    if (anexo.size > 4 * 1024 * 1024) { setBusy(false); return setErro("O arquivo passa de 4 MB. Envie uma foto menor ou um PDF mais leve."); }
     const fd = new FormData();
     fd.append("token", token.current);
-    fd.append("file", arquivo);
+    fd.append("file", anexo);
     const res = await fetch("/api/doctor/prescreve/validacao", { method: "POST", body: fd }).catch(() => null);
     const r = res ? await res.json().catch(() => ({})) : { error: "Sem conexão. Tente de novo." };
     setBusy(false);
+    if (res && res.status === 413) return setErro("O arquivo é grande demais. Envie uma foto menor ou um PDF mais leve (até 4 MB).");
     if (!res || !res.ok) return setErro(String(r.error || "Falha ao enviar"));
     if (r.validado) { setInfo("CRM validado."); setArquivo(null); carregar(); }
     else setCrmMsg(String(r.motivo || "O documento foi enviado e está em análise. Volte mais tarde."));
