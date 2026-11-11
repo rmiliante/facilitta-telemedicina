@@ -453,9 +453,12 @@ export function FilaTab() {
       const data = ((await dRes.json()).doctors as Doctor[]).filter((d) => d.active);
       setDoctors(data);
       if (!doctorId && data.length > 0) {
-        setDoctorId(data[0].id);
-        if (data[0].specialty_id) {
-          setAddForm((f) => ({ ...f, specialtyId: data[0].specialty_id as string }));
+        // Abre sempre na médica online (ou, na falta, ausente); só cai na primeira se todas estiverem offline.
+        const agora = Date.now();
+        const first = data.find((d) => presenceOf(d.last_seen_at, agora) === "on") ?? data.find((d) => presenceOf(d.last_seen_at, agora) === "away") ?? data[0];
+        setDoctorId(first.id);
+        if (first.specialty_id) {
+          setAddForm((f) => ({ ...f, specialtyId: first.specialty_id as string }));
         }
       }
     }
