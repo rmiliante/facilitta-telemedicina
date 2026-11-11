@@ -12,6 +12,11 @@ const EDITABLE_FIELDS: Record<string, string> = {
   email: "email",
   city: "city",
   state: "state",
+  address: "address",
+  cep: "cep",
+  addressNumber: "address_number",
+  addressComplement: "address_complement",
+  neighborhood: "neighborhood",
   notes: "notes",
 };
 
