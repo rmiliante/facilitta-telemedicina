@@ -1,5 +1,6 @@
 "use client";
 
+import AddressFields from "./AddressFields";
 import CaptacaoFunil from "@/components/CaptacaoFunil";
 import PrescreveAdminCard from "@/components/PrescreveAdminCard";
 import ManuaisTab, { ManuaisSubmenu, MANUAIS_CATEGORY_EVENT } from "@/components/ManuaisTab";
@@ -58,6 +59,11 @@ interface Patient {
   email: string | null;
   city: string | null;
   state: string | null;
+  cep?: string | null;
+  address?: string | null;
+  address_number?: string | null;
+  address_complement?: string | null;
+  neighborhood?: string | null;
   /** Quantas vezes faltou (vem da lista de pacientes). */
   faltas?: number;
   created_at?: string;
@@ -1817,6 +1823,11 @@ function PatientsTab() {
     email: "",
     city: "",
     state: "",
+    cep: "",
+    address: "",
+    addressNumber: "",
+    addressComplement: "",
+    neighborhood: "",
   });
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -1827,6 +1838,11 @@ function PatientsTab() {
     email: "",
     city: "",
     state: "",
+    cep: "",
+    address: "",
+    addressNumber: "",
+    addressComplement: "",
+    neighborhood: "",
   });
   const [editSaving, setEditSaving] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -1940,7 +1956,7 @@ function PatientsTab() {
         alert(err.error);
         return;
       }
-      setForm({ fullName: "", cpf: "", birthDate: "", phone: "", email: "", city: "", state: "" });
+      setForm({ fullName: "", cpf: "", birthDate: "", phone: "", email: "", city: "", state: "", cep: "", address: "", addressNumber: "", addressComplement: "", neighborhood: "" });
       await load(search);
     } finally {
       setSaving(false);
@@ -1956,6 +1972,11 @@ function PatientsTab() {
       email: p.email ?? "",
       city: p.city ?? "",
       state: p.state ?? "",
+      cep: p.cep ?? "",
+      address: p.address ?? "",
+      addressNumber: p.address_number ?? "",
+      addressComplement: p.address_complement ?? "",
+      neighborhood: p.neighborhood ?? "",
     });
   }
 
@@ -2041,23 +2062,7 @@ function PatientsTab() {
             className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
           />
         </label>
-        <label className="text-xs">
-          <span className="mb-1 block font-medium text-zinc-600">Cidade</span>
-          <input
-            value={form.city}
-            onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
-            className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
-          />
-        </label>
-        <label className="text-xs">
-          <span className="mb-1 block font-medium text-zinc-600">UF</span>
-          <input
-            maxLength={2}
-            value={form.state}
-            onChange={(e) => setForm((f) => ({ ...f, state: e.target.value.toUpperCase() }))}
-            className="w-24 rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
-          />
-        </label>
+        <div className="sm:col-span-2"><AddressFields value={form} onChange={(e) => setForm((f) => ({ ...f, ...e }))} labelCls="mb-1 mt-2 block text-xs font-medium text-zinc-600" inputCls="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark" /></div>
         <div className="sm:col-span-2">
           <button
             disabled={saving}
@@ -2212,23 +2217,7 @@ function PatientsTab() {
                   className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
                 />
               </label>
-              <label className="text-xs">
-                <span className="mb-1 block font-medium text-zinc-600">Cidade</span>
-                <input
-                  value={editForm.city}
-                  onChange={(e) => setEditForm((f) => ({ ...f, city: e.target.value }))}
-                  className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
-                />
-              </label>
-              <label className="text-xs">
-                <span className="mb-1 block font-medium text-zinc-600">UF</span>
-                <input
-                  maxLength={2}
-                  value={editForm.state}
-                  onChange={(e) => setEditForm((f) => ({ ...f, state: e.target.value.toUpperCase() }))}
-                  className="w-24 rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
-                />
-              </label>
+              <div className="sm:col-span-2"><AddressFields value={editForm} onChange={(e) => setEditForm((f) => ({ ...f, ...e }))} labelCls="mb-1 mt-2 block text-xs font-medium text-zinc-600" inputCls="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark" /></div>
               <div className="flex gap-2 sm:col-span-2">
                 <button
                   onClick={() => saveEdit(p.id)}
