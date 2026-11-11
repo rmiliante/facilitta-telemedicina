@@ -1,3 +1,4 @@
+import { currentStaffRole } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatCpf } from "@/lib/format";
