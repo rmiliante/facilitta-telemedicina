@@ -190,6 +190,7 @@ export default function ControlledPrescription({
     const r = res ? await res.json().catch(() => ({})) : { error: "Sem conexão. Tente de novo." };
     setBusy(false);
     if (res && res.status === 413) return setErro("O arquivo é grande demais. Envie uma foto menor ou um PDF mais leve (até 4 MB).");
+    if (res && res.status === 401) return setErro("Sua sessão expirou. Saia, entre de novo no sistema e envie o documento em seguida.");
     if (!res || !res.ok) return setErro(String(r.error || "Falha ao enviar"));
     if (r.validado) { setInfo("CRM validado."); setArquivo(null); carregar(); }
     else setCrmMsg(String(r.motivo || "O documento foi enviado e está em análise. Volte mais tarde.") + (r.raw ? " [retorno da Prescreve: " + JSON.stringify(r.raw) + "]" : ""));
