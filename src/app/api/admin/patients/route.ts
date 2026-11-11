@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
-  const { fullName, cpf, birthDate, phone, email, city, state, notes } = body ?? {};
+  const { fullName, cpf, birthDate, phone, email, city, state, notes, address, cep, addressNumber, addressComplement, neighborhood } = body ?? {};
 
   if (typeof fullName !== "string" || !fullName.trim()) {
     return NextResponse.json({ error: "fullName é obrigatório" }, { status: 400 });
@@ -79,6 +79,11 @@ export async function POST(req: NextRequest) {
       email: email || null,
       city: city || null,
       state: state || null,
+      address: address || null,
+      cep: cep || null,
+      address_number: addressNumber || null,
+      address_complement: addressComplement || null,
+      neighborhood: neighborhood || null,
       notes: notes || null,
     })
     .select()
