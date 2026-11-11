@@ -1,5 +1,6 @@
 "use client";
 
+import { uploadPatientDocuments as uploadPatientDocumentsDirect } from "@/lib/uploadPatientDocument";
 import AddressFields from "./AddressFields";
 import CaptacaoFunil from "@/components/CaptacaoFunil";
 import PrescreveAdminCard from "@/components/PrescreveAdminCard";
@@ -486,7 +487,7 @@ export default function AdminPanel({ role }: { role: StaffRole }) {
               <div className="space-y-4">
                 {canSeePatients(role) && <CabineStatus />}
                 <AttendanceHistoryTab
-                  renderPatientHistory={canSeePatients(role) ? (id) => <PatientHistoryPanel patientId={id} /> : undefined}
+                  renderPatientHistory={canSeePatients(role) ? (id) => <PatientHistoryWithAttach patientId={id} /> : undefined}
                 />
               </div>
             )}
@@ -1701,6 +1702,46 @@ function formatHistoryDuration(startIso: string, endIso: string) {
  * (anotações, receita), independente de qual médico atendeu. Carrega
  * sob demanda quando o admin abre o histórico daquele paciente.
  */
+/** Anexa documentos ao cadastro do paciente (fora de consulta) e recarrega o histórico. */
+function PatientHistoryWithAttach({ patientId }: { patientId: string }) {
+  const [version, setVersion] = useState(0);
+  const [uploading, setUploading] = useState(false);
+
+  async function anexar(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    try {
+      await uploadPatientDocumentsDirect(`/api/admin/patients/${patientId}/documents`, Array.from(files));
+      setVersion((x) => x + 1);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Não foi possível anexar o documento.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div>
+      <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-dashed border-zinc-300 bg-white px-3 py-2 text-xs">
+        <span className="font-semibold text-zinc-700">📎 Anexar documento ao cadastro</span>
+        <input
+          type="file"
+          multiple
+          accept="application/pdf,image/*"
+          disabled={uploading}
+          onChange={(e) => {
+            void anexar(e.target.files);
+            e.target.value = "";
+          }}
+          className="text-xs"
+        />
+        {uploading && <span className="text-zinc-500">Enviando…</span>}
+      </div>
+      <PatientHistoryPanel key={version} patientId={patientId} />
+    </div>
+  );
+}
+
 function PatientHistoryPanel({ patientId }: { patientId: string }) {
   const [history, setHistory] = useState<PatientHistoryItem[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -2293,7 +2334,7 @@ function PatientsTab() {
                   <p className="text-xs font-semibold text-brand-navy">❤ Sinais vitais</p>
                   <VitalSignsPanel patientId={p.id} />
                   <div className="mt-4" />
-                  <PatientHistoryPanel patientId={p.id} />
+                  <PatientHistoryWithAttach patientId={p.id} />
                 </div>
               )}
             </li>
