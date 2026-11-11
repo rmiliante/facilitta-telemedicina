@@ -32,7 +32,12 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const r = await validarDocumentoProfissional(token, file, file.name || "carteira");
+    const info = { arquivo: file.name, tipo: file.type, bytes: file.size };
+    const r = await validarDocumentoProfissional(token, file, file.name || "carteira").catch(async (e: unknown) => {
+      await supabase.from("audit_log").insert({ actor_type: "doctor", actor_id: doctor.id, action: "prescreve_validacao_crm_erro", entity: "doctors", entity_id: String(doctor.id), details: { ...info, status: (e as { status?: number }).status ?? null, mensagem: e instanceof Error ? e.message : String(e) } });
+      throw e;
+    });
+    await supabase.from("audit_log").insert({ actor_type: "doctor", actor_id: doctor.id, action: "prescreve_validacao_crm", entity: "doctors", entity_id: String(doctor.id), details: { ...info, validado: r.validado, motivo: r.motivo } });
     if (r.validado) {
       await supabase.from("doctors").update({ prescreve_crm_validado_em: new Date().toISOString() }).eq("id", doctor.id);
     }
