@@ -377,12 +377,22 @@ export function cadastrarProfissional(i: CadastroProfissionalInput) {
 }
 
 /** Envia a foto/PDF da carteira do conselho. Validação automática (pode ir para revisão manual). */
+async function fetchRetry(url: string, init: RequestInit): Promise<Response> {
+  let r = await fetch(url, init);
+  if ([502, 503, 504].includes(r.status)) {
+    console.error("Prescrições validação CRM: gateway " + r.status + ", tentando de novo");
+    await new Promise((x) => setTimeout(x, 1500));
+    r = await fetch(url, init);
+  }
+  return r;
+}
+
 export async function validarDocumentoProfissional(bearer: string, file: Blob, fileName: string) {
   const form = new FormData();
   form.append("file", file, fileName);
   let res: Response;
   try {
-    res = await fetch(baseUrl() + "/backend/v2/auth/profissional/validacao", {
+    res = await fetchRetry(baseUrl() + "/backend/v2/auth/profissional/validacao", {
       method: "POST",
       headers: { "X-API-Key": apiKey(), Authorization: "Bearer " + bearer },
       body: form,
