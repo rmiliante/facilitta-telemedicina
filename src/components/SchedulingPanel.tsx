@@ -1,5 +1,6 @@
 "use client";
 
+import AddressFields, { ENDERECO_VAZIO, type Endereco } from "./AddressFields";
 import { useCallback, useEffect, useState } from "react";
 import LogoutButton from "./LogoutButton";
 import TipoConsultaBadge, { TipoConsultaChoice } from "./TipoConsultaBadge";
@@ -134,8 +135,7 @@ function CadastroTab({ onSchedule }: { onSchedule: (p: PatientLite) => void }) {
   const [birthDate, setBirthDate] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const [city, setCity] = useState("");
-  const [state, setState] = useState("");
+  const [endereco, setEndereco] = useState<Endereco>(ENDERECO_VAZIO);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [created, setCreated] = useState<PatientLite | null>(null);
@@ -188,8 +188,13 @@ function CadastroTab({ onSchedule }: { onSchedule: (p: PatientLite) => void }) {
           birthDate: birthDate || null,
           phone: phone || null,
           email: email || null,
-          city: city || null,
-          state: state || null,
+          city: endereco.city || null,
+          state: endereco.state || null,
+          cep: endereco.cep || null,
+          address: endereco.address || null,
+          addressNumber: endereco.addressNumber || null,
+          addressComplement: endereco.addressComplement || null,
+          neighborhood: endereco.neighborhood || null,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -204,8 +209,7 @@ function CadastroTab({ onSchedule }: { onSchedule: (p: PatientLite) => void }) {
       setBirthDate("");
       setPhone("");
       setEmail("");
-      setCity("");
-      setState("");
+      setEndereco(ENDERECO_VAZIO);
       setExisting(null);
     } finally {
       setSaving(false);
@@ -283,21 +287,7 @@ function CadastroTab({ onSchedule }: { onSchedule: (p: PatientLite) => void }) {
           </div>
           <label className={labelCls}>E-mail (opcional)</label>
           <input type="email" className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} />
-          <div className="grid gap-x-4 sm:grid-cols-[1fr_90px]">
-            <div>
-              <label className={labelCls}>Cidade</label>
-              <input className={inputCls} value={city} onChange={(e) => setCity(e.target.value)} />
-            </div>
-            <div>
-              <label className={labelCls}>UF</label>
-              <input
-                className={inputCls}
-                maxLength={2}
-                value={state}
-                onChange={(e) => setState(e.target.value.toUpperCase())}
-              />
-            </div>
-          </div>
+          <AddressFields value={endereco} onChange={setEndereco} labelCls={labelCls} inputCls={inputCls} />
           {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
           <button
             onClick={save}
