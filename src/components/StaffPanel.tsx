@@ -1,5 +1,6 @@
 "use client";
 
+import AddressFields from "./AddressFields";
 import { useCallback, useEffect, useState } from "react";
 import LogoutButton from "./LogoutButton";
 import CabineStatus from "./CabineStatus";
@@ -53,6 +54,11 @@ const PRINT_POLL_INTERVAL_MS = 8000;
 
 interface Patient {
   id: string;
+  cep?: string | null;
+  address?: string | null;
+  address_number?: string | null;
+  address_complement?: string | null;
+  neighborhood?: string | null;
   full_name: string;
   cpf: string | null;
   phone: string | null;
@@ -1335,6 +1341,11 @@ function PacientesTab() {
     email: "",
     city: "",
     state: "",
+    cep: "",
+    address: "",
+    addressNumber: "",
+    addressComplement: "",
+    neighborhood: "",
   });
   const [saving, setSaving] = useState(false);
   const [newPatientDocs, setNewPatientDocs] = useState<File[]>([]);
@@ -1344,6 +1355,20 @@ function PacientesTab() {
   const [cpfMatch, setCpfMatch] = useState<Patient | null>(null);
   const [allPatients, setAllPatients] = useState<Patient[]>([]);
   const [merging, setMerging] = useState<string | null>(null);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({
+    birthDate: "",
+    phone: "",
+    email: "",
+    cep: "",
+    address: "",
+    addressNumber: "",
+    addressComplement: "",
+    neighborhood: "",
+    city: "",
+    state: "",
+  });
+  const [editSaving, setEditSaving] = useState(false);
 
   const load = useCallback(async (q?: string) => {
     const res = await fetch(`/api/admin/patients${q ? `?q=${encodeURIComponent(q)}` : ""}`);
@@ -1372,7 +1397,7 @@ function PacientesTab() {
     setSearch(q);
     load(q);
     if (withVitals) setExpandedVitalsId(p.id);
-    setForm({ fullName: "", cpf: "", birthDate: "", phone: "", email: "", city: "", state: "" });
+    setForm({ fullName: "", cpf: "", birthDate: "", phone: "", email: "", city: "", state: "", cep: "", address: "", addressNumber: "", addressComplement: "", neighborhood: "" });
     setCpfMatch(null);
     setTimeout(() => document.getElementById(`paciente-${p.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 400);
   }
@@ -1443,11 +1468,47 @@ function PacientesTab() {
       if (newPatientDocs.length > 0 && patient?.id) {
         await uploadPatientDocuments(patient.id, newPatientDocs);
       }
-      setForm({ fullName: "", cpf: "", birthDate: "", phone: "", email: "", city: "", state: "" });
+      setForm({ fullName: "", cpf: "", birthDate: "", phone: "", email: "", city: "", state: "", cep: "", address: "", addressNumber: "", addressComplement: "", neighborhood: "" });
       setNewPatientDocs([]);
       await load(search);
     } finally {
       setSaving(false);
+    }
+  }
+
+  function startEdit(p: Patient) {
+    setEditId(p.id);
+    setEditForm({
+      birthDate: p.birth_date ?? "",
+      phone: p.phone ?? "",
+      email: p.email ?? "",
+      cep: p.cep ?? "",
+      address: p.address ?? "",
+      addressNumber: p.address_number ?? "",
+      addressComplement: p.address_complement ?? "",
+      neighborhood: p.neighborhood ?? "",
+      city: p.city ?? "",
+      state: p.state ?? "",
+    });
+  }
+
+  async function saveEdit(id: string) {
+    setEditSaving(true);
+    try {
+      const res = await fetch(`/api/admin/patients/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editForm),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error ?? "Não foi possível salvar.");
+        return;
+      }
+      setEditId(null);
+      await load(search);
+    } finally {
+      setEditSaving(false);
     }
   }
 
@@ -1533,23 +1594,7 @@ function PacientesTab() {
             className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
           />
         </label>
-        <label className="text-xs">
-          <span className="mb-1 block font-medium text-zinc-600">Cidade</span>
-          <input
-            value={form.city}
-            onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
-            className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
-          />
-        </label>
-        <label className="text-xs">
-          <span className="mb-1 block font-medium text-zinc-600">UF</span>
-          <input
-            maxLength={2}
-            value={form.state}
-            onChange={(e) => setForm((f) => ({ ...f, state: e.target.value.toUpperCase() }))}
-            className="w-24 rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
-          />
-        </label>
+        <div className="sm:col-span-2"><AddressFields value={form} onChange={(e) => setForm((f) => ({ ...f, ...e }))} labelCls="mb-1 mt-2 block text-xs font-medium text-zinc-600" inputCls="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark" /></div>
         <label className="text-xs sm:col-span-2">
           <span className="mb-1 block font-medium text-zinc-600">Exames/documentos (opcional)</span>
           <input
@@ -1659,6 +1704,7 @@ function PacientesTab() {
                 </p>
               </div>
               <div className="flex shrink-0 gap-1.5">
+              <button onClick={() => startEdit(p)} title="Editar celular, e-mail, nascimento e endereço" className="shrink-0 rounded-md border border-zinc-300 px-2 py-1 text-[10px] font-medium text-zinc-600 hover:bg-zinc-50">✎ Editar cadastro</button>
               <button
                 onClick={() => setExpandedVitalsId((cur) => (cur === p.id ? null : p.id))}
                 title="Registrar e ver as aferições de sinais vitais"
@@ -1682,6 +1728,42 @@ function PacientesTab() {
               </button>
               </div>
             </div>
+            {editId === p.id && (
+              <div className="mt-3 rounded-md border border-zinc-200 bg-zinc-50 p-3">
+                <p className="mb-2 text-xs text-zinc-500">Nome e CPF não podem ser alterados aqui.</p>
+                <div className="grid gap-x-4 gap-y-2 sm:grid-cols-2">
+                  <label className="text-xs">
+                    <span className="mb-1 block font-medium text-zinc-600">Nome</span>
+                    <input value={p.full_name} disabled className="w-full rounded-md border border-zinc-200 bg-zinc-100 px-3 py-1.5 text-sm text-zinc-500" />
+                  </label>
+                  <label className="text-xs">
+                    <span className="mb-1 block font-medium text-zinc-600">CPF</span>
+                    <input value={p.cpf ?? ""} disabled className="w-full rounded-md border border-zinc-200 bg-zinc-100 px-3 py-1.5 text-sm text-zinc-500" />
+                  </label>
+                  <label className="text-xs">
+                    <span className="mb-1 block font-medium text-zinc-600">Data de nascimento</span>
+                    <input type="date" value={editForm.birthDate} onChange={(e) => setEditForm((f) => ({ ...f, birthDate: e.target.value }))} className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark" />
+                  </label>
+                  <label className="text-xs">
+                    <span className="mb-1 block font-medium text-zinc-600">Celular</span>
+                    <input value={editForm.phone} onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))} className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark" />
+                  </label>
+                  <label className="text-xs sm:col-span-2">
+                    <span className="mb-1 block font-medium text-zinc-600">E-mail</span>
+                    <input value={editForm.email} onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))} className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark" />
+                  </label>
+                  <div className="sm:col-span-2">
+                    <AddressFields value={editForm} onChange={(e) => setEditForm((f) => ({ ...f, ...e }))} labelCls="mb-1 mt-2 block text-xs font-medium text-zinc-600" inputCls="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark" />
+                  </div>
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <button onClick={() => saveEdit(p.id)} disabled={editSaving} className="rounded-md bg-brand-navy px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50">
+                    {editSaving ? "Salvando…" : "Salvar"}
+                  </button>
+                  <button onClick={() => setEditId(null)} className="rounded-md border border-zinc-300 px-4 py-1.5 text-sm text-zinc-600">Cancelar</button>
+                </div>
+              </div>
+            )}
             {expandedVitalsId === p.id && <VitalSignsPanel patientId={p.id} />}
             {expandedDocsPatientId === p.id && (
               <DocumentsPanel
