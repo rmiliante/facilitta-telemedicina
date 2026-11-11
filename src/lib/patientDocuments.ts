@@ -5,7 +5,7 @@ export type PatientDocument = ExamFile;
 export type PatientDocumentWithUrl = ExamFileWithUrl;
 
 function sanitizeFileName(name: string) {
-  return name.replace(/[^\w.\-]+/g, "_").slice(-120);
+  return name.replace(/[^\w.\-]+/g, "_").replace(/\.{2,}/g, ".").slice(-120);
 }
 
 /**
