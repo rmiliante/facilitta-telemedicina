@@ -181,7 +181,7 @@ export default function ControlledPrescription({
   async function enviarCrm() {
     if (!arquivo || !token.current) return;
     setBusy(true); setErro(null); setInfo(null); setCrmMsg(null);
-    const anexo = await prepararImagem(arquivo);
+    const anexo = await prepararImagem(arquivo).catch(() => arquivo);
     if (anexo.size > 4 * 1024 * 1024) { setBusy(false); return setErro("O arquivo passa de 4 MB. Envie uma foto menor ou um PDF mais leve."); }
     const fd = new FormData();
     fd.append("token", token.current);
@@ -317,6 +317,7 @@ export default function ControlledPrescription({
                     </div>
                   )}
                   {crmMsg && <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-800">{crmMsg}</p>}
+                  {erro && <p className="rounded-md bg-red-50 p-2 text-xs text-red-700">{erro}</p>}
                   {token.current && (
                     <button type="button" onClick={carregar} className="text-xs text-zinc-500 underline">Atualizar situação</button>
                   )}
