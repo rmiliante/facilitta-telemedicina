@@ -402,12 +402,15 @@ export async function validarDocumentoProfissional(bearer: string, file: Blob, f
     console.error("Prescrições: falha de rede na validação do CRM", e);
     throw new PrescricoesError("Não foi possível falar com a Prescreve. Tente de novo.", 502);
   }
-  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  const rawText = await res.text().catch(() => "");
+  let data: Record<string, unknown> = {};
+  try { data = JSON.parse(rawText) as Record<string, unknown>; } catch { /* corpo não é JSON */ }
+  if (!res.ok) console.error("Prescrições validação CRM: erro " + res.status, rawText.slice(0, 500));
   if (!res.ok) {
     const message =
       (typeof data.message === "string" && data.message) ||
       (typeof data.error === "string" && data.error) ||
-      "Erro da Prescreve (" + res.status + ")";
+      "Erro da Prescreve (" + res.status + ")" + (rawText ? ": " + rawText.replace(/<[^>]*>/g, " ").trim().slice(0, 200) : "");
     throw new PrescricoesError(message, res.status);
   }
   const d = (data.data && typeof data.data === "object" ? data.data : data) as Record<string, unknown>;
