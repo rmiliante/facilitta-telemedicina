@@ -1997,6 +1997,7 @@ function PatientsTab() {
   }
 
   async function saveEdit(id: string) {
+    if (!confirm("Confirmar a alteração dos dados deste paciente?")) return;
     setEditSaving(true);
     try {
       const res = await fetch(`/api/admin/patients/${id}`, {
