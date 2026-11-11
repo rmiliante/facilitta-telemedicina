@@ -54,6 +54,12 @@ export async function PATCH(
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
 
+  // Só o Master altera nome e CPF; os demais níveis (ex.: atendente) editam apenas os outros dados.
+  if ((await currentStaffRole()) !== "master") {
+    delete body.fullName;
+    delete body.cpf;
+  }
+
   const update: Record<string, unknown> = {};
   for (const [key, column] of Object.entries(EDITABLE_FIELDS)) {
     if (key in body) update[column] = key === "cpf" ? formatCpf(body[key]) : body[key] || null;
