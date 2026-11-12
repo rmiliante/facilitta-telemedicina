@@ -402,6 +402,45 @@ export default function PrescriptionPanel({
     return false;
   }
 
+  /**
+   * API de Prescrições: garante a sessão do certificado (VIDaaS) na conta Prescreve da médica.
+   * true = sessão ativa (emitir por essa via) · false = cancelou ou falhou · null = não usa essa via.
+   */
+  async function ensurePrescricoes(): Promise<boolean | null> {
+    if (signing?.provider?.approval === "otp") return null;
+    const info = await fetch("/api/doctor/prescreve")
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+    if (!info?.ativo || !info.vinculado) return null;
+    if (info.conectado) return true;
+
+    setPhase("authorizing");
+    const chamar = (body: Record<string, unknown>) =>
+      fetch("/api/doctor/prescreve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+        .then((r) => r.json())
+        .catch(() => null);
+
+    const ini = await chamar({ action: "vidaas_iniciar" });
+    if (!ini?.ok || !ini.code) {
+      setError(ini?.error ?? "Não foi possível pedir a autorização no app do certificado.");
+      setPhase("edit");
+      return false;
+    }
+    const started = Date.now();
+    while (!cancelledRef.current && Date.now() - started < APPROVAL_TIMEOUT_MS) {
+      const st = await chamar({ action: "vidaas_aguardar", code: ini.code });
+      if (st?.conectado) return true;
+      await new Promise((r) => setTimeout(r, POLL_MS));
+    }
+    if (!cancelledRef.current) setError("A autorização não foi aprovada a tempo. Tente de novo.");
+    setPhase("edit");
+    return false;
+  }
+
   /** Itens de cada aba (no laudo ENMG o procedimento vem das caixinhas marcadas). */
   const itemsFor = (k: Kind): Item[] =>
     k === "apac" && apacModel === "imagem"
@@ -497,7 +536,11 @@ export default function PrescriptionPanel({
       const clean = itemsFor(k).filter((it) => it.name.trim());
       let ok = false;
       for (let attempt = 0; attempt < 2 && !ok; attempt++) {
-        if (!(await ensureAuthorized())) return;
+        // Exame, atestado e receita simples saem pela API de Prescrições (sessão do certificado na
+        // conta Prescreve); APAC/laudo seguem pela assinatura do plantão.
+        const viaNova = k === "apac" ? null : await ensurePrescricoes();
+        if (viaNova === false) return;
+        if (viaNova !== true && !(await ensureAuthorized())) return;
         if (cancelledRef.current) return;
 
         setPhase("emitting");
