@@ -235,6 +235,8 @@ export interface MedicamentoItem {
   forma_farmaceutica?: string;  // ex.: "Comprimido"
   controlado?: boolean;
   lista?: "ATB" | "GLP1";
+  /** Posologia/instruções de uso (aparece na receita). */
+  observacoes?: string;
 }
 
 export interface DocReceita {
