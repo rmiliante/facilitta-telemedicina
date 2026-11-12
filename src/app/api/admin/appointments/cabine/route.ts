@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { todayKeySaoPaulo, utcDayRange } from "@/lib/format";
+import { getDailyPresence } from "@/lib/daily";
 
 /**
  * GET /api/admin/appointments/cabine
@@ -54,6 +55,20 @@ export async function GET() {
     .filter((r) => r.status === "agendado")
     .sort((a, b) => (a.queue_position ?? 1e9) - (b.queue_position ?? 1e9) || t(a.scheduled_at) - t(b.scheduled_at))[0];
 
+  // Quem está conectado AGORA na videochamada (null = o Daily não respondeu).
+  const presence = await getDailyPresence();
+  const norm = (x?: string | null) => (x ?? "").trim().toLowerCase();
+  const conexao = (r: Row) => {
+    if (!presence) return null;
+    const sala = presence[`consulta-${r.id}`] ?? [];
+    const pac = sala.find((p) => norm(p.userName) === norm(r.patients?.full_name));
+    const med = sala.find((p) => norm(p.userName) === norm(r.doctors?.name)) ?? sala.find((p) => p !== pac);
+    return {
+      medico: { online: !!med, entrou: med?.joinTime ?? null },
+      paciente: { online: !!pac, entrou: pac?.joinTime ?? null },
+    };
+  };
+
   const view = (r: Row | undefined, extra: Record<string, unknown> = {}) =>
     r
       ? {
@@ -65,9 +80,9 @@ export async function GET() {
       : null;
 
   return NextResponse.json({
-    atual: view(atualRow, { desde: atualRow?.patient_joined_at ?? null, outros: emAndamento.filter((r) => r.patient_joined_at).length - 1 }),
+    atual: view(atualRow, { desde: atualRow?.patient_joined_at ?? null, outros: emAndamento.filter((r) => r.patient_joined_at).length - 1, conexao: atualRow ? conexao(atualRow) : null }),
     proximo: enviado
-      ? view(enviado, { tipo: "enviado", enviadoAs: enviado.booth_sent_at })
+      ? view(enviado, { tipo: "enviado", enviadoAs: enviado.booth_sent_at, conexao: conexao(enviado) })
       : view(daFila, { tipo: "fila", posicao: daFila?.queue_position ?? null }),
   });
 }
