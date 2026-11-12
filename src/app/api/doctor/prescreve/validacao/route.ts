@@ -27,8 +27,8 @@ export async function POST(req: NextRequest) {
   if (!token) return NextResponse.json({ error: "Confirme sua conta com o código do e-mail e tente de novo" }, { status: 400 });
   if (!(file instanceof File) || file.size === 0) return NextResponse.json({ error: "Escolha a foto da carteira" }, { status: 400 });
   if (file.size > 10 * 1024 * 1024) return NextResponse.json({ error: "O arquivo passa de 10 MB" }, { status: 400 });
-  if (!/^(image\/(jpeg|png|webp)|application\/pdf)$/.test(file.type)) {
-    return NextResponse.json({ error: "Envie JPG, PNG ou PDF" }, { status: 400 });
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type)) {
+    return NextResponse.json({ error: "A Prescreve não aceita PDF aqui. Envie uma foto ou print da carteira em JPG ou PNG" }, { status: 400 });
   }
 
   try {
