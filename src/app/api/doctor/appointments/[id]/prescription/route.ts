@@ -124,7 +124,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     // Exame, atestado e receita simples: emitidos pela API de Prescrições (usa a franquia do
     // contrato novo). APAC/laudos seguem pela Assinatura Digital White Label (layout oficial próprio).
-    if (kind !== "apac" && prescricoesAtivo()) {
+    if (kind !== "apac" && prescricoesAtivo() && process.env.PRESCRICOES_SIMPLES === "1") {
       const viaNova = await emitirViaPrescricoes({
         kind,
         items,
