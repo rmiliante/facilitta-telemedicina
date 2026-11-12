@@ -5,6 +5,8 @@ import { clearSigningSession, getSigningDoctor, refreshSigningState } from "@/li
 import { addGeneratedPatientDocument, signPatientDocuments } from "@/lib/patientDocuments";
 import { buildPrescriptionPdf, KIND_TITLES, type PrescriptionItem, type PrescriptionKind } from "@/lib/prescriptionPdf";
 import { downloadSigned, PrescreveError, signPdf } from "@/lib/prescreve";
+import { prescricoesAtivo } from "@/lib/prescrevePrescricoes";
+import { emitirViaPrescricoes } from "@/lib/emitirViaPrescricoes";
 import { checkPrescription } from "@/lib/controlledMeds";
 import { audit } from "@/lib/audit";
 import { saveCustomExams } from "@/lib/customExams";
@@ -118,6 +120,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return new NextResponse(preview as unknown as BodyInit, {
         headers: { "Content-Type": "application/pdf", "Content-Disposition": 'inline; filename="previa-laudo.pdf"', "Cache-Control": "no-store" },
       });
+    }
+
+    // Exame, atestado e receita simples: emitidos pela API de Prescrições (usa a franquia do
+    // contrato novo). APAC/laudos seguem pela Assinatura Digital White Label (layout oficial próprio).
+    if (kind !== "apac" && prescricoesAtivo()) {
+      const viaNova = await emitirViaPrescricoes({
+        kind,
+        items,
+        notes,
+        doctorId: doctor.id,
+        patient: appointment.patients,
+        appointmentId: appointment.id,
+      });
+      if (viaNova) return viaNova;
     }
 
     const state = await refreshSigningState(doctor);
