@@ -125,3 +125,38 @@ export async function createMeetingToken(
 
   return data.token as string;
 }
+
+
+export interface DailyParticipant {
+  userName: string;
+  joinTime: string;
+}
+
+/**
+ * Quem está conectado AGORA em cada sala do Daily (uma chamada só pra todas).
+ * Devolve { nomeDaSala: [participantes] } ou null se o Daily não responder
+ * (quem chama deve tratar null como "sem informação", nunca como "ninguém").
+ */
+export async function getDailyPresence(): Promise<Record<string, DailyParticipant[]> | null> {
+  try {
+    const res = await fetch(`${DAILY_API_BASE}/presence`, {
+      headers: { Authorization: `Bearer ${getApiKey()}` },
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const raw = (await res.json()) as Record<string, unknown>;
+    const out: Record<string, DailyParticipant[]> = {};
+    for (const [room, list] of Object.entries(raw)) {
+      if (!Array.isArray(list)) continue;
+      out[room] = list
+        .map((p) => {
+          const o = p as { userName?: string; joinTime?: string };
+          return { userName: o.userName ?? "", joinTime: o.joinTime ?? "" };
+        })
+        .filter((p) => p.joinTime);
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
