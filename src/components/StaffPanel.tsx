@@ -562,6 +562,8 @@ export function FilaTab() {
   }
 
   async function markCalled(item: QueueItem) {
+    const nome = item.patients?.full_name ?? "este paciente";
+    if (!confirm(`Enviar ${nome} para a cabine de atendimento agora?`)) return;
     await fetch(`/api/admin/appointments/${item.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
