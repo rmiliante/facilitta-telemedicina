@@ -21,7 +21,7 @@ type Kind = "receita" | "exame" | "atestado";
 interface Item {
   name: string;
   quantity?: string;
-  instructions: string;
+  instructions?: string;
 }
 
 interface PacienteLike {
@@ -56,7 +56,7 @@ function montarDocumento(kind: Kind, items: Item[], notes: string): DocumentoEmi
       tipo: "pedido_exame",
       exames: items.map((it) => ({
         nome_exame: it.name,
-        observacoes: it.instructions.trim() || undefined,
+        observacoes: (it.instructions ?? "").trim() || undefined,
       })),
       informacoes: notes.trim() || undefined,
     };
@@ -77,7 +77,7 @@ function montarDocumento(kind: Kind, items: Item[], notes: string): DocumentoEmi
     return {
       nome_medicamento: it.name,
       quantidade: digits(qtd) || "1",
-      observacoes: [textoQtd, it.instructions.trim()].filter(Boolean).join(" — ") || undefined,
+      observacoes: [textoQtd, (it.instructions ?? "").trim()].filter(Boolean).join(" — ") || undefined,
     };
   });
   return { tipo: "receita", medicamentos, informacoes: notes.trim() || undefined };
