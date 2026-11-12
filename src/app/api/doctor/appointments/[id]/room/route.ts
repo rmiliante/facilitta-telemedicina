@@ -37,17 +37,9 @@ export async function POST(
     const roomName = await ensureDailyRoom(appointment.id);
     const token = await createMeetingToken(roomName, session.name, true);
 
-    if (appointment.status === "agendado") {
-      await supabase
-        .from("appointments")
-        .update({
-          status: "em_andamento",
-          // Registra o início do atendimento (antes ficava vazio quando o
-          // médico abria o vídeo direto, e o tempo de atendimento sumia).
-          ...(appointment.called_at ? {} : { called_at: new Date().toISOString() }),
-        })
-        .eq("id", appointment.id);
-    }
+    // Abrir a sala NÃO coloca o paciente na cabine/fila: quem direciona é a
+    // atendente (que já marca em_andamento e o envio para a cabine). Aqui só
+    // devolvemos o acesso à sala de vídeo.
 
     return NextResponse.json({ roomUrl: dailyRoomUrl(roomName), token });
   } catch (err) {
