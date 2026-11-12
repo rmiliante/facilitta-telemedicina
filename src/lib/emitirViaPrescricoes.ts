@@ -20,7 +20,7 @@ type Kind = "receita" | "exame" | "atestado";
 
 interface Item {
   name: string;
-  quantity: string;
+  quantity?: string;
   instructions: string;
 }
 
@@ -71,7 +71,7 @@ function montarDocumento(kind: Kind, items: Item[], notes: string): DocumentoEmi
     return { tipo: "documento", tipo_documento: "Atestado Médico", informacoes: paragrafos };
   }
   const medicamentos: MedicamentoItem[] = items.map((it) => {
-    const qtd = it.quantity.trim();
+    const qtd = (it.quantity ?? "").trim();
     // A API só aceita dígitos na quantidade; o texto original ("1 caixa") vai junto da posologia.
     const textoQtd = qtd && !/^[0-9]+$/.test(qtd) ? "Quantidade: " + qtd : "";
     return {
