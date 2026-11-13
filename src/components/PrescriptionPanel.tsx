@@ -113,7 +113,16 @@ export default function PrescriptionPanel({
   const notes = notesByKind[kind];
   // Medicamentos controlados / antimicrobianos na receita (aviso ou bloqueio).
   const controlled = checkPrescription(itemsByKind.receita.map((it) => it.name).filter((n) => n.trim()));
-  const controlledBlocked = controlled.some((c) => c.blocked);
+  // Com o fluxo SNCR ligado e a conta da Prescreve vinculada, controle especial e retenção saem digitais.
+  const [sncrAtivo, setSncrAtivo] = useState(false);
+  useEffect(() => {
+    fetch("/api/doctor/prescreve")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setSncrAtivo(!!d?.sncr))
+      .catch(() => {});
+  }, []);
+  const viaSncr = (c: { category: string }) => sncrAtivo && c.category !== "notificacao";
+  const controlledBlocked = controlled.some((c) => c.blocked && !viaSncr(c));
   const setItems = (next: Item[] | ((prev: Item[]) => Item[])) =>
     setItemsByKind((all) => ({
       ...all,
@@ -1209,7 +1218,9 @@ export default function PrescriptionPanel({
                             {controlled.map((c) => (
                               <li key={c.name}>
                                 <span className="font-medium">{CATEGORY_LABEL[c.category]}.</span>{" "}
-                                {c.message}
+                                {viaSncr(c)
+                                  ? `${c.name}: será emitido como receita controlada, com numeração SNCR do médico.`
+                                  : c.message}
                               </li>
                             ))}
                           </ul>

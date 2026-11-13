@@ -92,7 +92,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // de 30/10/2026, quando passa a exigir SNCR). A tela já avisa; aqui
   // garante que não sai mesmo se alguém pular o aviso.
   if (kind === "receita") {
-    const blocked = checkPrescription(items.map((it) => it.name)).filter((c) => c.blocked);
+    // Com o fluxo novo ligado, controle especial e retenção saem pelo SNCR (API de Prescrições).
+    const sncrOk = prescricoesAtivo() && process.env.PRESCRICOES_SIMPLES === "1";
+    const blocked = checkPrescription(items.map((it) => it.name)).filter((c) => c.blocked && !(sncrOk && c.category !== "notificacao"));
     if (blocked.length > 0) {
       return NextResponse.json({ error: blocked.map((c) => c.message).join(" "), controlled: blocked }, { status: 422 });
     }
@@ -134,6 +136,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         appointmentId: appointment.id,
       });
       if (viaNova) return viaNova;
+      if (kind === "receita") {
+        // Sem conta vinculada na Prescreve: controlado não pode cair no fluxo antigo.
+        const ainda = checkPrescription(items.map((it) => it.name)).filter((c) => c.blocked);
+        if (ainda.length > 0) {
+          return NextResponse.json({ error: ainda.map((c) => c.message).join(" "), controlled: ainda }, { status: 422 });
+        }
+      }
     }
 
     const state = await refreshSigningState(doctor);

@@ -123,3 +123,14 @@ export function checkPrescription(itemNames: string[], now = new Date()): Contro
   }
   return out;
 }
+
+const GLP1 = ["semaglutida", "liraglutida", "tirzepatida", "dulaglutida", "exenatida", "lixisenatida"];
+
+/** tipo_controle da API de Prescrições para o medicamento (null = receita simples ou notificação A/B, que não saem por aqui). */
+export function tipoControleApi(name: string): "C1" | "antimicrobiana" | "GLP1" | null {
+  const hit = classifyMedication(name);
+  if (!hit) return null;
+  if (hit.category === "controle_especial") return "C1";
+  if (hit.category === "retencao") return GLP1.includes(hit.substance) ? "GLP1" : "antimicrobiana";
+  return null;
+}

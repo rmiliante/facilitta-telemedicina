@@ -5,6 +5,7 @@ import { emitir, me, urlDocumento, PrescricoesError, type DocumentoEmissao, type
 import { KIND_TITLES } from "@/lib/prescriptionPdf";
 import { saveCustomExams } from "@/lib/customExams";
 import { audit } from "@/lib/audit";
+import { classifyMedication, tipoControleApi } from "@/lib/controlledMeds";
 import { clearDoctorBearer, getDoctorBearer } from "@/lib/prescreveToken";
 
 /**
@@ -51,16 +52,16 @@ function dataBR(iso: string | null | undefined): string | undefined {
   return m ? m[3] + "/" + m[2] + "/" + m[1] : undefined;
 }
 
-function montarDocumento(kind: Kind, items: Item[], notes: string): DocumentoEmissao {
+function montarDocumentos(kind: Kind, items: Item[], notes: string): DocumentoEmissao[] {
   if (kind === "exame") {
-    return {
+    return [{
       tipo: "pedido_exame",
       exames: items.map((it) => ({
         nome_exame: it.name,
         observacoes: (it.instructions ?? "").trim() || undefined,
       })),
       informacoes: notes.trim() || undefined,
-    };
+    }];
   }
   if (kind === "atestado") {
     const paragrafos = notes
@@ -69,19 +70,33 @@ function montarDocumento(kind: Kind, items: Item[], notes: string): DocumentoEmi
       .filter(Boolean)
       .map((l) => "<p>" + esc(l) + "</p>")
       .join("");
-    return { tipo: "documento", tipo_documento: "Atestado Médico", informacoes: paragrafos };
+    return [{ tipo: "documento", tipo_documento: "Atestado Médico", informacoes: paragrafos }];
   }
-  const medicamentos: MedicamentoItem[] = items.map((it) => {
+  const toMed = (it: Item): MedicamentoItem => {
     const qtd = (it.quantity ?? "").trim();
     // A API só aceita dígitos na quantidade; o texto original ("1 caixa") vai junto da posologia.
     const textoQtd = qtd && !/^[0-9]+$/.test(qtd) ? "Quantidade: " + qtd : "";
+    const tipo = tipoControleApi(it.name);
     return {
       nome_medicamento: it.name,
       quantidade: digits(qtd) || "1",
       observacoes: [textoQtd, (it.instructions ?? "").trim()].filter(Boolean).join(" — ") || undefined,
+      ...(tipo ? { controlado: true } : {}),
+      ...(tipo === "antimicrobiana" ? { lista: "ATB" as const } : tipo === "GLP1" ? { lista: "GLP1" as const } : {}),
     };
-  });
-  return { tipo: "receita", medicamentos, informacoes: notes.trim() || undefined };
+  };
+  // Um documento por tipo de controle: simples, C1, antimicrobiana e GLP-1 não se misturam.
+  const grupos = new Map<string, Item[]>();
+  for (const it of items) {
+    const k = tipoControleApi(it.name) ?? "simples";
+    grupos.set(k, [...(grupos.get(k) ?? []), it]);
+  }
+  return [...grupos.entries()].map(([k, lista]) => ({
+    tipo: "receita" as const,
+    medicamentos: lista.map(toMed),
+    informacoes: notes.trim() || undefined,
+    ...(k === "simples" ? {} : { tipo_controle: k as "C1" | "antimicrobiana" | "GLP1" }),
+  }));
 }
 
 export async function emitirViaPrescricoes(input: {
@@ -93,6 +108,15 @@ export async function emitirViaPrescricoes(input: {
   appointmentId: string;
 }): Promise<NextResponse | null> {
   const { kind, items, notes, patient } = input;
+  if (kind === "receita") {
+    const notif = items.filter((it) => classifyMedication(it.name)?.category === "notificacao");
+    if (notif.length > 0) {
+      return NextResponse.json(
+        { error: notif.map((it) => it.name).join(", ") + ": exige Notificação de Receita (amarela/azul). Ainda não sai pelo sistema; use o talão em papel." },
+        { status: 422 }
+      );
+    }
+  }
   const supabase = getSupabaseAdmin();
 
   const { data: doctor } = await supabase
@@ -122,10 +146,9 @@ export async function emitirViaPrescricoes(input: {
       paciente_cpf: digits(patient.cpf),
       paciente_telefone: telefone,
       paciente_data_nascimento: dataBR(patient.birth_date),
-      documentos: [montarDocumento(kind, items, notes)],
+      documentos: montarDocumentos(kind, items, notes),
     });
 
-    const emitido = result.documentos[0];
     const stamp = new Intl.DateTimeFormat("pt-BR", {
       timeZone: "America/Sao_Paulo",
       day: "2-digit",
@@ -134,15 +157,19 @@ export async function emitirViaPrescricoes(input: {
     })
       .format(new Date())
       .replace(/\//g, "-");
-    const fileName = FILE_PREFIX[kind] + " - " + patient.full_name + " - " + stamp + ".pdf";
+    const multi = result.documentos.length > 1;
 
     // O PDF assinado só baixa com o token do próprio médico (vale 24h; GET /me renova).
-    let saved = null;
-    if (emitido?.token) {
-      const bearer = await getDoctorBearer(doctor.id);
-      if (bearer) {
+    const bearer = await getDoctorBearer(doctor.id);
+    if (bearer) await me(bearer).catch(() => null); // renova a validade do token
+    const salvos = [];
+    let faltouPdf = false;
+    for (const [i, emitido] of result.documentos.entries()) {
+      const fileName =
+        FILE_PREFIX[kind] + (multi ? " " + (i + 1) : "") + " - " + patient.full_name + " - " + stamp + ".pdf";
+      let saved = null;
+      if (emitido?.token && bearer) {
         try {
-          await me(bearer).catch(() => null); // renova a validade do token
           const { url } = await urlDocumento(emitido.token, bearer);
           const pdfRes = await fetch(url);
           if (pdfRes.ok) {
@@ -160,20 +187,21 @@ export async function emitirViaPrescricoes(input: {
           console.error("Prescrições: falha ao baixar o PDF assinado", e);
         }
       }
+      await supabase.from("prescreve_documentos").insert({
+        doctor_id: doctor.id,
+        consulta_ref: input.appointmentId,
+        paciente_nome: patient.full_name,
+        tipo_controle: kind,
+        token: emitido?.token ?? null,
+        documento_id: emitido?.documento_id ?? null,
+        pdf_path: saved?.path ?? null,
+        status: saved ? "emitido" : "emitido_sem_pdf",
+      });
+      if (saved) salvos.push(saved);
+      else faltouPdf = true;
     }
 
-    await supabase.from("prescreve_documentos").insert({
-      doctor_id: doctor.id,
-      consulta_ref: input.appointmentId,
-      paciente_nome: patient.full_name,
-      tipo_controle: kind,
-      token: emitido?.token ?? null,
-      documento_id: emitido?.documento_id ?? null,
-      pdf_path: saved?.path ?? null,
-      status: saved ? "emitido" : "emitido_sem_pdf",
-    });
-
-    if (!saved) {
+    if (faltouPdf) {
       return NextResponse.json(
         {
           error: "O documento foi emitido, mas o PDF não pôde ser baixado: entre de novo na Prescreve com o código do e-mail e tente recuperar o PDF. Avise a administração se persistir.",
@@ -184,7 +212,9 @@ export async function emitirViaPrescricoes(input: {
       );
     }
 
-    const [withUrl] = await signPatientDocuments([saved]);
+    const comUrl = await signPatientDocuments(salvos);
+    const saved = salvos[0];
+    const withUrl = comUrl[0];
     if (kind === "exame") await saveCustomExams(items.map((it) => it.name), doctor.id);
     await audit("doctor", {
       action: "emitir_documento",
@@ -195,12 +225,18 @@ export async function emitirViaPrescricoes(input: {
       details: { tipo: kind, itens: items.length, via: "prescricoes" },
     });
 
-    return NextResponse.json({ document: withUrl, title: KIND_TITLES[kind], creditsRemaining: null });
+    return NextResponse.json({ document: withUrl, documents: comUrl, title: KIND_TITLES[kind], creditsRemaining: null });
   } catch (err) {
     if (err instanceof PrescricoesError) {
       if (err.code === "CERT_NOT_CONNECTED" || err.status === 401) {
         return NextResponse.json(
           { error: "Aprove a assinatura no app do seu certificado antes de emitir.", needsSession: true, via: "prescricoes" },
+          { status: 409 }
+        );
+      }
+      if (err.code === "SNCR_SEM_NUMERACAO" || err.status === 409) {
+        return NextResponse.json(
+          { error: "Sem numeração SNCR para este tipo de receita. Peça mais numeração no Gov.br (passo 5 do seu cadastro na Prescreve).", code: err.code },
           { status: 409 }
         );
       }

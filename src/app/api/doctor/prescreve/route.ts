@@ -71,6 +71,7 @@ export async function GET() {
     dadosOk: falta.length === 0,
     faltando: falta,
     vinculado: !!doctor.prescreve_uuid,
+    sncr: !!doctor.prescreve_uuid && process.env.PRESCRICOES_SIMPLES === "1",
     crmValidado: !!doctor.prescreve_crm_validado_em,
     emailPadrao: doctor.email,
     conectado: false,
