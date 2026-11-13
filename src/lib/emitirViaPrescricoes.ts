@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { addGeneratedPatientDocument, signPatientDocuments } from "@/lib/patientDocuments";
-import { emitir, PrescricoesError, type DocumentoEmissao, type MedicamentoItem } from "@/lib/prescrevePrescricoes";
+import { emitir, me, urlDocumento, PrescricoesError, type DocumentoEmissao, type MedicamentoItem } from "@/lib/prescrevePrescricoes";
 import { KIND_TITLES } from "@/lib/prescriptionPdf";
 import { saveCustomExams } from "@/lib/customExams";
 import { audit } from "@/lib/audit";
+import { clearDoctorBearer, getDoctorBearer } from "@/lib/prescreveToken";
 
 /**
  * Exame, atestado e receita simples emitidos pela API de Prescrições da Prescreve
@@ -135,19 +136,29 @@ export async function emitirViaPrescricoes(input: {
       .replace(/\//g, "-");
     const fileName = FILE_PREFIX[kind] + " - " + patient.full_name + " - " + stamp + ".pdf";
 
-    // O PDF assinado fica disponível só por pouco tempo na Prescreve: baixa e guarda no nosso Storage.
+    // O PDF assinado só baixa com o token do próprio médico (vale 24h; GET /me renova).
     let saved = null;
-    if (emitido?.s3_url) {
-      const pdfRes = await fetch(emitido.s3_url);
-      if (pdfRes.ok) {
-        const buf = Buffer.from(await pdfRes.arrayBuffer());
-        saved = await addGeneratedPatientDocument(patient.id, buf, fileName, {
-          kind,
-          signed: true,
-          author: doctor.name,
-          appointment_id: input.appointmentId,
-          needs_print: true,
-        });
+    if (emitido?.token) {
+      const bearer = await getDoctorBearer(doctor.id);
+      if (bearer) {
+        try {
+          await me(bearer).catch(() => null); // renova a validade do token
+          const { url } = await urlDocumento(emitido.token, bearer);
+          const pdfRes = await fetch(url);
+          if (pdfRes.ok) {
+            const buf = Buffer.from(await pdfRes.arrayBuffer());
+            saved = await addGeneratedPatientDocument(patient.id, buf, fileName, {
+              kind,
+              signed: true,
+              author: doctor.name,
+              appointment_id: input.appointmentId,
+              needs_print: true,
+            });
+          }
+        } catch (e) {
+          if (e instanceof PrescricoesError && e.status === 401) await clearDoctorBearer(doctor.id);
+          console.error("Prescrições: falha ao baixar o PDF assinado", e);
+        }
       }
     }
 
@@ -164,8 +175,12 @@ export async function emitirViaPrescricoes(input: {
 
     if (!saved) {
       return NextResponse.json(
-        { error: "O documento foi emitido na Prescreve, mas não foi possível guardar o PDF. Avise a administração." },
-        { status: 502 }
+        {
+          error: "O documento foi emitido, mas o PDF não pôde ser baixado: entre de novo na Prescreve com o código do e-mail e tente recuperar o PDF. Avise a administração se persistir.",
+          needsLogin: true,
+          via: "prescricoes",
+        },
+        { status: 409 }
       );
     }
 

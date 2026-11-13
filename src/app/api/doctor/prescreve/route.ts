@@ -15,6 +15,7 @@ import {
   vidaasAguardar,
   vidaasIniciar,
 } from "@/lib/prescrevePrescricoes";
+import { saveDoctorBearer } from "@/lib/prescreveToken";
 
 /**
  * Conta do médico na Prescreve (API de Prescrições) para receitas controladas:
@@ -145,6 +146,7 @@ export async function POST(req: NextRequest) {
         .from("doctors")
         .update({ prescreve_uuid: login.profile.uuid, prescreve_validado_em: new Date().toISOString() })
         .eq("id", doctor.id);
+      await saveDoctorBearer(doctor.id, login.access_token);
       let saldo: Record<string, number> | null = null;
       let sncrUrl: string | null = null;
       try { saldo = (await saldoSncr(login.access_token)).saldo; } catch { /* opcional */ }
