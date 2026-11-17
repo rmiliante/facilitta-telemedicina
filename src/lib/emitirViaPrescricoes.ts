@@ -5,6 +5,7 @@ import { emitir, urlDocumento, PrescricoesError, type DocumentoEmissao, type Med
 import { KIND_TITLES } from "@/lib/prescriptionPdf";
 import { saveCustomExams } from "@/lib/customExams";
 import { audit } from "@/lib/audit";
+import { registrarItens } from "@/lib/prescricoesRegistro";
 import { classifyMedication, tipoControleApi } from "@/lib/controlledMeds";
 import { clearDoctorBearer, getDoctorBearer } from "@/lib/prescreveToken";
 
@@ -139,6 +140,7 @@ export async function emitirViaPrescricoes(input: {
   }
 
   try {
+    const docsEnviados = montarDocumentos(kind, items, notes);
     const result = await emitir({
       profissional: { uuid: doctor.prescreve_uuid, cpf: digits(doctor.cpf) },
       profissional_endereco: address,
@@ -146,7 +148,7 @@ export async function emitirViaPrescricoes(input: {
       paciente_cpf: digits(patient.cpf),
       paciente_telefone: telefone,
       paciente_data_nascimento: dataBR(patient.birth_date),
-      documentos: montarDocumentos(kind, items, notes),
+      documentos: docsEnviados,
     });
 
     const stamp = new Intl.DateTimeFormat("pt-BR", {
@@ -196,7 +198,17 @@ export async function emitirViaPrescricoes(input: {
         pdf_path: saved?.path ?? null,
         status: saved ? "emitido" : "emitido_sem_pdf",
       });
-      if (saved) salvos.push(saved);
+      if (saved) {
+        salvos.push(saved);
+        const enviado = docsEnviados[i];
+        const itensDoc =
+          enviado?.tipo === "receita"
+            ? enviado.medicamentos.map((m) => ({ nome: m.nome_medicamento, posologia: m.observacoes }))
+            : enviado?.tipo === "pedido_exame"
+              ? enviado.exames.map((e) => ({ nome: e.nome_exame }))
+              : [];
+        await registrarItens({ docPath: saved.path, patientId: patient.id, kind, itens: itensDoc });
+      }
       else faltouPdf = true;
     }
 

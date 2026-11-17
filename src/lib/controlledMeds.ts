@@ -134,3 +134,29 @@ export function tipoControleApi(name: string): "C1" | "antimicrobiana" | "GLP1" 
   if (hit.category === "retencao") return GLP1.includes(hit.substance) ? "GLP1" : "antimicrobiana";
   return null;
 }
+
+export type TipoReceita = "simples" | "controle_especial" | "antimicrobiano" | "glp1" | "notificacao";
+
+export const TIPO_RECEITA_LABEL: Record<TipoReceita, string> = {
+  simples: "Simples",
+  controle_especial: "Controle especial (C1)",
+  antimicrobiano: "Antimicrobiano",
+  glp1: "GLP-1",
+  notificacao: "Notificação A/B",
+};
+
+/** Tipo da receita pelo conjunto de medicamentos (o mais restritivo vence). */
+export function tipoReceitaDosItens(names: string[]): TipoReceita {
+  const found = new Set<TipoReceita>();
+  for (const n of names) {
+    const hit = classifyMedication(n);
+    if (!hit) continue;
+    if (hit.category === "notificacao") found.add("notificacao");
+    else {
+      const t = tipoControleApi(n);
+      found.add(t === "C1" ? "controle_especial" : t === "GLP1" ? "glp1" : "antimicrobiano");
+    }
+  }
+  for (const t of ["notificacao", "controle_especial", "glp1", "antimicrobiano"] as TipoReceita[]) if (found.has(t)) return t;
+  return "simples";
+}

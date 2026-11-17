@@ -2,14 +2,16 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import PacientesDashboard from "./PacientesDashboard";
+import PrescricoesDashboard from "./PrescricoesDashboard";
 
-type Sub = "consultas" | "pacientes" | "captacao" | "medicos";
+type Sub = "consultas" | "pacientes" | "captacao" | "medicos" | "prescricoes";
 
 const SUBS: { key: Sub; label: string }[] = [
   { key: "consultas", label: "Consultas" },
   { key: "pacientes", label: "Pacientes" },
   { key: "captacao", label: "Captação" },
   { key: "medicos", label: "Médicos" },
+  { key: "prescricoes", label: "Prescrições" },
 ];
 
 /** Botões no topo do Dashboard: Consultas (o painel que já existia), Captação e Médicos ativos. */
@@ -37,6 +39,7 @@ export default function DashboardTabs({ consultas }: { consultas: ReactNode }) {
       {sub === "pacientes" && <PacientesDashboard />}
       {sub === "captacao" && <CaptacaoDashboard />}
       {sub === "medicos" && <MedicosDashboard />}
+      {sub === "prescricoes" && <PrescricoesDashboard />}
     </div>
   );
 }

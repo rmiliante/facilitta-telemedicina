@@ -9,6 +9,7 @@ import { prescricoesAtivo } from "@/lib/prescrevePrescricoes";
 import { emitirViaPrescricoes } from "@/lib/emitirViaPrescricoes";
 import { checkPrescription } from "@/lib/controlledMeds";
 import { audit } from "@/lib/audit";
+import { registrarItens } from "@/lib/prescricoesRegistro";
 import { saveCustomExams } from "@/lib/customExams";
 import { cleanApac, saveApacProcedure, savePatientApacData, validateApac } from "@/lib/apacProcedures";
 import { enmgProcedureName } from "@/lib/enmgForm";
@@ -212,6 +213,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       author: doctor.name,
       appointment_id: appointment.id,
       needs_print: true,
+    });
+    await registrarItens({
+      docPath: doc.path,
+      patientId: patient.id,
+      kind,
+      itens: items.map((it) => ({ nome: it.name, quantidade: it.quantity?.trim() || undefined, posologia: it.instructions?.trim() || undefined })),
     });
     const [withUrl] = await signPatientDocuments([doc]);
     if (kind === "exame") await saveCustomExams(items.map((it) => it.name), doctor.id);
