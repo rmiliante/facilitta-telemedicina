@@ -18,10 +18,29 @@ interface MedDetalhe {
   tipoKey: string;
   tipo: string;
   info: { classe: string; uso: string; serve: string; atencao: string } | null;
+  precos: { concentracao: string; forma: string; caixa: number | null; unidadeMin: number | null; unidadeMed: number | null }[];
 }
 interface Stats {
   medicamentosDetalhe: MedDetalhe[];
-  resumoMeds: { totalItens: number; distintos: number; controladosPct: number | null; itensPorReceita: number | null; classes: Item[] };
+  resumoMeds: {
+    totalItens: number;
+    receitas: number;
+    pacientes: number;
+    maxItensReceita: number;
+    distintos: number;
+    top5Pct: number | null;
+    controlados: number;
+    controladosPct: number | null;
+    itensPorReceita: number | null;
+    itensPorPaciente: number | null;
+    valorEstimado: number | null;
+    valorPorReceita: number | null;
+    itensComPrecoPct: number | null;
+    cmedRef: string | null;
+    classes: Item[];
+    porMedico: { name: string; itens: number; itensPorReceita: number; controladosPct: number }[];
+    porMes: { mes: string; count: number }[];
+  };
   total: number;
   porTipo: Record<string, number>;
   assinadosPct: number | null;
@@ -67,6 +86,13 @@ function ymd(d: Date) {
 }
 function br(day: string) {
   return day.split("-").reverse().join("/");
+}
+
+const brl = (v: number | null | undefined, dec = 2) => (v == null ? "—" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: dec, maximumFractionDigits: dec }));
+const FORMA: Record<string, string> = { COM: "comprimido", CAP: "cápsula", DRG: "drágea", "SOL OR": "solução oral", "SUS OR": "suspensão oral", XPE: "xarope", INJ: "injetável", GOT: "gotas", ENV: "envelope", CAN: "caneta" };
+function mesBr(m: string) {
+  const [y, mm] = m.split("-");
+  return `${["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"][Number(mm) - 1]}/${y.slice(2)}`;
 }
 
 function Kpi({ label, value, hint }: { label: string; value: ReactNode; hint?: string }) {
@@ -150,7 +176,7 @@ function Label({ children }: { children: ReactNode }) {
   return <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-400">{children}</p>;
 }
 
-function MedPopup({ med, onClose }: { med: MedDetalhe; onClose: () => void }) {
+function MedPopup({ med, cmedRef, onClose }: { med: MedDetalhe; cmedRef: string | null; onClose: () => void }) {
   return (
     <Modal title={med.name} subtitle={med.info ? `${med.info.classe} · uso ${med.info.uso}` : undefined} onClose={onClose}>
       <div className="flex flex-wrap gap-1.5">
@@ -170,6 +196,32 @@ function MedPopup({ med, onClose }: { med: MedDetalhe; onClose: () => void }) {
         <div>
           <Label>Atenção</Label>
           <p>{med.info.atencao}</p>
+        </div>
+      )}
+      {med.precos.length > 0 && (
+        <div className="rounded-lg border border-teal-200 bg-teal-50 p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-teal-700">Preço máximo ao consumidor (CMED{cmedRef ? ` · tabela de ${cmedRef.split("-").reverse().join("/")}` : ""})</p>
+          <table className="mt-1 w-full text-xs">
+            <thead>
+              <tr className="text-left text-zinc-500">
+                <th className="font-medium">Apresentação</th>
+                <th className="text-right font-medium">Menor caixa</th>
+                <th className="text-right font-medium">Por unidade</th>
+              </tr>
+            </thead>
+            <tbody>
+              {med.precos.map((p, i) => (
+                <tr key={i} className="border-t border-teal-100">
+                  <td className="py-1">
+                    {p.concentracao.toLowerCase()} · {FORMA[p.forma] ?? p.forma.toLowerCase()}
+                  </td>
+                  <td className="py-1 text-right tabular-nums">{brl(p.caixa)}</td>
+                  <td className="py-1 text-right tabular-nums">{p.unidadeMin != null && p.unidadeMed != null ? `${brl(p.unidadeMin)}–${brl(p.unidadeMed)}` : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-1 text-[10px] text-zinc-500">Preço teto (PMC, ICMS 18%); a farmácia pode cobrar menos. &quot;Por unidade&quot; = menor valor – valor mediano entre as marcas.</p>
         </div>
       )}
       <div className="rounded-lg bg-zinc-100 p-3">
@@ -410,6 +462,66 @@ export default function PrescricoesDashboard() {
             <Kpi label="Assinados ICP-Brasil" value={data.assinadosPct === null ? "—" : `${data.assinadosPct}%`} hint={data.docsPorConsulta ? `${data.docsPorConsulta} documentos por consulta` : undefined} />
           </div>
 
+          <div>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">Medicamentos prescritos · no período filtrado</p>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+              <Kpi label="Itens prescritos (soma)" value={data.resumoMeds.totalItens} hint={`em ${data.resumoMeds.receitas} receitas`} />
+              <Kpi label="Média de itens por receita" value={data.resumoMeds.itensPorReceita ?? "—"} hint={data.resumoMeds.maxItensReceita ? `máx. ${data.resumoMeds.maxItensReceita} em uma receita` : undefined} />
+              <Kpi label="Média por paciente" value={data.resumoMeds.itensPorPaciente ?? "—"} hint={`${data.resumoMeds.pacientes} pacientes`} />
+              <Kpi label="Medicamentos distintos" value={data.resumoMeds.distintos} hint={data.resumoMeds.top5Pct != null ? `top 5 = ${data.resumoMeds.top5Pct}% dos itens` : undefined} />
+              <Kpi label="Controlados ou retidos" value={data.resumoMeds.controladosPct == null ? "—" : `${data.resumoMeds.controladosPct}%`} hint={`${data.resumoMeds.controlados} itens`} />
+              <div className="rounded-lg border border-teal-200 bg-teal-50 p-4">
+                <p className="text-xs font-medium text-teal-700">Valor estimado (teto CMED)</p>
+                <p className="mt-1 text-2xl font-semibold text-brand-navy">{brl(data.resumoMeds.valorEstimado, 0)}</p>
+                <p className="mt-0.5 text-[11px] text-zinc-500">
+                  {data.resumoMeds.valorPorReceita != null ? `média ${brl(data.resumoMeds.valorPorReceita, 0)} por receita · ` : ""}
+                  {data.resumoMeds.itensComPrecoPct ?? 0}% dos itens com preço
+                </p>
+              </div>
+            </div>
+            <p className="mt-1 text-[10px] text-zinc-400">Valor: quantidade × preço por unidade quando a receita traz o número; senão, 1 caixa (menor preço da dose). Preço teto, não o que o paciente paga.</p>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card title="Medicamentos por médico">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-zinc-500">
+                    <th className="pb-1 font-medium">Médico</th>
+                    <th className="pb-1 text-right font-medium">Itens</th>
+                    <th className="pb-1 text-right font-medium">Itens/receita</th>
+                    <th className="pb-1 text-right font-medium">% controlados</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.resumoMeds.porMedico.map((m) => (
+                    <tr key={m.name} className="border-t border-zinc-100">
+                      <td className="py-1 text-zinc-700">{m.name}</td>
+                      <td className="py-1 text-right tabular-nums">{m.itens}</td>
+                      <td className="py-1 text-right tabular-nums">{m.itensPorReceita}</td>
+                      <td className="py-1 text-right tabular-nums">{m.controladosPct}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+            <Card title="Itens prescritos por mês">
+              {data.resumoMeds.porMes.length === 0 ? (
+                <p className="text-xs text-zinc-400">Sem dados no período.</p>
+              ) : (
+                <div className="flex h-28 items-end gap-2">
+                  {data.resumoMeds.porMes.map((m) => (
+                    <div key={m.mes} className="flex flex-1 flex-col items-center gap-1">
+                      <span className="text-[10px] tabular-nums text-zinc-500">{m.count}</span>
+                      <div className="w-full rounded-t bg-brand-navy" style={{ height: `${(m.count / Math.max(...data.resumoMeds.porMes.map((x) => x.count))) * 100}%` }} />
+                      <span className="text-[10px] text-zinc-500">{mesBr(m.mes)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </div>
+
           <div className="grid gap-4 lg:grid-cols-3">
             <div className="lg:col-span-2">
               <Card title="Documentos por semana">
@@ -519,7 +631,7 @@ export default function PrescricoesDashboard() {
             </div>
           </Card>
           {popup?.tipo === "resumo" && <ResumoPopup data={data} onClose={() => setPopup(null)} onPick={(med) => setPopup({ tipo: "med", med, voltar: true })} />}
-          {popup?.tipo === "med" && <MedPopup med={popup.med} onClose={() => setPopup(popup.voltar ? { tipo: "resumo" } : null)} />}
+          {popup?.tipo === "med" && <MedPopup med={popup.med} cmedRef={data.resumoMeds.cmedRef} onClose={() => setPopup(popup.voltar ? { tipo: "resumo" } : null)} />}
         </>
       )}
     </div>
