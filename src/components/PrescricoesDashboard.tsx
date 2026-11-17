@@ -8,7 +8,20 @@ interface Item {
   name: string;
   count: number;
 }
+interface MedDetalhe {
+  name: string;
+  count: number;
+  pacientes: number;
+  medicos: number;
+  ultima: string | null;
+  posologia: string | null;
+  tipoKey: string;
+  tipo: string;
+  info: { classe: string; uso: string; serve: string; atencao: string } | null;
+}
 interface Stats {
+  medicamentosDetalhe: MedDetalhe[];
+  resumoMeds: { totalItens: number; distintos: number; controladosPct: number | null; itensPorReceita: number | null; classes: Item[] };
   total: number;
   porTipo: Record<string, number>;
   assinadosPct: number | null;
@@ -31,6 +44,20 @@ const TIPO_COLOR: Record<string, string> = {
   antimicrobiano: "bg-indigo-500",
   glp1: "bg-rose-500",
   notificacao: "bg-zinc-500",
+};
+const TIPO_BADGE: Record<string, string> = {
+  simples: "bg-teal-50 text-teal-700",
+  controle_especial: "bg-amber-100 text-amber-800",
+  antimicrobiano: "bg-indigo-100 text-indigo-700",
+  glp1: "bg-rose-100 text-rose-700",
+  notificacao: "bg-zinc-200 text-zinc-700",
+};
+const TIPO_REGRA: Record<string, string> = {
+  simples: "Receita simples (branca).",
+  controle_especial: "Exige receita de controle especial em 2 vias (Portaria 344/98, lista C1), emitida pelo SNCR com numeração.",
+  antimicrobiano: "Receita com retenção na farmácia (RDC 471/2021), emitida pelo SNCR.",
+  glp1: "Receita com retenção na farmácia, emitida pelo SNCR.",
+  notificacao: "Exige Notificação de Receita (A/B). Não é emitida por este sistema.",
 };
 const fieldCls =
   "rounded-md border border-zinc-300 bg-white px-2.5 py-1.5 text-xs text-zinc-800 outline-none focus:border-brand-teal-dark";
@@ -62,13 +89,24 @@ function Card({ title, children, extra }: { title: string; children: ReactNode; 
     </div>
   );
 }
-function Bars({ items, colors }: { items: Item[]; colors?: (i: Item, idx: number) => string }) {
+function Bars({ items, colors, onPick }: { items: Item[]; colors?: (i: Item, idx: number) => string; onPick?: (i: Item) => void }) {
   const max = Math.max(1, ...items.map((i) => i.count));
   if (items.length === 0) return <p className="text-xs text-zinc-400">Sem dados no período.</p>;
   return (
     <ul className="space-y-1.5">
       {items.map((i, idx) => (
-        <li key={i.name} className="flex items-center gap-2 text-xs">
+        <li
+          key={i.name}
+          className={`flex items-center gap-2 text-xs ${onPick ? "cursor-pointer rounded hover:bg-zinc-50" : ""}`}
+          onClick={
+            onPick
+              ? (e) => {
+                  e.stopPropagation();
+                  onPick(i);
+                }
+              : undefined
+          }
+        >
           <span className="w-40 shrink-0 truncate text-zinc-700" title={i.name}>
             {i.name}
           </span>
@@ -85,7 +123,166 @@ function Bars({ items, colors }: { items: Item[]; colors?: (i: Item, idx: number
   );
 }
 
+function Modal({ title, subtitle, onClose, children }: { title: string; subtitle?: string; onClose: () => void; children: ReactNode }) {
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-brand-navy/50 p-4" onClick={onClose}>
+      <div className="my-8 w-full max-w-xl overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between bg-brand-navy px-5 py-4 text-white">
+          <div>
+            <h2 className="text-lg font-bold">{title}</h2>
+            {subtitle && <p className="text-xs opacity-80">{subtitle}</p>}
+          </div>
+          <button type="button" onClick={onClose} aria-label="Fechar" className="text-xl leading-none">
+            ✕
+          </button>
+        </div>
+        <div className="space-y-3 px-5 py-4 text-sm text-zinc-700">{children}</div>
+      </div>
+    </div>
+  );
+}
+function Label({ children }: { children: ReactNode }) {
+  return <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-400">{children}</p>;
+}
+
+function MedPopup({ med, onClose }: { med: MedDetalhe; onClose: () => void }) {
+  return (
+    <Modal title={med.name} subtitle={med.info ? `${med.info.classe} · uso ${med.info.uso}` : undefined} onClose={onClose}>
+      <div className="flex flex-wrap gap-1.5">
+        <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${TIPO_BADGE[med.tipoKey]}`}>{med.tipo}</span>
+      </div>
+      {med.info && (
+        <div>
+          <Label>Para que serve</Label>
+          <p>{med.info.serve}</p>
+        </div>
+      )}
+      <div>
+        <Label>Receita</Label>
+        <p>{TIPO_REGRA[med.tipoKey]}</p>
+      </div>
+      {med.info && (
+        <div>
+          <Label>Atenção</Label>
+          <p>{med.info.atencao}</p>
+        </div>
+      )}
+      <div className="rounded-lg bg-zinc-100 p-3">
+        <Label>Na Facilitta</Label>
+        <div className="mt-1 flex gap-5">
+          {[
+            [med.count, "prescrições"],
+            [med.pacientes, "pacientes"],
+            [med.medicos, "médicos"],
+            [med.ultima ? new Date(med.ultima).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit" }) : "—", "última"],
+          ].map(([v, l]) => (
+            <div key={l as string}>
+              <p className="text-lg font-semibold text-brand-navy">{v}</p>
+              <p className="text-[11px]">{l}</p>
+            </div>
+          ))}
+        </div>
+        {med.posologia && (
+          <p className="mt-2 text-xs">
+            Posologia mais comum: <i>{med.posologia}</i>
+          </p>
+        )}
+      </div>
+      <p className="text-[10px] text-zinc-400">Informação de referência; não substitui a bula nem o julgamento médico.</p>
+    </Modal>
+  );
+}
+
+function ResumoPopup({ data, onClose, onPick }: { data: Stats; onClose: () => void; onPick: (m: MedDetalhe) => void }) {
+  const r = data.resumoMeds;
+  const tipos = data.tiposReceita;
+  const totalTipos = tipos.reduce((t, x) => t + x.count, 0) || 1;
+  const maxClasse = Math.max(1, ...r.classes.map((c) => c.count));
+  return (
+    <Modal title="Resumo dos medicamentos" subtitle={`${r.totalItens} itens prescritos no período`} onClose={onClose}>
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          [r.distintos, "medicamentos distintos"],
+          [r.controladosPct === null ? "—" : `${r.controladosPct}%`, "controlados ou retidos"],
+          [r.itensPorReceita ?? "—", "itens por receita"],
+        ].map(([v, l]) => (
+          <div key={l as string} className="rounded-lg bg-zinc-100 p-2.5">
+            <p className="text-xl font-semibold text-brand-navy">{v}</p>
+            <p className="text-[11px]">{l}</p>
+          </div>
+        ))}
+      </div>
+      {tipos.length > 0 && (
+        <div>
+          <Label>Por tipo de receita</Label>
+          <div className="mt-1 flex h-3 overflow-hidden rounded-full">
+            {tipos.map((t) => (
+              <div key={t.key} className={TIPO_COLOR[t.key]} style={{ flexGrow: t.count, flexBasis: 0 }} title={`${t.name}: ${t.count}`} />
+            ))}
+          </div>
+          <p className="mt-1 flex flex-wrap gap-x-3 text-[11px]">
+            {tipos.map((t) => (
+              <span key={t.key}>
+                {t.name} {Math.round((t.count / totalTipos) * 100)}%
+              </span>
+            ))}
+          </p>
+        </div>
+      )}
+      {r.classes.length > 0 && (
+        <div>
+          <Label>Por classe terapêutica</Label>
+          <ul className="mt-1 space-y-1">
+            {r.classes.map((c) => (
+              <li key={c.name} className="flex items-center gap-2 text-xs">
+                <span className="w-44 shrink-0 truncate" title={c.name}>
+                  {c.name}
+                </span>
+                <span className="h-2 flex-1 rounded-full bg-zinc-100">
+                  <span className="block h-2 rounded-full bg-brand-navy" style={{ width: `${(c.count / maxClasse) * 100}%` }} />
+                </span>
+                <span className="w-7 text-right tabular-nums">{c.count}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <div>
+        <Label>Todos os medicamentos (clique para detalhes)</Label>
+        <table className="mt-1 w-full text-xs">
+          <thead>
+            <tr className="text-left text-zinc-500">
+              <th className="font-medium">Medicamento</th>
+              <th className="font-medium">Tipo</th>
+              <th className="text-right font-medium">Prescr.</th>
+              <th className="text-right font-medium">Pacientes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.medicamentosDetalhe.map((m) => (
+              <tr key={m.name} className="cursor-pointer border-t border-zinc-100 hover:bg-zinc-50" onClick={() => onPick(m)}>
+                <td className="py-1">{m.name}</td>
+                <td className="py-1">
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${TIPO_BADGE[m.tipoKey]}`}>{m.tipo}</span>
+                </td>
+                <td className="py-1 text-right tabular-nums">{m.count}</td>
+                <td className="py-1 text-right tabular-nums">{m.pacientes}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Modal>
+  );
+}
+
 export default function PrescricoesDashboard() {
+  const [popup, setPopup] = useState<{ tipo: "resumo" } | { tipo: "med"; med: MedDetalhe; voltar: boolean } | null>(null);
   const [data, setData] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -276,9 +473,18 @@ export default function PrescricoesDashboard() {
                 </tbody>
               </table>
             </Card>
-            <Card title="Medicamentos mais prescritos">
-              <Bars items={data.medicamentos} colors={() => "bg-brand-navy"} />
-            </Card>
+            <div className="cursor-pointer" onClick={() => setPopup({ tipo: "resumo" })} title="Clique para ver o resumo de todos os medicamentos">
+              <Card title="Medicamentos mais prescritos" extra={<span className="font-normal normal-case text-zinc-400">· clique p/ resumo</span>}>
+                <Bars
+                  items={data.medicamentos}
+                  colors={() => "bg-brand-navy"}
+                  onPick={(i) => {
+                    const med = data.medicamentosDetalhe.find((m) => m.name.toLowerCase() === i.name.toLowerCase());
+                    if (med) setPopup({ tipo: "med", med, voltar: false });
+                  }}
+                />
+              </Card>
+            </div>
             <Card title="Exames mais pedidos">
               <Bars items={data.exames} />
             </Card>
@@ -312,6 +518,8 @@ export default function PrescricoesDashboard() {
               </table>
             </div>
           </Card>
+          {popup?.tipo === "resumo" && <ResumoPopup data={data} onClose={() => setPopup(null)} onPick={(med) => setPopup({ tipo: "med", med, voltar: true })} />}
+          {popup?.tipo === "med" && <MedPopup med={popup.med} onClose={() => setPopup(popup.voltar ? { tipo: "resumo" } : null)} />}
         </>
       )}
     </div>
