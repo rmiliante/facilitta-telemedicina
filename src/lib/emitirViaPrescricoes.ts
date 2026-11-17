@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { addGeneratedPatientDocument, signPatientDocuments } from "@/lib/patientDocuments";
-import { emitir, me, urlDocumento, PrescricoesError, type DocumentoEmissao, type MedicamentoItem } from "@/lib/prescrevePrescricoes";
+import { emitir, urlDocumento, PrescricoesError, type DocumentoEmissao, type MedicamentoItem } from "@/lib/prescrevePrescricoes";
 import { KIND_TITLES } from "@/lib/prescriptionPdf";
 import { saveCustomExams } from "@/lib/customExams";
 import { audit } from "@/lib/audit";
@@ -159,9 +159,8 @@ export async function emitirViaPrescricoes(input: {
       .replace(/\//g, "-");
     const multi = result.documentos.length > 1;
 
-    // O PDF assinado só baixa com o token do próprio médico (vale 24h; GET /me renova).
+    // O PDF assinado só baixa com o token do próprio médico (vale 24h; GET /me com o Refresh-Token renova).
     const bearer = await getDoctorBearer(doctor.id);
-    if (bearer) await me(bearer).catch(() => null); // renova a validade do token
     const salvos = [];
     let faltouPdf = false;
     for (const [i, emitido] of result.documentos.entries()) {

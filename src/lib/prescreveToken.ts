@@ -1,5 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { renovarSessao } from "@/lib/prescrevePrescricoes";
 
 /**
  * Bearer token do médico na Prescreve (login por código no e-mail).
@@ -34,27 +35,58 @@ function decrypt(blob: string): string | null {
   }
 }
 
-export async function saveDoctorBearer(doctorId: string, token: string): Promise<void> {
+export async function saveDoctorBearer(doctorId: string, token: string, refresh?: string | null): Promise<void> {
   const { error } = await getSupabaseAdmin()
     .from("doctors")
     .update({
-      prescreve_token_enc: encrypt(token),
+      prescreve_token_enc: encrypt(JSON.stringify({ a: token, r: refresh ?? null })),
       prescreve_token_exp: new Date(Date.now() + VALID_MS).toISOString(),
     })
     .eq("id", doctorId);
   if (error) console.error("Prescreve: não foi possível guardar o token do médico", error.message);
 }
 
-/** Token ainda dentro das 24h, ou null (o médico precisa entrar de novo com o código do e-mail). */
+function parse(blob: string): { a: string; r: string | null } | null {
+  const plain = decrypt(blob);
+  if (!plain) return null;
+  try {
+    const j = JSON.parse(plain) as { a?: string; r?: string | null };
+    return j.a ? { a: j.a, r: j.r ?? null } : null;
+  } catch {
+    return { a: plain, r: null }; // formato antigo: só o access_token
+  }
+}
+
+/**
+ * Token do médico pronto para usar. Se já passou das 24h e há refresh_token, o GET /me
+ * renova (não existe endpoint de refresh separado). Null = o médico precisa entrar de novo
+ * com o código do e-mail.
+ */
 export async function getDoctorBearer(doctorId: string): Promise<string | null> {
   const { data } = await getSupabaseAdmin()
     .from("doctors")
     .select("prescreve_token_enc, prescreve_token_exp")
     .eq("id", doctorId)
     .maybeSingle();
-  if (!data?.prescreve_token_enc || !data.prescreve_token_exp) return null;
-  if (new Date(data.prescreve_token_exp).getTime() <= Date.now()) return null;
-  return decrypt(data.prescreve_token_enc);
+  if (!data?.prescreve_token_enc) return null;
+  const tk = parse(data.prescreve_token_enc);
+  if (!tk) return null;
+  const vencido = !data.prescreve_token_exp || new Date(data.prescreve_token_exp).getTime() <= Date.now() + 60_000;
+  if (!vencido && !tk.r) return tk.a;
+  if (!tk.r) return null;
+  try {
+    const novo = await renovarSessao(tk.a, tk.r);
+    if (novo.access) {
+      await saveDoctorBearer(doctorId, novo.access, novo.refresh ?? tk.r);
+      return novo.access;
+    }
+    // sem token novo = o atual ainda vale
+    await saveDoctorBearer(doctorId, tk.a, tk.r);
+    return tk.a;
+  } catch {
+    await clearDoctorBearer(doctorId);
+    return null;
+  }
 }
 
 export async function clearDoctorBearer(doctorId: string): Promise<void> {

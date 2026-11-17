@@ -52,6 +52,8 @@ interface CallOptions {
   body?: unknown;
   query?: Query;
   bearer?: string;
+  /** Refresh-Token: com ele o GET /me devolve um access_token novo quando o atual venceu. */
+  refresh?: string;
 }
 
 async function call<T>(path: string, opts: CallOptions = {}): Promise<T> {
@@ -68,6 +70,7 @@ async function call<T>(path: string, opts: CallOptions = {}): Promise<T> {
   const headers: Record<string, string> = { "X-API-Key": apiKey() };
   if (opts.body !== undefined) headers["Content-Type"] = "application/json";
   if (opts.bearer) headers["Authorization"] = "Bearer " + opts.bearer;
+  if (opts.refresh) headers["Refresh-Token"] = opts.refresh;
 
   let res: Response;
   try {
@@ -128,6 +131,12 @@ export function otpVerify(email: string, token: string) {
     method: "POST",
     body: { email, token },
   });
+}
+
+/** Renova a sessão do médico: o próprio /me devolve tokens novos em auth.* quando o access_token venceu. */
+export async function renovarSessao(bearer: string, refresh: string) {
+  const r = await call<{ auth?: { access_token?: string | null; refresh_token?: string | null } }>("/me", { bearer, refresh });
+  return { access: r.auth?.access_token ?? null, refresh: r.auth?.refresh_token ?? null };
 }
 
 export function me(bearer: string) {
