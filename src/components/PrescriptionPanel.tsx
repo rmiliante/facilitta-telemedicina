@@ -160,7 +160,7 @@ export default function PrescriptionPanel({
   const [apacExtra, setApacExtra] = useState({ cns: "", motherName: "", sex: "", address: "", cep: "", cid: "", cid2: "" });
   const [apacProcs, setApacProcs] = useState<string[]>([]);
   const apacLoaded = useRef(false);
-  const [apacModel, setApacModel] = useState<ApacModel>("enmg");
+  const [apacModel, setApacModel] = useState<ApacModel>("livre");
   const [enmg, setEnmg] = useState<EnmgData>(EMPTY_ENMG);
   const [imagem, setImagem] = useState<ImagemData>(EMPTY_IMAGEM);
   const [oficial, setOficial] = useState<OficialData>(EMPTY_OFICIAL);

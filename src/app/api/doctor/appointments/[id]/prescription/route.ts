@@ -11,6 +11,7 @@ import { checkPrescription } from "@/lib/controlledMeds";
 import { audit } from "@/lib/audit";
 import { registrarItens } from "@/lib/prescricoesRegistro";
 import { saveCustomExams } from "@/lib/customExams";
+import { MODELO_IMAGEM_ATIVO } from "@/lib/modelosDesativados";
 import { cleanApac, saveApacProcedure, savePatientApacData, validateApac } from "@/lib/apacProcedures";
 import { enmgProcedureName } from "@/lib/enmgForm";
 import { imagemProcedureName } from "@/lib/imagemForm";
@@ -65,6 +66,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const notes = typeof body?.notes === "string" ? body.notes.trim().slice(0, 5000) : "";
 
   const apac = kind === "apac" ? cleanApac(body?.apac) : null;
+  if (apac?.model === "imagem" && !MODELO_IMAGEM_ATIVO) {
+    return NextResponse.json({ error: "Este modelo (Ressonância · Tomografia · Cintilografia) está desativado." }, { status: 410 });
+  }
   if (apac?.model === "enmg" && apac.enmg) {
     // Formulário ENMG: o procedimento vem das caixinhas marcadas.
     const procName = enmgProcedureName(apac.enmg.procedures);

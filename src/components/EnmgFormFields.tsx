@@ -28,12 +28,14 @@ const INPUT =
   "w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm outline-none focus:border-brand-teal-dark";
 const LOCKED = "w-full rounded-md border border-zinc-200 bg-zinc-100 px-2 py-1.5 text-sm text-zinc-600";
 
+import { MODELO_IMAGEM_ATIVO } from "@/lib/modelosDesativados";
+
 export function ApacModelTabs({ model, onChange }: { model: ApacModel; onChange: (m: ApacModel) => void }) {
   const tabs: [ApacModel, string][] = [
+    ["livre", "Tomografia · Ressonância · Medicina nuclear (Laudo SUS/APAC)"],
     ["enmg", "Modelo ENMG (Secretaria de Saúde)"],
     ["imagem", "Ressonância · Tomografia · Cintilografia"],
-    ["livre", "Laudo APAC (Ministério da Saúde)"],
-  ];
+  ].filter(([id]) => MODELO_IMAGEM_ATIVO || id !== "imagem") as [ApacModel, string][];
   return (
     <div className="flex flex-wrap gap-2">
       {tabs.map(([id, label]) => (
