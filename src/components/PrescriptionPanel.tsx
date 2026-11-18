@@ -11,7 +11,7 @@ import BasicPharmacyPicker from "@/components/BasicPharmacyPicker";
 import { EMPTY_ENMG, type ApacModel, type EnmgData } from "@/lib/enmgForm";
 import ImagemFormFields from "@/components/ImagemFormFields";
 import ApacOficialFields from "@/components/ApacOficialFields";
-import { EMPTY_OFICIAL, OFICIAL_MUNICIPIO_PADRAO, type OficialData } from "@/lib/apacOficial";
+import { EMPTY_OFICIAL, OFICIAL_MUNICIPIO_PADRAO, procedimentoPar, type OficialData } from "@/lib/apacOficial";
 import { EMPTY_IMAGEM, imagemProcedureName, type ImagemData } from "@/lib/imagemForm";
 
 /**
@@ -164,6 +164,7 @@ export default function PrescriptionPanel({
   const [enmg, setEnmg] = useState<EnmgData>(EMPTY_ENMG);
   const [imagem, setImagem] = useState<ImagemData>(EMPTY_IMAGEM);
   const [oficial, setOficial] = useState<OficialData>(EMPTY_OFICIAL);
+  const [emitirPar, setEmitirPar] = useState(true);
   const [apacBirth, setApacBirth] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   useEffect(() => {
@@ -541,8 +542,12 @@ export default function PrescriptionPanel({
 
     const done: Kind[] = [];
     const batch: IssuedDocument[] = [];
-    for (const [idx, k] of kinds.entries()) {
-      const clean = itemsFor(k).filter((it) => it.name.trim());
+    // Cintilografia de miocárdio: a regulação pede 2 laudos (estresse e repouso), um para cada código.
+    const par = apacModel === "livre" && emitirPar ? procedimentoPar(oficial.procCode) : null;
+    const jobs: { k: Kind; par: boolean }[] = kinds.flatMap((k): { k: Kind; par: boolean }[] => (k === "apac" && par ? [{ k, par: false }, { k, par: true }] : [{ k, par: false }]));
+    for (const [idx, job] of jobs.entries()) {
+      const k = job.k;
+      const clean = job.par && par ? [{ name: par.name, quantity: "1", instructions: "" }] : itemsFor(k).filter((it) => it.name.trim());
       let ok = false;
       for (let attempt = 0; attempt < 2 && !ok; attempt++) {
         // Exame, atestado e receita simples saem pela API de Prescrições (sessão do certificado na
@@ -554,8 +559,8 @@ export default function PrescriptionPanel({
 
         setPhase("emitting");
         setProgress(
-          kinds.length > 1
-            ? `Assinando ${idx + 1} de ${kinds.length} (${KIND_LABELS[k]})...`
+          jobs.length > 1
+            ? `Assinando ${idx + 1} de ${jobs.length} (${KIND_LABELS[k]})...`
             : null,
         );
         const res = await fetch(
@@ -574,7 +579,7 @@ export default function PrescriptionPanel({
                       model: apacModel,
                       enmg: apacModel === "enmg" ? enmg : undefined,
                       imagem: apacModel === "imagem" ? imagem : undefined,
-                      oficial: apacModel === "livre" ? oficial : undefined,
+                      oficial: apacModel === "livre" ? (job.par && par ? { ...oficial, procCode: par.code, secundarios: [] } : oficial) : undefined,
                     }
                   : undefined,
             }),
@@ -1048,7 +1053,7 @@ export default function PrescriptionPanel({
                           />
                         </label>
                       </div>
-                      <ApacOficialFields oficial={oficial} setOficial={setOficial} onPreview={previewEnmg} previewing={previewing} onPickProcedure={(name) => updateItem(0, { name })} cid={apacExtra.cid} />
+                      <ApacOficialFields oficial={oficial} setOficial={setOficial} onPreview={previewEnmg} previewing={previewing} onPickProcedure={(name) => updateItem(0, { name })} emitirPar={emitirPar} setEmitirPar={setEmitirPar} cid={apacExtra.cid} />
                       <label className="block text-xs">
                         <span className="mb-1 block font-medium text-zinc-600">Justificativa clínica (quadro clínico) *</span>
                         <textarea

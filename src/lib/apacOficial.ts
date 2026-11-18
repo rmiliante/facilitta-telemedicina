@@ -83,9 +83,19 @@ export const OFICIAL_PROCEDURES: OficialProcedure[] = [
   { group: "Ressonância magnética", code: "0207020035", name: "RESSONANCIA MAGNETICA DE TORAX", contrast: CONTRASTE_RM },
   { group: "Ressonância magnética", code: "0207020060", name: "RESSONANCIA MAGNETICA DE MAMA (BILATERAL)", contrast: CONTRASTE_RM },
   { group: "Medicina nuclear", code: "0208010025", name: "CINTILOGRAFIA DE MIOCARDIO P/ AVALIACAO DA PERFUSAO EM SITUACAO DE ESTRESSE" },
+  { group: "Medicina nuclear", code: "0208010033", name: "CINTILOGRAFIA DE MIOCARDIO P/ AVALIACAO DA PERFUSAO EM SITUACAO DE REPOUSO (MINIMO 3 PROJECOES)" },
   { group: "Medicina nuclear", code: "0208030026", name: "CINTILOGRAFIA DE TIREOIDE COM OU SEM CAPTACAO" },
   { group: "Medicina nuclear", code: "0208050019", name: "CINTILOGRAFIA DE ARTICULACOES E/OU EXTREMIDADES E/OU OSSO" },
 ];
+
+/** A regulação exige 2 laudos (um de cada código) para a cintilografia de miocárdio: estresse e repouso. */
+const PAR_CINTILO: Record<string, string> = { "0208010025": "0208010033", "0208010033": "0208010025" };
+
+/** Procedimento que acompanha o escolhido (laudo em 2 vias), ou null. */
+export function procedimentoPar(code: string): OficialProcedure | null {
+  const par = PAR_CINTILO[code];
+  return par ? (OFICIAL_PROCEDURES.find((p) => p.code === par) ?? null) : null;
+}
 
 /** Descrições curtas dos CIDs mais comuns em pedidos de imagem (sugestão para o campo 36; a médica pode editar). */
 const CID_DESCRICOES: Record<string, string> = {

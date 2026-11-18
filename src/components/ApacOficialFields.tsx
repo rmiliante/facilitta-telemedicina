@@ -1,7 +1,7 @@
 "use client";
 
 import type { Dispatch, SetStateAction } from "react";
-import { OFICIAL_MAX_SECUNDARIOS, OFICIAL_PROCEDURES, OFICIAL_RACAS, sugerirDiagnostico, type OficialData } from "@/lib/apacOficial";
+import { OFICIAL_MAX_SECUNDARIOS, OFICIAL_PROCEDURES, OFICIAL_RACAS, procedimentoPar, sugerirDiagnostico, type OficialData } from "@/lib/apacOficial";
 
 /** Campos extras do laudo de APAC no modelo do Ministério da Saúde (SIA/SUS). */
 
@@ -14,6 +14,8 @@ export default function ApacOficialFields({
   onPreview,
   previewing,
   onPickProcedure,
+  emitirPar,
+  setEmitirPar,
   cid,
 }: {
   oficial: OficialData;
@@ -21,6 +23,9 @@ export default function ApacOficialFields({
   onPreview: () => void;
   previewing: boolean;
   onPickProcedure?: (name: string) => void;
+  /** Cintilografia de miocárdio: emitir também o laudo do outro código (estresse + repouso). */
+  emitirPar?: boolean;
+  setEmitirPar?: (v: boolean) => void;
   /** CID-10 principal informado acima (usado para sugerir a descrição do diagnóstico). */
   cid?: string;
 }) {
@@ -69,6 +74,18 @@ export default function ApacOficialFields({
             ))}
           </select>
         </label>
+        {(() => {
+          const par = procedimentoPar(oficial.procCode);
+          if (!par || !setEmitirPar) return null;
+          return (
+            <label className="flex items-start gap-2 rounded-md border border-teal-200 bg-teal-50 p-2 text-xs sm:col-span-2">
+              <input type="checkbox" checked={!!emitirPar} onChange={(e) => setEmitirPar(e.target.checked)} className="mt-0.5 h-4 w-4 accent-brand-teal-dark" />
+              <span>
+                <b>Emitir também o laudo {par.code === "0208010033" ? "de repouso" : "de estresse"}</b> ({par.code}). A regulação pede 2 laudos, um para cada código.
+              </span>
+            </label>
+          );
+        })()}
         {(() => {
           const c = OFICIAL_PROCEDURES.find((p) => p.code === oficial.procCode)?.contrast;
           if (!c) return null;
