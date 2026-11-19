@@ -8,6 +8,7 @@ import PrescriptionPanel from "./PrescriptionPanel";
 import PatientTimeline from "./PatientTimeline";
 import SigningSessionBadge from "./SigningSessionBadge";
 import DoctorHeartbeat from "./DoctorHeartbeat";
+import AgendaEncerradaPopup from "./AgendaEncerradaPopup";
 import TipoConsultaBadge, { tipoSuffix } from "./TipoConsultaBadge";
 import { VitalsCompare, VitalHistoryList, useVitalSigns } from "./VitalSigns";
 import { buildTimeline, type TimelineDoc } from "@/lib/patientTimeline";
@@ -307,6 +308,7 @@ export default function ConsultationClient({
   return (
     <div className="flex h-screen flex-col bg-brand-bg">
       <DoctorHeartbeat />
+      <AgendaEncerradaPopup />
       <div className="flex items-center justify-between border-b border-brand-navy bg-brand-navy px-4 py-2.5">
         <div className="flex items-center gap-3">
           <Link

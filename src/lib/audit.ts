@@ -30,6 +30,8 @@ export const AUDIT_ACTIONS = {
   registrar_afericao: "Registrou sinais vitais",
   excluir_afericao: "Excluiu sinais vitais",
   agendar_consulta: "Agendou consulta",
+  encerrar_agenda: "Encerrou a agenda do dia",
+  reabrir_agenda: "Reabriu a agenda do dia",
   alterar_consulta: "Alterou consulta",
   excluir_consulta: "Excluiu consulta",
   salvar_consulta: "Salvou anotações/status da consulta",

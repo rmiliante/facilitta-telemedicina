@@ -384,6 +384,9 @@ export function FilaTab() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [doctorId, setDoctorId] = useState("");
   const [date, setDate] = useState(todayIso());
+  const [agendaEncerrada, setAgendaEncerrada] = useState(false);
+  const [confirmEncerrar, setConfirmEncerrar] = useState(false);
+  const [encerrando, setEncerrando] = useState(false);
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -609,6 +612,37 @@ export function FilaTab() {
     });
   }
 
+  useEffect(() => {
+    if (!doctorId || !date) return;
+    let vivo = true;
+    fetch(`/api/admin/agenda-encerrada?doctorId=${doctorId}&date=${date}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => { if (vivo) setAgendaEncerrada(!!d.encerrada); })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, [doctorId, date]);
+
+  async function alterarAgenda(acao: "encerrar" | "reabrir") {
+    setEncerrando(true);
+    try {
+      const res = await fetch("/api/admin/agenda-encerrada", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ doctorId, date, acao }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || "Não foi possível alterar a agenda.");
+        return;
+      }
+      setAgendaEncerrada(acao === "encerrar");
+      setShowAddForm(false);
+      setConfirmEncerrar(false);
+    } finally {
+      setEncerrando(false);
+    }
+  }
+
   const selectedDoctor = doctors.find((d) => d.id === doctorId);
   const selectedPatient = patients.find((p) => p.id === addForm.patientId);
 
@@ -766,7 +800,62 @@ export function FilaTab() {
         >
           {showAddForm ? "Cancelar" : "+ Adicionar à fila"}
         </button>
+        {doctorId && (
+          <div className="flex w-full items-center gap-3">
+            {agendaEncerrada ? (
+              <>
+                <span className="rounded-md bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700">🔒 Agenda encerrada neste dia</span>
+                <button
+                  type="button"
+                  disabled={encerrando}
+                  onClick={() => alterarAgenda("reabrir")}
+                  className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50 disabled:opacity-60"
+                >
+                  Reabrir agenda
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmEncerrar(true)}
+                className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
+              >
+                🔒 Encerrar agenda do dia
+              </button>
+            )}
+          </div>
+        )}
       </div>
+
+      {confirmEncerrar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <h2 className="text-lg font-bold text-slate-900">Encerrar a agenda de hoje?</h2>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600">
+              {selectedDoctor?.name ?? "Médico"} — {date.split("-").reverse().join("/")}
+              <br />
+              Nenhum novo paciente poderá ser agendado para este dia.
+            </p>
+            <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              A médica verá um aviso na tela dela até clicar em &quot;Fechar&quot;.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setConfirmEncerrar(false)} className="rounded-lg border border-zinc-300 px-4 py-2 text-sm">
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={encerrando}
+                onClick={() => alterarAgenda("encerrar")}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                Encerrar agenda
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {showAddForm && (
         <form

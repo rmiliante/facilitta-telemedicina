@@ -124,6 +124,19 @@ export async function POST(req: NextRequest) {
   let queuePosition: number | null = null;
 
   if (finalDoctorId) {
+    const { data: encerrada } = await supabase
+      .from("agenda_encerrada")
+      .select("day")
+      .eq("day", dayKey)
+      .eq("doctor_id", finalDoctorId)
+      .maybeSingle();
+    if (encerrada) {
+      return NextResponse.json(
+        { error: "A agenda deste médico foi encerrada para este dia. Reabra a agenda para incluir novos pacientes." },
+        { status: 409 }
+      );
+    }
+
     const dayStart = new Date(`${dayKey}T00:00:00.000Z`).toISOString();
     const dayEnd = new Date(new Date(`${dayKey}T00:00:00.000Z`).getTime() + 24 * 60 * 60 * 1000).toISOString();
 
