@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import PacientesDashboard from "./PacientesDashboard";
 import PrescricoesDashboard from "./PrescricoesDashboard";
+import ConsumoPrescreve from "./ConsumoPrescreve";
 
 type Sub = "consultas" | "pacientes" | "captacao" | "medicos" | "prescricoes";
 
@@ -276,6 +277,7 @@ function MedicosDashboard() {
 
   return (
     <div className="space-y-4">
+      <ConsumoPrescreve />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label="Médicos ativos" value={data.total} />
         <Kpi label="Assinatura ativa agora" value={data.assinaturaAtiva} tone="teal" />
