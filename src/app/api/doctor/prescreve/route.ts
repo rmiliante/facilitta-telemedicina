@@ -15,7 +15,8 @@ import {
   vidaasAguardar,
   vidaasIniciar,
 } from "@/lib/prescrevePrescricoes";
-import { saveDoctorBearer } from "@/lib/prescreveToken";
+import { getDoctorBearer, saveDoctorBearer } from "@/lib/prescreveToken";
+import { recuperarPdfsPendentes } from "@/lib/prescricoesRecuperar";
 
 /**
  * Conta do médico na Prescreve (API de Prescrições) para receitas controladas:
@@ -76,6 +77,7 @@ export async function GET() {
     emailPadrao: doctor.email,
     conectado: false,
     provider: null as string | null,
+    temToken: (await getDoctorBearer(doctor.id)) !== null,
   };
   if (!doctor.prescreve_uuid) return NextResponse.json(base);
   try {
@@ -148,13 +150,15 @@ export async function POST(req: NextRequest) {
         .update({ prescreve_uuid: login.profile.uuid, prescreve_validado_em: new Date().toISOString() })
         .eq("id", doctor.id);
       await saveDoctorBearer(doctor.id, login.access_token, login.refresh_token);
+      // Documentos emitidos antes, cujo PDF não tinha baixado por falta do token, são recuperados agora.
+      const recuperados = await recuperarPdfsPendentes(doctor.id);
       let saldo: Record<string, number> | null = null;
       let sncrUrl: string | null = null;
       try { saldo = (await saldoSncr(login.access_token)).saldo; } catch { /* opcional */ }
       if (body.pedirLink) {
         try { sncrUrl = (await sncrLoginUrl(login.access_token)).login_url; } catch { /* opcional */ }
       }
-      return NextResponse.json({ ok: true, saldo, sncrUrl, token: login.access_token });
+      return NextResponse.json({ ok: true, saldo, sncrUrl, token: login.access_token, recuperados });
     }
 
     if (!doctor.prescreve_uuid) {

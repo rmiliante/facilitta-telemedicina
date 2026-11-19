@@ -8,6 +8,7 @@ import { audit } from "@/lib/audit";
 import { registrarItens } from "@/lib/prescricoesRegistro";
 import { classifyMedication, tipoControleApi } from "@/lib/controlledMeds";
 import { clearDoctorBearer, getDoctorBearer } from "@/lib/prescreveToken";
+import { recuperarPdfsPendentes } from "@/lib/prescricoesRecuperar";
 
 /**
  * Exame, atestado e receita simples emitidos pela API de Prescrições da Prescreve
@@ -139,6 +140,21 @@ export async function emitirViaPrescricoes(input: {
     );
   }
 
+  // Sem o token do médico o PDF assinado não baixa; emitir assim gera documento sem PDF (e duplicata ao tentar de novo).
+  // Então só emite com o token em mãos, e aproveita para recuperar PDFs de emissões anteriores que ficaram pendentes.
+  const bearerPrevio = await getDoctorBearer(doctor.id);
+  if (!bearerPrevio) {
+    return NextResponse.json(
+      {
+        error: "Antes de emitir, entre na Prescreve uma vez com o código do e-mail (aviso amarelo no topo desta janela). Nada foi emitido.",
+        needsLogin: true,
+        via: "prescricoes",
+      },
+      { status: 409 }
+    );
+  }
+  await recuperarPdfsPendentes(doctor.id);
+
   try {
     const docsEnviados = montarDocumentos(kind, items, notes);
     const result = await emitir({
@@ -215,7 +231,7 @@ export async function emitirViaPrescricoes(input: {
     if (faltouPdf) {
       return NextResponse.json(
         {
-          error: "O documento foi emitido, mas o PDF não pôde ser baixado: entre de novo na Prescreve com o código do e-mail e tente recuperar o PDF. Avise a administração se persistir.",
+          error: "O documento foi emitido, mas o PDF ainda não foi salvo. Não emita de novo: entre na Prescreve com o código do e-mail (aviso amarelo no topo) que o sistema recupera o PDF sozinho.",
           needsLogin: true,
           via: "prescricoes",
         },

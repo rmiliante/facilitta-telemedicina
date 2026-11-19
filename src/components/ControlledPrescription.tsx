@@ -18,6 +18,8 @@ interface Conta {
   crmValidado?: boolean;
   conectado?: boolean;
   emailPadrao?: string | null;
+  /** Falso = o sistema não tem o acesso do médico para baixar os PDFs; precisa entrar com o código do e-mail. */
+  temToken?: boolean;
 }
 
 const TIPOS: { id: string; label: string }[] = [
@@ -175,7 +177,7 @@ export default function ControlledPrescription({
     setSaldo((r.saldo as Record<string, number>) || null);
     setSncrUrl((r.sncrUrl as string) || null);
     setCodigo(""); setCodigoEnviado(false); setPedirToken(false);
-    setInfo("Conta confirmada.");
+    setInfo("Conta confirmada." + (Number(r.recuperados) > 0 ? " " + String(r.recuperados) + " PDF(s) pendente(s) foram salvos no cadastro dos pacientes." : ""));
     carregar();
   }
   async function enviarCrm() {
@@ -259,6 +261,14 @@ export default function ControlledPrescription({
 
   return (
     <div className="border-b border-zinc-100 bg-zinc-50 px-5 py-3">
+      {conta.vinculado && conta.temToken === false && (
+        <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 p-3">
+          <p className="text-sm font-semibold text-amber-900">Entre na Prescreve para poder emitir</p>
+          {blocoCodigo("Falta uma confirmação rápida: o sistema precisa do seu acesso para salvar o PDF dos documentos. Peça o código e digite o que chegar no e-mail. É uma vez só.")}
+          {erro && <p className="mt-2 text-xs text-red-700">{erro}</p>}
+          {info && <p className="mt-2 text-xs text-emerald-700">{info}</p>}
+        </div>
+      )}
       <div className="flex items-center justify-between gap-2">
         <button type="button" onClick={() => setOpen(!open)} className="text-left text-sm font-semibold text-brand-navy">
           Receita controlada (azul / amarela / especial)
