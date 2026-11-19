@@ -3,6 +3,8 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { getCreditBalance } from "@/lib/prescreve";
 import type { ExamFile } from "@/lib/examFiles";
 
+/** Franquia contratada (mesmo valor usado no card "Receitas controladas" do painel); pode ser trocada no bloco. */
+const FRANQUIA_PADRAO = 500;
 const KINDS = ["exame", "receita", "atestado", "apac"] as const;
 const TZ_MS = 3 * 3600_000;
 
@@ -83,7 +85,7 @@ export async function GET(req: NextRequest) {
     /* saldo é opcional */
   }
 
-  const franquia = (cfg?.franquia_mensal as number | null) ?? null;
+  const franquia = (cfg?.franquia_mensal as number | null) ?? FRANQUIA_PADRAO;
   const hoje = mesAtualSp();
   const atual = mes === hoje;
   const diaAtual = atual ? new Date(Date.now() - TZ_MS).getUTCDate() : diasMes;

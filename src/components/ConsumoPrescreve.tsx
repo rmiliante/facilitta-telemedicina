@@ -131,7 +131,7 @@ export default function ConsumoPrescreve() {
               </button>
             </span>
           }
-          hint={data.franquia != null ? "documentos por mês contratados" : "informe o contratado para calcular o que falta"}
+          hint={data.franquia != null ? "documentos por mês contratados (a Prescreve não informa esse número pela API)" : "informe o contratado para calcular o que falta"}
         >
           {editando ? (
             <span className="flex items-center gap-1.5">
