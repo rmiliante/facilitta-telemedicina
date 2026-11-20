@@ -607,7 +607,7 @@ function DailyBarChart({ data }: { data: { date: string; count: number }[] }) {
   const max = Math.max(1, ...data.map((d) => d.count));
   const width = 720;
   const height = 160;
-  const padding = { top: 8, bottom: 20, left: 4, right: 4 };
+  const padding = { top: 18, bottom: 20, left: 4, right: 4 };
   const plotHeight = height - padding.top - padding.bottom;
   const barGap = 3;
   const barWidth = (width - padding.left - padding.right) / data.length - barGap;
@@ -651,6 +651,18 @@ function DailyBarChart({ data }: { data: { date: string; count: number }[] }) {
               >
                 <title>{`${formatShortDate(d.date)}: ${d.count} atendimento${d.count === 1 ? "" : "s"}`}</title>
               </rect>
+              {d.count > 0 && (
+                <text
+                  x={x + barWidth / 2}
+                  y={y - 4}
+                  fontSize={10}
+                  fontWeight={600}
+                  textAnchor="middle"
+                  fill={isHover ? "#009594" : "#3f3f46"}
+                >
+                  {d.count}
+                </text>
+              )}
               {(i === 0 || i === data.length - 1 || i % 5 === 0) && (
                 <text
                   x={x + barWidth / 2}
