@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { fmtDay, fmtMoney, Kpi, monthLabel, todayKey } from "./FinanceShared";
 import CashFlowPlan, { type PlanData } from "./CashFlowPlan";
+import CashFlowDre from "./CashFlowDre";
 
 /**
  * Admin → Fluxo de caixa (contrato Bahia): entradas (recebimentos da
@@ -207,6 +208,8 @@ export default function CashFlowTab({ readOnly = false }: { readOnly?: boolean }
       )}
 
       {data?.plan && <CashFlowPlan plan={data.plan} events={data.events} readOnly={readOnly} busy={busy} call={call} onError={setError} />}
+
+      {data && <CashFlowDre events={data.events} plan={{ aporte: data.plan.aporte, saldoMinimoEm: data.plan.saldoMinimoEm, categorias: data.plan.categorias ?? {} }} today={today} />}
 
       <section className="rounded-xl border border-zinc-200 bg-white p-4">
         <h2 className="text-sm font-bold text-brand-navy">Entradas, saídas e saldo por data (contrato)</h2>
