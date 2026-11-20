@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { fmtDay, fmtMoney, monthLabel } from "./FinanceShared";
 
 /**
@@ -31,8 +31,11 @@ interface PlanLite {
 const CUSTO_APORTE = 0.2;
 const NAVY = "#15004d";
 
+interface Comp {
+  months: { month: string; medicos: { doctorId: string; name: string; agendados: number; realizadas: number; total: number; valorUnico: number | null }[] }[];
+}
 interface Item {
-  date: string;
+  date: string; // "" = valor agrupado do mês (sem data)
   text: string;
   note?: string;
   amount: number;
@@ -60,6 +63,21 @@ export default function CashFlowDre({ events, plan, today }: { events: Ev[]; pla
   const [view, setView] = useState<"mes" | "consolidado">("mes");
   const [range, setRange] = useState<"3" | "12" | "tudo">("12");
   const [previsto, setPrevisto] = useState(false);
+  const [base, setBase] = useState<"caixa" | "agenda">("caixa");
+  const [valorTxt, setValorTxt] = useState("150");
+  const [comp, setComp] = useState<Comp | null>(null);
+  const [compErro, setCompErro] = useState(false);
+  const valorConsulta = Number(valorTxt.replace(",", ".")) > 0 ? Number(valorTxt.replace(",", ".")) : 0;
+
+  useEffect(() => {
+    if (base !== "agenda" || comp) return;
+    let vivo = true;
+    fetch("/api/admin/fluxo-caixa/competencia", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => { if (vivo) setComp(d); })
+      .catch(() => { if (vivo) setCompErro(true); });
+    return () => { vivo = false; };
+  }, [base, comp]);
   const [open, setOpen] = useState<{ line: Line; month: string | "total" } | null>(null);
 
   const { cells, months, semData } = useMemo(() => {
@@ -70,8 +88,11 @@ export default function CashFlowDre({ events, plan, today }: { events: Ev[]; pla
     };
     let semData = 0;
     const aportes: { month: string; amount: number }[] = [];
+    const agenda = base === "agenda";
     for (const e of events) {
-      if (e.status !== "realizado" && !previsto) continue;
+      if (agenda && (e.tipo === "repasse" || (e.tipo === "recebimento" && !isAporte(e)))) continue; // vêm dos agendamentos
+      if (agenda && e.projetado && e.tipo === "recebimento") continue;
+      if (e.status !== "realizado" && !previsto && !agenda) continue;
       if (!e.date) {
         semData++;
         continue;
@@ -94,7 +115,22 @@ export default function CashFlowDre({ events, plan, today }: { events: Ev[]; pla
       }
     }
     // Aporte que o plano indica como necessário (só na visão com previsão).
-    if (previsto && plan.aporte > 0 && plan.saldoMinimoEm) {
+    if (agenda && comp) {
+      for (const cm of comp.months) {
+        for (const d of cm.medicos) {
+          if (d.agendados > 0 && valorConsulta > 0)
+            push("receitas", cm.month, { date: "", text: `${d.name} — ${d.agendados} agendamento${d.agendados === 1 ? "" : "s"} × ${fmtMoney(valorConsulta)}`, amount: cents(d.agendados * valorConsulta), previsto: true });
+          if (d.realizadas > 0)
+            push("repasses", cm.month, {
+              date: "",
+              text: `${d.name} — ${d.realizadas} consulta${d.realizadas === 1 ? "" : "s"} realizada${d.realizadas === 1 ? "" : "s"} × ${d.valorUnico !== null ? fmtMoney(d.valorUnico) : "valores variados"}`,
+              amount: d.total,
+              previsto: false,
+            });
+        }
+      }
+    }
+    if (!agenda && previsto && plan.aporte > 0 && plan.saldoMinimoEm) {
       const month = plan.saldoMinimoEm.slice(0, 7);
       push("aporte", month, { date: plan.saldoMinimoEm, text: "Aporte necessário (projeção do plano)", amount: plan.aporte, previsto: true });
       aportes.push({ month, amount: plan.aporte });
@@ -104,13 +140,13 @@ export default function CashFlowDre({ events, plan, today }: { events: Ev[]; pla
       const m = nextMonth(a.month);
       const date = `${m}-10`;
       const prev = date > today;
-      if (prev && !previsto) continue;
+      if (prev && !previsto && !agenda) continue;
       push("financeira", m, { date, text: `Devolução do aporte de ${monthLabel(a.month)}`, amount: a.amount, previsto: prev });
       push("financeira", m, { date, text: `Custo do empréstimo — ${Math.round(CUSTO_APORTE * 100)}% sobre ${fmtMoney(a.amount)}`, amount: cents(a.amount * CUSTO_APORTE), previsto: prev });
     }
     const all = [...new Set([...cells.keys()].map((k) => k.split("|")[1]))].sort();
     return { cells, months: all, semData };
-  }, [events, previsto, plan, today]);
+  }, [events, previsto, plan, today, base, comp, valorConsulta]);
 
   const curMonth = today.slice(0, 7);
   const shown = useMemo(() => {
@@ -130,6 +166,8 @@ export default function CashFlowDre({ events, plan, today }: { events: Ev[]; pla
     return [...set].sort((a, b) => (plan.categorias[a] ?? a).localeCompare(plan.categorias[b] ?? b));
   }, [cells, plan.categorias]);
 
+  const nAgend = (m: string) => comp?.months.find((x) => x.month === m)?.medicos.reduce((a, d) => a + d.agendados, 0) ?? 0;
+  const nReal = (m: string) => comp?.months.find((x) => x.month === m)?.medicos.reduce((a, d) => a + d.realizadas, 0) ?? 0;
   const cols = view === "mes" ? [...shown, "total" as const] : (["total"] as const);
   const val = (line: Line, c: string) => (c === "total" ? sumRange(line) : sumLine(line, c));
   const despesasTotal = (c: string) => cents(cats.reduce((a, k) => a + val(`cat:${k}`, c), 0));
@@ -198,10 +236,26 @@ export default function CashFlowDre({ events, plan, today }: { events: Ev[]; pla
           <button type="button" className={seg(range === "tudo")} onClick={() => setRange("tudo")}>Tudo</button>
         </div>
         <div className="flex overflow-hidden rounded-lg border border-zinc-300">
-          <button type="button" className={seg(!previsto)} onClick={() => setPrevisto(false)}>Realizado</button>
-          <button type="button" className={seg(previsto)} onClick={() => setPrevisto(true)}>Realizado + previsto</button>
+          <button type="button" className={seg(base === "caixa")} onClick={() => { setBase("caixa"); setOpen(null); }}>Caixa (recebido/pago)</button>
+          <button type="button" className={seg(base === "agenda")} onClick={() => { setBase("agenda"); setOpen(null); }}>Previsão por agendamentos</button>
         </div>
+        {base === "caixa" ? (
+          <div className="flex overflow-hidden rounded-lg border border-zinc-300">
+            <button type="button" className={seg(!previsto)} onClick={() => setPrevisto(false)}>Realizado</button>
+            <button type="button" className={seg(previsto)} onClick={() => setPrevisto(true)}>Realizado + previsto</button>
+          </div>
+        ) : (
+          <label className="flex items-center gap-1.5 rounded-lg border border-zinc-300 px-3 py-1 text-xs text-zinc-600">
+            Valor por consulta: R$
+            <input inputMode="decimal" value={valorTxt} onChange={(e) => setValorTxt(e.target.value)} className="w-16 rounded border border-zinc-300 px-1.5 py-0.5 text-right font-semibold text-zinc-900" />
+          </label>
+        )}
       </div>
+      {base === "agenda" && (
+        <p className="mb-3 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-800">
+          {compErro ? "Não foi possível carregar os agendamentos." : !comp ? "Carregando agendamentos…" : `Receita = agendamentos do mês (concluídos ou não, sem os cancelados) × ${fmtMoney(valorConsulta)}. Custo dos médicos = consultas realizadas × o valor de cada profissional.`}
+        </p>
+      )}
 
       <div className="overflow-x-auto">
         <table className="w-full min-w-[640px] text-sm">
@@ -214,9 +268,9 @@ export default function CashFlowDre({ events, plan, today }: { events: Ev[]; pla
           </thead>
           <tbody>
             {groupRow("(+) RECEITAS", (c) => val("receitas", c))}
-            <tr className="border-b border-zinc-100"><td className="py-1.5 pl-6 pr-2">Recebimentos da prefeitura</td>{cols.map((c) => cell("receitas", c, "text-brand-teal-dark font-semibold"))}{view === "consolidado" && <td className="px-2 text-right text-xs text-zinc-500">{pctBase ? "100%" : "—"}</td>}</tr>
+            <tr className="border-b border-zinc-100"><td className="py-1.5 pl-6 pr-2">{base === "agenda" ? `Agendamentos × ${fmtMoney(valorConsulta)}` : "Recebimentos da prefeitura"}{base === "agenda" && view === "mes" && <span className="ml-1 text-[11px] text-zinc-400">({shown.map((m) => nAgend(m)).join(" · ")})</span>}</td>{cols.map((c) => cell("receitas", c, "text-brand-teal-dark font-semibold"))}{view === "consolidado" && <td className="px-2 text-right text-xs text-zinc-500">{pctBase ? "100%" : "—"}</td>}</tr>
             {groupRow("(−) REPASSES ÀS MÉDICAS", (c) => val("repasses", c))}
-            <tr className="border-b border-zinc-100"><td className="py-1.5 pl-6 pr-2">Honorários</td>{cols.map((c) => cell("repasses", c))}{view === "consolidado" && <td className="px-2 text-right text-xs text-zinc-500">{pctBase ? `${((val("repasses", "total") / pctBase) * 100).toFixed(1)}%` : "—"}</td>}</tr>
+            <tr className="border-b border-zinc-100"><td className="py-1.5 pl-6 pr-2">{base === "agenda" ? "Consultas realizadas × valor por profissional" : "Honorários"}{base === "agenda" && view === "mes" && <span className="ml-1 text-[11px] text-zinc-400">({shown.map((m) => nReal(m)).join(" · ")})</span>}</td>{cols.map((c) => cell("repasses", c))}{view === "consolidado" && <td className="px-2 text-right text-xs text-zinc-500">{pctBase ? `${((val("repasses", "total") / pctBase) * 100).toFixed(1)}%` : "—"}</td>}</tr>
             {total("= MARGEM DE CONTRIBUIÇÃO", margem)}
             {groupRow("(−) DESPESAS OPERACIONAIS", despesasTotal)}
             {cats.map((k) => (
@@ -254,7 +308,7 @@ export default function CashFlowDre({ events, plan, today }: { events: Ev[]; pla
             <tbody>
               {detail.items.map((i, n) => (
                 <tr key={n} className="border-b border-zinc-100 last:border-0">
-                  <td className="w-16 whitespace-nowrap py-1.5 text-zinc-500">{fmtDay(i.date)}</td>
+                  <td className="w-16 whitespace-nowrap py-1.5 text-zinc-500">{i.date ? fmtDay(i.date) : "—"}</td>
                   <td className="py-1.5">
                     {i.text}
                     {i.previsto && <span className="ml-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">previsto</span>}
