@@ -1,5 +1,6 @@
 "use client";
 
+import CashFlowEdit, { type EditTarget } from "./CashFlowEdit";
 import { useState } from "react";
 import { fmtDay, fmtMoney, Kpi, monthLabel } from "./FinanceShared";
 
@@ -25,6 +26,7 @@ export interface PlanExpense {
   recurrence: "unica" | "mensal" | "anual";
   ends_on: string | null;
   paid_at: string | null;
+  notes?: string | null;
 }
 export interface PlanData {
   today: string;
@@ -111,6 +113,7 @@ export default function CashFlowPlan({
   onError: (msg: string) => void;
 }) {
   const [exp, setExp] = useState({ description: "", category: "licencas", amount: "", date: "", recurrence: "mensal", endsOn: "" });
+  const [editing, setEditing] = useState<EditTarget | null>(null);
   const [setup, setSetup] = useState<{ saldo: string; cheiaA: string; parcial: Record<string, string> } | null>(null);
   const prem = plan.premissas;
   const form = setup ?? {
@@ -258,6 +261,7 @@ export default function CashFlowPlan({
                       {x.recurrence === "unica" && !x.paid_at && (
                         <button disabled={busy} onClick={() => markPaid(x)} className="rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-brand-teal-dark hover:bg-brand-teal/10">Paguei</button>
                       )}
+                      <button disabled={busy} onClick={() => setEditing({ kind: "expense", id: x.id, description: x.description, category: x.category, amount: x.amount, date: x.due_date, recurrence: x.recurrence, endsOn: x.ends_on ?? "", paidAt: x.paid_at ?? "", notes: x.notes ?? "" })} className="rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-brand-navy hover:bg-zinc-100">Editar</button>
                       <button disabled={busy} onClick={() => removeExpense(x)} className="rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-red-600 hover:bg-red-50">Excluir</button>
                     </td>
                   )}
@@ -267,6 +271,7 @@ export default function CashFlowPlan({
             </tbody>
           </table>
         </div>
+        {editing && <CashFlowEdit target={editing} categorias={plan.categorias} busy={busy} call={call} onError={onError} onClose={() => setEditing(null)} />}
         <p className="mt-2 text-xs text-zinc-500">Despesas que se repetem contam como pagas na data do vencimento; as de uma vez só ficam previstas até você marcar como paga.</p>
       </section>
 

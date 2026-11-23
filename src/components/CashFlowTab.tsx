@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { fmtDay, fmtMoney, Kpi, monthLabel, todayKey } from "./FinanceShared";
 import CashFlowPlan, { type PlanData } from "./CashFlowPlan";
 import CashFlowDre from "./CashFlowDre";
+import CashFlowEdit, { type EditTarget } from "./CashFlowEdit";
 
 /**
  * Admin → Fluxo de caixa (contrato Bahia): entradas (recebimentos da
@@ -113,6 +114,7 @@ export default function CashFlowTab({ readOnly = false }: { readOnly?: boolean }
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showProj, setShowProj] = useState(false);
+  const [editing, setEditing] = useState<EditTarget | null>(null);
   const [form, setForm] = useState({ month: "", amount: "", date: "", received: false, notes: "" });
   const today = todayKey();
 
@@ -169,11 +171,15 @@ export default function CashFlowTab({ readOnly = false }: { readOnly?: boolean }
     void call(`/api/admin/fluxo-caixa/recebimentos/${ev.receiptId}`, { method: "PATCH", body: JSON.stringify({ receivedAt: day }) });
   }
 
-  function setExpected(ev: Ev) {
-    const day = prompt("Nova data prevista (AAAA-MM-DD, vazio = a definir):", ev.date ?? "");
-    if (day === null) return;
-    if (day && !/^\d{4}-\d{2}-\d{2}$/.test(day)) return setError("Use a data no formato AAAA-MM-DD");
-    void call(`/api/admin/fluxo-caixa/recebimentos/${ev.receiptId}`, { method: "PATCH", body: JSON.stringify({ expectedAt: day || null }) });
+  function editRow(ev: Ev) {
+    if (ev.receiptId) {
+      const done = ev.status === "realizado";
+      setEditing({ kind: "receipt", id: ev.receiptId, month: ev.period.slice(0, 7), amount: ev.amount, expectedAt: done ? "" : ev.date ?? "", receivedAt: done ? ev.date ?? "" : "", notes: ev.notes ?? "" });
+    } else if (ev.expenseId) {
+      const x = data?.plan.despesas.find((d) => d.id === ev.expenseId);
+      if (!x) return setError("Despesa não encontrada");
+      setEditing({ kind: "expense", id: x.id, description: x.description, category: x.category, amount: x.amount, date: x.due_date, recurrence: x.recurrence, endsOn: x.ends_on ?? "", paidAt: x.paid_at ?? "", notes: x.notes ?? "" });
+    }
   }
 
   function remove(ev: Ev) {
@@ -209,6 +215,7 @@ export default function CashFlowTab({ readOnly = false }: { readOnly?: boolean }
 
       {data?.plan && <CashFlowPlan plan={data.plan} events={data.events} readOnly={readOnly} busy={busy} call={call} onError={setError} />}
 
+      {editing && data && <CashFlowEdit target={editing} categorias={data.plan.categorias ?? {}} busy={busy} call={call} onError={setError} onClose={() => setEditing(null)} />}
       {data && <CashFlowDre events={data.events} plan={{ aporte: data.plan.aporte, saldoMinimoEm: data.plan.saldoMinimoEm, categorias: data.plan.categorias ?? {} }} today={today} />}
 
       <section className="rounded-xl border border-zinc-200 bg-white p-4">
@@ -251,13 +258,14 @@ export default function CashFlowTab({ readOnly = false }: { readOnly?: boolean }
                     <td className={`whitespace-nowrap pr-3 text-right ${e.saldo !== null && e.saldo < 0 ? "text-red-600" : ""}`}>{e.saldo === null ? "—" : fmtMoney(e.saldo)}</td>
                     {!readOnly && (
                       <td className="whitespace-nowrap text-right">
+                        {(e.receiptId || e.expenseId) && !e.projetado && (
+                          <button disabled={busy} onClick={() => editRow(e)} className="rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-brand-navy hover:bg-zinc-100">Editar</button>
+                        )}
+                        {!e.receiptId && e.tipo === "repasse" && <span className="text-[11px] text-zinc-400">automático</span>}
                         {e.receiptId && (
                           <>
                             {e.status !== "realizado" && (
                               <button disabled={busy} onClick={() => markReceived(e)} className="rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-brand-teal-dark hover:bg-brand-teal/10">Recebi</button>
-                            )}
-                            {e.status !== "realizado" && (
-                              <button disabled={busy} onClick={() => setExpected(e)} className="rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-zinc-600 hover:bg-zinc-100">Data</button>
                             )}
                             <button disabled={busy} onClick={() => remove(e)} className="rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-red-600 hover:bg-red-50">Excluir</button>
                           </>
