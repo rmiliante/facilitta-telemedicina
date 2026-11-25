@@ -506,6 +506,29 @@ export function FilaTab() {
     return () => clearTimeout(timeout);
   }, [doctorId, date, loadQueue]);
 
+  // Atualiza a fila sozinha (concluídas, pendentes, em atendimento) enquanto a
+  // tela está aberta: a cada 15 s, e na hora em que a aba volta a ficar visível.
+  useEffect(() => {
+    if (!doctorId || !date) return;
+    let vivo = true;
+    const silent = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const res = await fetch(`/api/admin/appointments/queue?doctorId=${doctorId}&date=${date}`, { cache: "no-store" });
+        if (vivo && res.ok) setQueue((await res.json()).appointments);
+      } catch {
+        /* sem rede: tenta de novo no próximo ciclo */
+      }
+    };
+    const timer = setInterval(silent, 15_000);
+    document.addEventListener("visibilitychange", silent);
+    return () => {
+      vivo = false;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", silent);
+    };
+  }, [doctorId, date]);
+
   // Quem já está agendado nessa especialidade/data não deve aparecer na
   // busca de "adicionar à fila" (evita duplicar o mesmo paciente).
   useEffect(() => {
