@@ -1887,6 +1887,7 @@ function PatientsTab() {
   const [editForm, setEditForm] = useState({
     fullName: "",
     cpf: "",
+    birthDate: "",
     phone: "",
     email: "",
     city: "",
@@ -2021,6 +2022,7 @@ function PatientsTab() {
     setEditForm({
       fullName: p.full_name,
       cpf: p.cpf ?? "",
+      birthDate: p.birth_date ?? "",
       phone: p.phone ?? "",
       email: p.email ?? "",
       city: p.city ?? "",
@@ -2259,6 +2261,15 @@ function PatientsTab() {
                 <input
                   value={editForm.phone}
                   onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+                  className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
+                />
+              </label>
+              <label className="text-xs">
+                <span className="mb-1 block font-medium text-zinc-600">Nascimento</span>
+                <input
+                  type="date"
+                  value={editForm.birthDate}
+                  onChange={(e) => setEditForm((f) => ({ ...f, birthDate: e.target.value }))}
                   className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm outline-none focus:border-brand-teal-dark"
                 />
               </label>
