@@ -44,3 +44,47 @@ select,
 textarea {
   color: #171717;
 }
+
+/* ---- Ajustes para celular ---- */
+html,
+body {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+}
+
+@media (max-width: 640px) {
+  /* 16px evita o zoom automático do iOS ao focar em campos */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  /* alvos de toque maiores */
+  button,
+  a[role="button"],
+  select {
+    min-height: 36px;
+  }
+
+  /* tabelas largas rolam na horizontal dentro do próprio cartão */
+  table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* modais não passam da tela */
+  [role="dialog"],
+  .fixed > .bg-white {
+    max-width: calc(100vw - 1rem);
+  }
+}

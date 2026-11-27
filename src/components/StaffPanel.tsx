@@ -1136,7 +1136,7 @@ export function FilaTab() {
             {shown.map(({ item, index }) => (
               <li
                 key={item.id}
-                className={`flex flex-wrap items-center justify-between gap-2 rounded-md border px-4 py-3 text-sm ${
+                className={`flex min-w-0 max-w-full flex-wrap items-center justify-between gap-2 rounded-md border px-4 py-3 text-sm ${
                   item.status === "concluido"
                     ? "bg-gradient-to-r from-green-200 via-green-50 to-white"
                     : item.status === "em_andamento"
@@ -1211,7 +1211,7 @@ export function FilaTab() {
                     )}
                   </div>
                 </div>
-                <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                <div className="flex w-full min-w-0 max-w-full flex-wrap items-center gap-1.5 sm:w-auto sm:shrink-0">
                   {item.booth_rejected_at && (
                     <button
                       onClick={() => dismissBoothRejected(item)}
